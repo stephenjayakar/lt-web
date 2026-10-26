@@ -193,6 +193,7 @@ import {
 import { appendDialogLogEntry } from './objective-dialog-states';
 import { supplyAvailableOnMap } from './supply-state';
 import { MapAnimation } from '../../rendering/map-animation';
+import { FONT } from '../../rendering/bmp-font';
 import { computeArrowSegments } from '../../rendering/movement-arrows';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { shouldDrawMapHp } from '../../rendering/map-view';
@@ -7555,14 +7556,14 @@ export class CombatState extends State {
       const row = cueRows.get(cue.unit) ?? 0;
       cueRows.set(cue.unit, row + 1);
       if (info?.position) {
-        this.drawProcCue(surf, cue, info.position[0] + 40, info.position[1] - 16 + row * 16, false, true);
+        this.drawSkillIcon(surf, cue, info.ordering !== 'left', [info.position[0] + 39, info.position[1] - 16 + row * 16]);
         continue;
       }
       const position = cue.unit.position;
       if (!position) continue;
       const px = position[0] * TILEWIDTH - cameraOffset[0] + TILEWIDTH / 2;
       const py = position[1] * TILEHEIGHT - cameraOffset[1] - 24 - row * 17;
-      this.drawProcCue(surf, cue, px, py, false, true);
+      this.drawSkillIcon(surf, cue, true, [px, py]);
     }
 
     // EXP / Level-up overlays (shared with animation combat)
@@ -7597,7 +7598,7 @@ export class CombatState extends State {
       const isRight = !combat.leftIsAttacker
         ? rs.procCue.unit === combat.attacker
         : rs.procCue.unit === combat.defender;
-      this.drawProcCue(surf, rs.procCue, isRight ? WINWIDTH - 4 : 4, 32, isRight);
+      this.drawSkillIcon(surf, rs.procCue, isRight, null);
     }
 
     // EXP / Level-up overlays (shared)
@@ -7633,41 +7634,41 @@ export class CombatState extends State {
     }
   }
 
-  private drawProcCue(
+  /**
+   * gui.SkillIcon: the skill name in the 'text' font beside its 16px icon,
+   * bouncing in, holding, and fading out (timing in proc-presentation.ts).
+   * With `pos` (map combat) it centers above the unit's window; otherwise
+   * (battle scene) it sits at y=32 on the owner's side.
+   */
+  private drawSkillIcon(
     surf: Surface,
     cue: CombatProcCue,
-    anchorX: number,
-    y: number,
-    alignRight: boolean,
-    centered: boolean = false,
+    right: boolean,
+    pos: [number, number] | null,
   ): void {
     const { alpha, offsetX } = procCueMotion(cue);
-    const label = cue.skill.name.slice(0, 18);
-    const width = Math.max(38, Math.min(108, 24 + label.length * 5));
-    const x = Math.round(
-      (alignRight ? anchorX - width : centered ? anchorX - width / 2 : anchorX) + offsetX,
-    );
-    const top = Math.round(y);
-    const sideColor = alignRight ? '196,72,86' : '67,116,194';
-    surf.fillRect(x, top, width, 16, `rgba(10,14,25,${(0.9 * alpha).toFixed(2)})`);
-    surf.fillRect(x, top, 2, 16, `rgba(${sideColor},${alpha.toFixed(2)})`);
-    surf.drawRect(x, top, width, 16, `rgba(224,232,255,${(0.72 * alpha).toFixed(2)})`);
-    if (cue.skill.iconNid) {
-      drawIcon16(surf, cue.skill.iconNid, cue.skill.iconIndex, x + 3, top);
+    if (alpha <= 0) return;
+    const font = FONT['text'];
+    const text = cue.skill.name;
+    const textWidth = font ? font.width(text) : text.length * 5;
+    const hasIcon = !!cue.skill.iconNid;
+    const icon = new Surface(textWidth + 22, hasIcon ? 32 : 16);
+    const textX = right ? 20 : 0;
+    font?.blit(icon, text, textX, 0);
+    if (hasIcon) drawIcon16(icon, cue.skill.iconNid, cue.skill.iconIndex, right ? 0 : textWidth + 4, 0);
+    icon.setAlpha(alpha);
+    let x: number;
+    let y: number;
+    if (pos) {
+      x = pos[0] + offsetX - Math.floor(textWidth / 2) - 8;
+      y = pos[1];
     } else {
-      // Missing optional icon sheets still get a crisp proc spark.
-      surf.fillRect(x + 8, top + 3, 2, 10, `rgba(255,218,92,${alpha.toFixed(2)})`);
-      surf.fillRect(x + 4, top + 7, 10, 2, `rgba(255,218,92,${alpha.toFixed(2)})`);
-      surf.fillRect(x + 6, top + 5, 6, 6, `rgba(255,246,190,${alpha.toFixed(2)})`);
+      x = right ? WINWIDTH - 26 - textWidth + offsetX : offsetX + 4;
+      y = 32;
     }
-    surf.drawText(
-      label,
-      x + 21,
-      top + 1,
-      `rgba(255,255,255,${alpha.toFixed(2)})`,
-      '7px monospace',
-    );
+    surf.blit(icon, Math.round(x), y);
   }
+
 
 }
 

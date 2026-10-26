@@ -125,7 +125,7 @@ test.describe('combat proc presentation', () => {
     });
   });
 
-  test('renders a compact readable proc badge in the 240x160 scene', async ({ page }) => {
+  test('renders the Python SkillIcon (bitmap text + icon, no box) at y=32', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
 
@@ -141,7 +141,7 @@ test.describe('combat proc presentation', () => {
         elapsed: 500,
         duration: 1250,
       };
-      (CombatState.prototype as any).drawProcCue.call({}, surf, cue, 4, 32, false);
+      (CombatState.prototype as any).drawSkillIcon.call({}, surf, cue, false, null);
       const canvas = document.createElement('canvas');
       canvas.id = 'proc-cue-visual';
       canvas.width = 720;
@@ -153,16 +153,18 @@ test.describe('combat proc presentation', () => {
       document.body.replaceChildren(canvas);
       const data = surf.getImageData().data;
       let changed = 0;
-      let gold = 0;
+      let outsideRow = 0;
       for (let i = 0; i < data.length; i += 4) {
-        if (data[i] !== 18 || data[i + 1] !== 26 || data[i + 2] !== 42) changed++;
-        if (data[i] > 220 && data[i + 1] > 180 && data[i + 2] < 150) gold++;
+        const y = Math.floor(i / 4 / 240);
+        const differs = data[i] !== 18 || data[i + 1] !== 26 || data[i + 2] !== 42;
+        if (differs) changed++;
+        if (differs && (y < 32 || y >= 48)) outsideRow++;
       }
-      return { changed, gold };
+      return { changed, outsideRow };
     });
 
     await expect(page.locator('#proc-cue-visual')).toBeVisible();
-    expect(pixels.changed).toBeGreaterThan(300);
-    expect(pixels.gold).toBeGreaterThan(10);
+    expect(pixels.changed).toBeGreaterThan(30);
+    expect(pixels.outsideRow).toBe(0);
   });
 });
