@@ -113,6 +113,12 @@ export class CombatPhaseSolver {
   private sessionStrikes: CombatStrike[] = [];
   /** Lifecycle marks already copied into procPlayback. */
   private syncedMarks = 0;
+  /**
+   * The last resolved strike's attack/defense procs. Python ends a strike's
+   * sub-combat (removing its proc skills) only after the strike's damage and
+   * after-strike hooks, so removal waits for applyStrikeDamage.
+   */
+  private pendingStrikeProcs: Parameters<CombatSkillLifecycle['endStrike']>[0] | null = null;
 
   constructor(randomRoll?: () => number, game?: any) {
     this.strikes = [];
@@ -155,8 +161,23 @@ export class CombatPhaseSolver {
     this.syncedMarks = marks.length;
   }
 
+  /** End the pending strike's sub-combat, seeing each unit's simulated HP. */
+  private endPendingStrike(): void {
+    const procs = this.pendingStrikeProcs;
+    if (!procs) return;
+    this.pendingStrikeProcs = null;
+    this.lifecycle?.endStrike(procs, this.simulatedHp);
+  }
+
+  /** A unit's latest simulated in-combat HP, when this combat tracks it. */
+  private readonly simulatedHp = (unit: UnitObject): number | undefined => {
+    const refs = this.simHps.get(unit);
+    return refs && refs.length > 0 ? refs[refs.length - 1].hp : undefined;
+  };
+
   private finishLifecycle(strikes: CombatStrike[]): void {
     if (!this.lifecycle) return;
+    this.endPendingStrike();
     this.lifecycle.endCombat(strikes);
     this.syncProcPlayback();
     this.lifecycle = null;
@@ -277,6 +298,19 @@ export class CombatPhaseSolver {
     strike: CombatStrike,
     ignoreDying: boolean = false,
   ): void {
+    try {
+      this.applyStrikeDamageEffects(target, hp, strike, ignoreDying);
+    } finally {
+      this.endPendingStrike();
+    }
+  }
+
+  private applyStrikeDamageEffects(
+    target: UnitObject,
+    hp: { hp: number },
+    strike: CombatStrike,
+    ignoreDying: boolean = false,
+  ): void {
     if (!strike.hit && !hasDamageOnMiss(strike.item)) {
       this.applyMissSelfHealing(strike);
       this.applyPostStrikeSkillEffects(target, strike, hp.hp);
@@ -309,7 +343,12 @@ export class CombatPhaseSolver {
         ...(strike.defenseProcs ?? []),
         { kind: 'defense_proc', unit: target, parentSkill: proc.skill, procSkill: proc.skill },
       ];
-      this.customSurvivalTriggered.add(proc.skill);
+      // Python TrueMiracle / IgnoreDamage are after_take_strike hooks that
+      // run on every strike; only their charge (consumed after combat here)
+      // limits them. Uncharged ones therefore keep protecting each strike.
+      const everyStrike = (proc.component === 'TrueMiracle' || proc.component === 'ignore_damage') &&
+        !proc.skill.hasComponent('build_charge') && !skillSystem.hasDrainingCharge(proc.skill);
+      if (!everyStrike) this.customSurvivalTriggered.add(proc.skill);
       this.applySelfLifelink(
         strike,
         Math.max(
@@ -1039,7 +1078,10 @@ export class CombatPhaseSolver {
     forcedAttackProcs?: CombatProcMark[],
     assist: boolean = false,
   ): CombatStrike {
-    const procs = this.lifecycle?.beginStrike(striker, item, target, forcedAttackProcs) ??
+    this.endPendingStrike();
+    const procs = this.lifecycle?.beginStrike(
+      striker, item, target, forcedAttackProcs, this.simulatedHp,
+    ) ??
       { attack: [], defense: [] };
     const defWeapon = calcs.getEquippedWeapon(target, db, this.game);
     const wt = calcs.weaponTriangle(item, defWeapon, db, striker, target);
@@ -1112,7 +1154,7 @@ export class CombatPhaseSolver {
       ...(procs.attack.length ? { attackProcs: procs.attack } : {}),
       ...(procs.defense.length ? { defenseProcs: procs.defense } : {}),
     };
-    this.lifecycle?.endStrike(procs);
+    this.pendingStrikeProcs = procs;
     this.updateGuardGauges(striker, item, target, db);
     return strike;
   }
@@ -1609,7 +1651,10 @@ export class CombatPhaseSolver {
     forcedAttackProcs?: CombatProcMark[],
     assist: boolean = false,
   ): CombatStrike {
-    const procs = this.lifecycle?.beginStrike(striker, item, target, forcedAttackProcs) ??
+    this.endPendingStrike();
+    const procs = this.lifecycle?.beginStrike(
+      striker, item, target, forcedAttackProcs, this.simulatedHp,
+    ) ??
       { attack: [], defense: [] };
     // Compute hit chance with weapon triangle bonus
     const defWeapon = calcs.getEquippedWeapon(target, db, this.game);
@@ -1732,7 +1777,7 @@ export class CombatPhaseSolver {
       ...(procs.attack.length ? { attackProcs: procs.attack } : {}),
       ...(procs.defense.length ? { defenseProcs: procs.defense } : {}),
     };
-    this.lifecycle?.endStrike(procs);
+    this.pendingStrikeProcs = procs;
     this.updateGuardGauges(striker, item, target, db);
     return strike;
   }

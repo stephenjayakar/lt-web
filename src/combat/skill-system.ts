@@ -240,6 +240,8 @@ export function additionalTags(unit: UnitObject, game?: any): Set<string> {
       }
     }
     if (skill.hasComponent('redirect_damage')) tags.add('IgnoringDamage');
+    // EOtF fork IgnoreDamage.additional_tags returns ['IgnoringDamage'].
+    if (skill.hasComponent('ignore_damage') && isForkEngine()) tags.add('IgnoringDamage');
   }
   return tags;
 }
@@ -933,6 +935,12 @@ export function damagePreventionSkill(
   alreadyTriggered: ReadonlySet<SkillObject> = new Set(),
   game?: any,
 ): CustomSurvivalSkill | null {
+  // Python runs every after_take_strike hook: IgnoreDamage deletes the HP
+  // loss whichever order it runs in, so it wins over TrueMiracle-style 1 HP
+  // survival. The EOtF fork's TrueMiracle also skips IgnoringDamage units.
+  let survival: CustomSurvivalSkill | null = null;
+  const ignoringDamage = (): boolean => unit.tags.includes('IgnoringDamage') ||
+    additionalTags(unit, game).has('IgnoringDamage');
   for (const skill of unit.skills) {
     if (alreadyTriggered.has(skill)) continue;
     if (!skillConditionActive(skill, unit, { game })) continue;
@@ -945,18 +953,22 @@ export function damagePreventionSkill(
         Number(skill.data.get('charge') ?? 0) <= 0) continue;
     for (const [component, value] of skill.components) {
       if (component === 'ignore_damage') return { skill, component, value };
-      if (lethal && component === 'TrueMiracle') return { skill, component, value };
+      if (survival) continue;
+      if (lethal && component === 'TrueMiracle' &&
+          !(isForkEngine() && ignoringDamage())) {
+        survival = { skill, component, value };
+        continue;
+      }
       if (lethal && (
         component === 'nine_lives_event' ||
         component === 'true_miracle_event' ||
         component === 'true_miracle_event_after_combat' ||
         (component === 'True_Miracle_Event' &&
-          !unit.tags.includes('IgnoringDamage') &&
-          !additionalTags(unit, game).has('IgnoringDamage'))
-      )) return { skill, component, value };
+          !ignoringDamage())
+      )) survival = { skill, component, value };
     }
   }
-  return null;
+  return survival;
 }
 
 /** Unit cannot be displaced by shove, swap, warp, rescue, or related item hooks. */

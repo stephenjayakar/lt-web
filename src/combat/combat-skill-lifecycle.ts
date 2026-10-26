@@ -10,6 +10,7 @@ import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
 import { evaluateEquation } from './combat-calcs';
+import { isForkEngine } from '../engine/engine-flavor';
 import type { CombatStrike } from './combat-solver';
 import {
   checkEnemy,
@@ -37,6 +38,8 @@ interface ItemOverlay {
 interface ActiveProc extends CombatProcMark {
   overlay: ItemOverlay | null;
   consumeCharge: boolean;
+  /** The proc owner's item for this strike (Python end_sub_combat `item`). */
+  item: ItemObject | null;
 }
 
 interface SkillSnapshot {
@@ -122,6 +125,7 @@ export class CombatSkillLifecycle {
   private roll: () => number;
   private game: any;
   private preProcs: ActiveProc[] = [];
+  private lingeringProcs: ActiveProc[] = [];
   private combatConditionSkills: Set<SkillObject> = new Set();
   private dynamicStatUnits: Set<UnitObject> = new Set();
 
@@ -324,6 +328,7 @@ export class CombatSkillLifecycle {
     item: ItemObject | null,
     target: UnitObject,
     forcedParents?: SkillObject[],
+    simulatedHp?: (unit: UnitObject) => number | undefined,
   ): ActiveProc[] {
     const candidates = forcedParents ?? [...unit.skills];
     const activated: ActiveProc[] = [];
@@ -336,7 +341,11 @@ export class CombatSkillLifecycle {
       }
       if (!procNid || !isEnemy(this.db, unit, target)) continue;
       if (!forcedParents) {
-        if (!this.active(parentSkill, unit, item) || !this.weaponAllowed(parentSkill, unit, item)) continue;
+        // start_sub_combat sees the unit's in-combat HP (Python executes
+        // each strike's actions before the next sub-combat begins).
+        const allowed = this.withSimulatedHp(unit, simulatedHp, () =>
+          this.active(parentSkill, unit, item) && this.weaponAllowed(parentSkill, unit, item));
+        if (!allowed) continue;
         if (this.roll() >= this.procRate(parentSkill, unit, target, targetAware)) continue;
       }
       const prefab = this.db.skills.get(procNid);
@@ -350,6 +359,7 @@ export class CombatSkillLifecycle {
         procSkill,
         overlay: this.applyItemOverride(unit, item, procSkill),
         consumeCharge: !forcedParents,
+        item,
       };
       // Grouped splash targets reuse the initiating attack proc. They need the
       // same temporary effect for calculation, but Python emits one playback
@@ -455,24 +465,92 @@ export class CombatSkillLifecycle {
     item: ItemObject,
     target: UnitObject,
     forcedAttack?: CombatProcMark[],
+    simulatedHp?: (unit: UnitObject) => number | undefined,
   ): { attack: ActiveProc[]; defense: ActiveProc[] } {
     const attack = this.activate(
       'attack_proc', striker, item, target, forcedAttack?.map((mark) => mark.parentSkill),
+      simulatedHp,
     );
     const defenseItem = target.items.find((candidate) => candidate.isWeapon()) ?? null;
-    const defense = this.activate('defense_proc', target, defenseItem, striker);
+    const defense = this.activate('defense_proc', target, defenseItem, striker, undefined, simulatedHp);
     return { attack, defense };
   }
 
-  endStrike(active: { attack: ActiveProc[]; defense: ActiveProc[] }): void {
+  private withSimulatedHp<T>(
+    unit: UnitObject,
+    simulatedHp: ((unit: UnitObject) => number | undefined) | undefined,
+    evaluate: () => T,
+  ): T {
+    const hp = simulatedHp?.(unit);
+    if (hp === undefined) return evaluate();
+    const savedHp = unit.currentHp;
+    unit.currentHp = hp;
+    try {
+      return evaluate();
+    } finally {
+      unit.currentHp = savedHp;
+    }
+  }
+
+  /**
+   * End one strike's sub-combat: remove its attack/defense procs. Runs after
+   * the strike's damage and after-strike hooks, so a proc skill (e.g.
+   * Thracian_Miracle_Proc's TrueMiracle) is present while they resolve.
+   *
+   * EOtF's fork dispatches AttackProc/DefenseProc.end_sub_combat only while
+   * the parent skill's condition holds (upstream uses
+   * end_sub_combat_unconditional). When the parent turns off during the
+   * strike the proc skill stays (no charge is triggered) and is retried at
+   * the owner's next sub-combat end; otherwise its own cleanup removes it.
+   * `simulatedHp` supplies each unit's in-combat HP for that check.
+   */
+  endStrike(
+    active: { attack: ActiveProc[]; defense: ActiveProc[] },
+    simulatedHp?: (unit: UnitObject) => number | undefined,
+  ): void {
+    const fork = isForkEngine();
+    const units = new Set([...active.attack, ...active.defense].map((proc) => proc.unit));
     // Python removes the defending proc first, then the attacking proc.
-    for (const proc of [...active.defense].reverse()) this.deactivate(proc);
-    for (const proc of [...active.attack].reverse()) this.deactivate(proc);
+    for (const proc of [...active.defense].reverse()) this.endProc(proc, fork, simulatedHp);
+    for (const proc of [...active.attack].reverse()) this.endProc(proc, fork, simulatedHp);
+    if (!fork) return;
+    for (const proc of [...this.lingeringProcs]) {
+      if (!units.has(proc.unit) || active.attack.includes(proc) || active.defense.includes(proc)) {
+        continue;
+      }
+      if (!this.parentStillActive(proc, simulatedHp)) continue;
+      this.lingeringProcs.splice(this.lingeringProcs.indexOf(proc), 1);
+      this.deactivate(proc);
+    }
+  }
+
+  private endProc(
+    proc: ActiveProc,
+    fork: boolean,
+    simulatedHp?: (unit: UnitObject) => number | undefined,
+  ): void {
+    if (fork && !this.parentStillActive(proc, simulatedHp)) {
+      this.lingeringProcs.push(proc);
+      return;
+    }
+    this.deactivate(proc);
+  }
+
+  private parentStillActive(
+    proc: ActiveProc,
+    simulatedHp?: (unit: UnitObject) => number | undefined,
+  ): boolean {
+    return this.withSimulatedHp(proc.unit, simulatedHp, () =>
+      this.active(proc.parentSkill, proc.unit, proc.item));
   }
 
   endCombat(strikes: CombatStrike[]): void {
     for (const proc of [...this.preProcs].reverse()) this.deactivate(proc);
     this.preProcs = [];
+    // Fork: procs whose parent condition stayed false keep their skill until
+    // its own cleanup (lost_on_end_combat2); only the item overlay ends here.
+    for (const proc of this.lingeringProcs) this.restoreItemOverride(proc.overlay);
+    this.lingeringProcs = [];
 
     const marksByUnit = new Set(strikes
       .filter((strike) => strike.hit || this.db.getConstant('miss_wexp', false))
