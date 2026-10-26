@@ -14,6 +14,21 @@ Playwright Chromium (muted, headless) driven over a local command server.
   (War Banner, Blacksmith Soul). F2: rest site (heal, Fragile Memory summon:
   Roxl). F3: shops (armory buy, stratagem Dusk Looms), unit management via AUX,
   suspend + resume on a new build.
+- Run 1 lost on Act 1 F5 (defend map: the green citizen died). Defeat flow,
+  currency summary, save deletion and New Game back to the hub all worked.
+- Run 2 lost on Act 1 F1 (driver bug in my tactical planner).
+- Run 3 lost on Act 1 F9 (Adrius trial; 16 enemies vs 4 level-3 units).
+  Exercised: arrive/seize/rout maps, prep save + reload of the same battle
+  (deterministic replays), trade (map + prep), unit management, Optimize,
+  per-unit Optimize, camps (heal, Fragile Memory, Recall), events, shops,
+  stratagem purchase, rewards.
+- Hub after runs: Trace/Arc/Spi NPCs appear; Essence menu; passwords
+  HETJASQUEST / ILLUSION / PASSWORD123 via the text-entry grid (Hetja,
+  Arrielle, Eve joined); portal summon (Inyx).
+- Run 4: from Act 1 F2 on, a QA-only debug boost (temp/boost.js: raise party
+  stats to ~60 HP / 18-22 offence and defence, applied through the page) so a
+  scripted planner can reach the later acts; combats, AI and events still run
+  normally.
 
 ## Bugs
 
@@ -38,6 +53,13 @@ Playwright Chromium (muted, headless) driven over a local command server.
    the inventory; "Give all" left Gorbat with Killer Helm equipped from the
    convoy. (`tests/item-unequip.spec.ts`)
 
+7. FIXED d436dc8 — with the new Python evaluator, a quoted `{v:}` inside `{e:}`
+   lost its quotes (`'room' + '{v:counter}'` -> `'room' + 1`, TypeError), so
+   the Act intro never set room rewards. (`tests/qa-playtest.spec.ts`)
+8. FIXED 1c72a70 — MoveState ignored SELECT on the unit's own tile when it had
+   no valid moves (EOtF Chains of Thanatos leaves neighbours at MOV -99), so
+   the unit could not even Wait. (`tests/movement-parity.spec.ts`)
+
 ## Minor / not fixed
 
 - `combat_palettes/palette_data/.orderkeys` lists "New Palette", "New Palette (1)"
@@ -51,7 +73,7 @@ Playwright Chromium (muted, headless) driven over a local command server.
   fork), while the combat banner shows their name ("Phantom").
 - Headless Chromium (no GPU) logs `[Perf] Long frame` 50-90 ms in combat
   update; environment-dependent, not investigated.
-- EXPRESSION (not fixed, py-expr branch): hub `X` event "b. The Table":
+- RESOLVED by the merged py-expr evaluator (eotf 623cf7b): hub `X` event "b. The Table":
   `level_var;friend_pos;[(25,7),(23,5),(27,4),(23,12),(27,14)]` stores
   `[7,5,4,12,14]` (each tuple evaluates as a comma expression -> last value).
   The following `add_unit;{v:add_friend};{e:{v:friend_pos}[{friendos}]}` then
