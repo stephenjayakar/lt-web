@@ -173,7 +173,7 @@ test('a Knight Crest opens the promotion choice, animation and level screen', as
   expect(undone).toEqual({ klass: 'Mercenary', crest: true });
 });
 
-test('BACK from the item promotion choice returns to targeting without spending the crest', async ({ page }) => {
+test('BACK from the item promotion choice returns to the map without spending the crest', async ({ page }) => {
   await boot(page);
   await page.evaluate(async () => {
     (window as any).__itemModule = await import('/src/objects/item.ts');
@@ -188,12 +188,24 @@ test('BACK from the item promotion choice returns to targeting without spending 
   expect(await stateName(page)).toBe('promotion_choice');
   await step(page, 1, 'BACK');
   await step(page, 2);
-  expect(await stateName(page)).toBe('item_targeting');
+  // Python PromotionChoiceState BACK: game.state.back() to the map (the
+  // item's combat had cleared to free), HasNotAttacked and reverse_use.
+  expect(await stateName(page)).toBe('free');
   const unit = await page.evaluate(() => {
     const u = (window as any).__promoUnit;
-    return { klass: u.klass, crest: u.items.some((item: any) => item.nid === 'Knight Crest'), finished: u.finished };
+    const crest = u.items.find((item: any) => item.nid === 'Knight Crest');
+    return {
+      klass: u.klass,
+      crest: !!crest,
+      uses: crest ? crest.uses === crest.maxUses : null,
+      finished: u.finished,
+      hasAttacked: u.hasAttacked,
+      canAct: u.canStillAct(),
+    };
   });
-  expect(unit).toEqual({ klass: 'Mercenary', crest: true, finished: false });
+  expect(unit).toEqual({
+    klass: 'Mercenary', crest: true, uses: true, finished: false, hasAttacked: false, canAct: true,
+  });
 });
 
 test('a non-silent event promote plays the promotion screen and resumes the event', async ({ page }) => {

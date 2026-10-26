@@ -27,7 +27,7 @@ import type { InputEvent } from '../input';
 import { WINHEIGHT, WINWIDTH } from '../constants';
 import type { UnitObject } from '../../objects/unit';
 import type { ItemObject } from '../../objects/item';
-import { MarkActionGroupStart } from '../action';
+import { MarkActionGroupEnd, MarkActionGroupStart } from '../action';
 import { applyItemStartResourceHooks } from '../../combat/item-resource-lifecycle';
 import { BattleAnimation, fillScreen, type BattleAnimOwner } from '../../combat/battle-animation';
 import type { CombatEffectData, PaletteData, WeaponAnimData } from '../../combat/battle-anim-types';
@@ -389,11 +389,26 @@ export class PromotionChoiceState extends State {
         sfx('Select 4');
         this.childMenu = null;
       } else if (this.request.canGoBack) {
-        // Nothing of the item is spent before Change, so leaving needs no
-        // reverse_use; the web returns to target selection.
+        // Python opens the choice from Promote.end_combat, after the item's
+        // combat cleared the stack to free; BACK pops back to the map with
+        // HasNotAttacked + reverse_use, so the unit can still act. The web
+        // spends nothing before Change, so leaving refunds by itself. A base
+        // (prep) use returns to its screen.
         sfx('Select 4');
         game.memory.delete(REQUEST_KEY);
         game.state.back();
+        if (this.request.popBelow) {
+          const unit = this.request.itemUse?.actor ?? this.request.unit;
+          game.memory.delete('item_use_item');
+          game.highlight?.clear?.();
+          game._moveOrigin = null;
+          game._moveAction = null;
+          game.selectedUnit = null;
+          if (unit.position) game.cursor?.setPos?.(unit.position[0], unit.position[1]);
+          game.state.clear();
+          game.state.change('free');
+          game.actionLog.doAction(new MarkActionGroupEnd('menu'));
+        }
       } else {
         sfx('Error');
       }
