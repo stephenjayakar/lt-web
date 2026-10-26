@@ -12,6 +12,12 @@ import { expect, test, type Page } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
+// Clean boots skip level events, so there are no player units and Python's
+// FreeState would auto-end the empty player phase; keep the boots in free.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('lt-web-settings', JSON.stringify({ autoend_turn: 0 })));
+});
+
 async function bootLevel(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=eotf.ltproj&level=1&clean=true&bundle=false');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, { timeout: 90_000 });

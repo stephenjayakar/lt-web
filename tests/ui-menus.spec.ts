@@ -16,6 +16,9 @@ async function step(page: Page, frames = 3): Promise<void> {
 }
 
 async function boot(page: Page, level = '2'): Promise<void> {
+  // Clean boots skip level events, so there are no player units and Python's
+  // FreeState would auto-end the empty player phase; stay in free instead.
+  await page.addInitScript(() => localStorage.setItem('lt-web-settings', JSON.stringify({ autoend_turn: 0 })));
   await page.goto(`/?harness=true&project=eotf.ltproj&level=${level}&clean=true&bundle=false`);
   await page.waitForFunction(() => (window as any).__harness?.ready === true, { timeout: 60_000 });
   await page.evaluate(() => (window as any).__harness.settle(2_000, ['free', 'prep_main', 'base_main']));
