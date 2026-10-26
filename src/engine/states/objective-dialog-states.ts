@@ -30,6 +30,7 @@ import {
   textWidth,
   unitDisplayName,
 } from '../../ui/menu-chrome';
+import { evaluateText } from '../../ui/hud';
 
 let _game: any = null;
 export function setObjectiveDialogGameRef(game: any): void {
@@ -69,9 +70,13 @@ function fixTags(lines: string[]): string[] {
   });
 }
 
-/** ','+condition split on commas, '{comma}' restored (objective_menu.get_surfaces). */
+/**
+ * objective_menu.get_surfaces: TextEvaluator._evaluate_all(','+condition),
+ * split on commas, '{comma}' restored.
+ */
 function conditionLines(condition: string): string[] {
-  return fixTags(`,${condition}`.split(',').map((line) => line.replace(/\{comma\}/g, ',')));
+  const evaluated = evaluateText(`,${condition}`, getGame());
+  return fixTags(evaluated.split(',').map((line) => line.replace(/\{comma\}/g, ',')));
 }
 
 // ============================================================================

@@ -53,4 +53,45 @@ test.describe('objective and dialog-log UI', () => {
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name))
       .not.toBe('dialog_log');
   });
+
+  test('change_objective stores the evaluable string and re-evaluates it on draw', async ({ page }) => {
+    await page.goto('/?harness=true&level=0&clean=true&bundle=false');
+    await page.waitForFunction(() => !!(window as any).__harness?.ready, { timeout: 15000 });
+    await step(page);
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.levelVars.set('seals', 2);
+      game.db.events.set('QaObjective', {
+        name: 'QaObjective', nid: 'QaObjective', trigger: 'QaObjective',
+        level_nid: game.currentLevel?.nid ?? null, condition: 'True',
+        only_once: false, priority: 0,
+        _source: [
+          'change_objective_simple;Seals: {v:seals}',
+          'change_objective_win;Collect {e:v(\'seals\') + 1} seals',
+        ],
+      });
+      game.eventManager.triggerSpecific('QaObjective', { type: 'QaObjective' }, true);
+      game.state.change('event');
+    });
+    await step(page, 20);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { evaluateText } = await import('/src/ui/hud.ts');
+      const stored = { ...game.currentLevel.objective };
+      const before = evaluateText(stored.simple, game);
+      // Python ui_view.create_obj_info evaluates the stored string per draw.
+      game.levelVars.set('seals', 5);
+      const after = evaluateText(game.currentLevel.objective.simple, game);
+      game.state.change('objective_menu');
+      return { stored, before, after };
+    });
+    await step(page);
+    const menuOptions = await page.evaluate(() =>
+      (window as any).__gameRef.state.getCurrentState()?.options);
+    expect(result.stored.simple).toBe('Seals: {v:seals}');
+    expect(result.stored.win).toBe("Collect {e:v('seals') + 1} seals");
+    expect(result.before).toBe('Seals: 2');
+    expect(result.after).toBe('Seals: 5');
+    expect(menuOptions).toContain('Collect 6 seals');
+  });
 });

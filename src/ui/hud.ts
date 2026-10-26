@@ -109,9 +109,11 @@ function itemUses(item: ItemObject): number {
 
 /**
  * Python TextEvaluator._evaluate_all for objective strings: {v:var},
- * {var:var}, {e:expr} and {eval:expr}.
+ * {var:var}, {e:expr} and {eval:expr}. Python stores the objective as an
+ * unevaluated EvaluableString and runs this on every draw (ui_view) and when
+ * the objective menu opens, so variable changes show up live.
  */
-function evaluateText(text: string, game: Game): string {
+export function evaluateText(text: string, game: Game): string {
   return text.replace(/\{(v|var|e|eval):([^{}]*)\}/g, (_m, kind: string, body: string) => {
     if (kind === 'v' || kind === 'var') {
       if (game.levelVars?.has(body)) return String(game.levelVars.get(body));

@@ -14678,7 +14678,9 @@ export class EventState extends State {
 
       case 'change_objective_simple':
       case 'change_objective': {
-        const newObj = args[0] ?? '';
+        // EvaluableString (can_preprocess = False): stored raw and evaluated
+        // at draw time, unlike ordinary arguments.
+        const newObj = rawArgs[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.simple = newObj;
         }
@@ -14687,7 +14689,7 @@ export class EventState extends State {
       }
 
       case 'change_objective_win': {
-        const newWin = args[0] ?? '';
+        const newWin = rawArgs[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.win = newWin;
         }
@@ -14696,7 +14698,7 @@ export class EventState extends State {
       }
 
       case 'change_objective_loss': {
-        const newLoss = args[0] ?? '';
+        const newLoss = rawArgs[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.loss = newLoss;
         }
