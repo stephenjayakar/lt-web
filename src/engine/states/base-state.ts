@@ -486,6 +486,7 @@ export class BaseSupportState extends State {
             game.eventManager.trigger(
               {
                 type: 'on_support',
+                levelNid: game.currentLevel?.nid,
                 unit1,
                 unit2,
                 position: null, // Base has no position

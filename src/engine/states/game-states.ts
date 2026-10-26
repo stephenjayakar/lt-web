@@ -46,6 +46,7 @@ import {
   GameEvent,
   pythonIterationValues,
   pythonLiteral,
+  pythonStr,
   type ConditionContext,
   type EventCommand,
 } from '../../events/event-manager';
@@ -761,9 +762,10 @@ const MARKER_CUR_UNIT_STATES = new Set([
  * ('warning', 'danger') markers from SPRITES['marker_<name>'] above each
  * unit at (left - 2, top - 14) with a bob, cycling every 500 ms.
  */
-function drawUnitMarkers(surf: Surface): void {
+export function drawUnitMarkers(surf: Surface): void {
   const game = getGame();
-  const stateName: string = game.state.getCurrentState()?.name ?? '';
+  const currentState: any = game.state.getCurrentState();
+  const stateName: string = currentState?.name ?? '';
   let curUnit: UnitObject | null = null;
   if (stateName === 'free') {
     const [cx, cy] = game.cursor.getPosition();
@@ -778,19 +780,30 @@ function drawUnitMarkers(surf: Surface): void {
     curUnit = game.roamInfo?.roamUnitNid ? game.getUnit(game.roamInfo.roamUnitNid) ?? null : null;
   }
   if (!curUnit) return;
+  // Free roam: an NPC whose talk points at the roam unit shows a talk marker
+  // while a talk target is in range, and the roam unit itself shows the
+  // interact marker while standing in a visitable region.
+  const roamState = stateName === 'free_roam' && game.roamInfo?.roam ? currentState : null;
+  const roamTalkInRange = !!roamState?.getClosestUnit?.(true);
+  const roamVisit = !!roamState?.getVisitRegion?.();
   const now = getFrameCount() * FRAMETIME;
   const offset = [0, 0, 0, 1, 2, 2, 2, 1][Math.floor(now / 100) % 8];
   const [camX, camY] = game.camera.getOffset();
   const talkPairs: [string, string][] = game.eventManager?.getTalkPairs?.() ?? [];
+  const hasTalk = (a: string, b: string) => talkPairs.some(([x, y]) => x === a && y === b) &&
+    !game.eventManager?.isTalkHidden?.(a, b);
   const fogInfo = game.getCurrentFogInfo?.();
   for (const unit of game.units.values() as Iterable<UnitObject>) {
-    if (!unit.position || unit.isDead() || unit === curUnit) continue;
+    if (!unit.position || unit.isDead()) continue;
+    if (unit === curUnit && !roamState) continue;
     if (unit.team !== 'player' && !game.board.inVision(unit.position, 'player', fogInfo, game.db, game.getAllUnits())) continue;
     const markers: string[] = [];
-    if (talkPairs.some(([a, b]) => a === curUnit!.nid && b === unit.nid) &&
-        !game.eventManager?.isTalkHidden?.(curUnit.nid, unit.nid)) {
+    if (roamState && roamTalkInRange && hasTalk(unit.nid, curUnit.nid)) {
+      markers.push('talk');
+    } else if (hasTalk(curUnit.nid, unit.nid)) {
       markers.push('talk');
     }
+    if (roamState && roamVisit && unit === curUnit) markers.push('interact');
     if (curUnit.team === 'player') {
       for (const item of unit.items) {
         const icon = computeTargetIcon(unit, item, curUnit, game.db, game);
@@ -800,8 +813,10 @@ function drawUnitMarkers(surf: Surface): void {
     const sprites = markers.map((name) => getSprite(`marker_${name}`)).filter((sprite): sprite is Surface => !!sprite);
     if (!sprites.length) continue;
     const icon = sprites[Math.floor(now / 500) % sprites.length];
-    const left = unit.position[0] * TILEWIDTH - camX;
-    const top = unit.position[1] * TILEHEIGHT - camY;
+    // The roam unit's sprite sits at its sub-tile roam position.
+    const roamOffset = unit === curUnit ? roamState?.movementComponent?.getVisualOffset?.() : null;
+    const left = (unit.position[0] + (roamOffset?.[0] ?? 0)) * TILEWIDTH - camX;
+    const top = (unit.position[1] + (roamOffset?.[1] ?? 0)) * TILEHEIGHT - camY;
     surf.blit(icon, left - 2, top - 14 + offset);
   }
 }
@@ -2413,7 +2428,8 @@ export class OptionMenuState extends State {
         const cEvents: (string | null)[] = getGame().gameVars.get('_custom_options_events') ?? [];
         const evName = cEvents[cIdx];
         const game = getGame();
-        game.state.back();
+        // Python triggers the event over the option menu, which is back on
+        // top once the event ends.
         let eventNid = evName;
         if (evName && !game.db.events.has(eventNid)) {
           const byName = [...game.db.events.values()].find(
@@ -2448,8 +2464,9 @@ export class OptionMenuState extends State {
     {
       switch (selected) {
         case 'guide': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('base_guide');
           break;
         }
@@ -2483,8 +2500,9 @@ export class OptionMenuState extends State {
           break;
         }
         case 'objective': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('objective_menu');
           break;
         }
@@ -2510,8 +2528,9 @@ export class OptionMenuState extends State {
           break;
         }
         case 'options': {
+          // Python transition_to pops only itself: the option menu stays
+          // beneath and is back on top when this screen closes.
           this.menu = null;
-          game.state.back();
           game.state.change('settings_menu');
           break;
         }
@@ -13247,9 +13266,11 @@ export class EventState extends State {
           withDataKeys
             .replace(
               /(['"])\{v:([A-Za-z_][A-Za-z0-9_]*)\}\1/g,
-              (_variableMatch, _quote: string, key: string) => {
+              (_variableMatch, quote: string, key: string) => {
+                // Python substitutes str(value) as text, so a quoted
+                // placeholder stays a string literal: '{v:counter}' -> '1'.
                 const resolved = variableValue(key);
-                return typedVariableLiteral(resolved);
+                return `${quote}${resolved === undefined ? '??' : pythonStr(resolved)}${quote}`;
               },
             )
             .replace(

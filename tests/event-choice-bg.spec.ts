@@ -118,3 +118,20 @@ test('{v:} prints None for a None var without falling through; {var:} alias; mis
   });
   expect(result).toEqual([1, 1, 1, 1, 1]);
 });
+
+test('a quoted {v:} inside {e:} is the var text, so int vars concatenate as str', async ({ page }) => {
+  // EOtF Act intros name floor rooms with {e:'room' + '{v:counter}' + '_reward'};
+  // Python substitutes '1' (a str), never a bare int that would raise TypeError.
+  await boot(page, DEFAULT);
+  await run(page, 'quoted_var', [
+    'level_var;counter;1',
+    "level_var;{e:'room' + '{v:counter}' + '_reward'};'gold'",
+    "if;{e:'{v:counter}' == '1'}", 'game_var;q1;1', 'end',
+    "if;{e:{v:counter} + 1} == 2", 'game_var;q2;1', 'end',
+  ]);
+  const result = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    return [g.levelVars.get('room1_reward') ?? null, g.gameVars.get('q1') ?? null, g.gameVars.get('q2') ?? null];
+  });
+  expect(result).toEqual(['gold', 1, 1]);
+});

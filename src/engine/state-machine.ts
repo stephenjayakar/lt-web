@@ -175,7 +175,17 @@ export class StateMachine {
       baseIndex--;
     }
 
-    for (let i = baseIndex; i < this.stack.length; i++) {
+    // A map-backdrop state shows only the base (map) state beneath it.
+    let firstIndex = baseIndex + 1;
+    for (let i = this.stack.length - 1; i > baseIndex; i--) {
+      if (this.stack[i].mapBackdrop) {
+        firstIndex = i;
+        break;
+      }
+    }
+
+    surf = this.stack[baseIndex].draw(surf);
+    for (let i = firstIndex; i < this.stack.length; i++) {
       surf = this.stack[i].draw(surf);
     }
 

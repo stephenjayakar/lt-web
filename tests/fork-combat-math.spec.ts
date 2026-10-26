@@ -75,6 +75,31 @@ test.describe('Python compute_hit/compute_damage order and phase alternation', (
     expect(result.noTriangle).toBe(100);
   });
 
+  test('a weapon without a hit component always hits in the forecast and AI', async ({ page }) => {
+    // Python compute_hit: accuracy() is None without a hit hook -> 10000, which
+    // forecasts and the AI clamp to 100 (EOtF Vortex, Spark, Ragnarok, ...).
+    await boot(page);
+    await prepareDuel(page);
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const h = (window as any).__harness;
+      const calcs = await import('/src/combat/combat-calcs.ts');
+      const eirika = g.units.get('Eirika');
+      const bone = g.units.get('Bone');
+      h.giveItem('Eirika', 'Iron_Axe');
+      const axe = eirika.items.find((i: any) => i.nid === 'Iron_Axe');
+      eirika.equippedWeapon = axe;
+      eirika.wexp.Axe = 200;
+      bone.stats.SPD = 40;
+      bone.stats.LCK = 40;
+      const withHit = calcs.computeHit(eirika, axe, bone, g.db, g.board, g);
+      axe.components.delete('hit');
+      return { withHit, noHit: calcs.computeHit(eirika, axe, bone, g.db, g.board, g) };
+    });
+    expect(result.withHit).toBeLessThan(100);
+    expect(result.noHit).toBe(100);
+  });
+
   test('crit applies before damage multipliers with one final truncation', async ({ page }) => {
     await boot(page);
     await prepareDuel(page);
