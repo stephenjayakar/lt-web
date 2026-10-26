@@ -168,6 +168,9 @@ async function selectMenuOption(page: any, label: string): Promise<boolean> {
   }, label);
 }
 
+/** Upper bound on 5-frame batches for a chapter intro to reach prep/free. */
+const INTRO_BATCHES = 3000;
+
 // ---------------------------------------------------------------------------
 // Chain smoke test
 // ---------------------------------------------------------------------------
@@ -406,11 +409,12 @@ test.describe('Sacred Stones Campaign Chain', () => {
     });
 
     // Advance through the Ch.4 intro cutscene, stopping early if we land on
-    // the prep screen (this chapter's intro runs `prep;1`).
+    // the prep screen (this chapter's intro runs `prep;1`). The budget is a
+    // ceiling: the loop stops as soon as prep or free is reached.
     result = await advanceUntil(
       page,
       (s) => s.stateName === 'prep_main' || s.stateName === 'free',
-      900,
+      INTRO_BATCHES,
     );
     expect(result.hitTitle).toBe(false);
 
@@ -488,12 +492,17 @@ test.describe('Sacred Stones Campaign Chain', () => {
     await saveScreenshot(page, '75-chain-ch5-reached');
 
     // ---- Ch.5: intro (also `prep;1`) -> mid-campaign save/load, then win -
+    // The Ch.5 intro runs ~150 commands (dozens of speak lines with blocking
+    // portrait fades) before `prep;1`; 900 batches ran out at its dialogue,
+    // and the follow-up free-state loop then pressed SELECT on the prep menu,
+    // whose first option is Pick Units.
     result = await advanceUntil(
       page,
       (s) => s.stateName === 'prep_main' || s.stateName === 'free',
-      900,
+      INTRO_BATCHES,
     );
     expect(result.hitTitle).toBe(false);
+    expect(result.stateName).toBe('prep_main');
 
     if (result.stateName === 'prep_main') {
       await saveScreenshot(page, '76-chain-ch5-prep');
