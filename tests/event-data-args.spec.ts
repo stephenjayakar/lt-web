@@ -278,6 +278,36 @@ test.describe('Event data command parity', () => {
     expect(result).toEqual({ threw: false, value: null });
   });
 
+  test('music, map_anim, and change_tilemap never skip the following command', async ({ page }) => {
+    await boot(page);
+    const anim = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        anim: [...g.db.mapAnimations.keys()][0] ?? null,
+        tilemap: g.currentLevel.tilemap,
+      };
+    });
+    await runEvent(page, 'QaNoSkip', [
+      'music;None',
+      'game_var;qa_after_music;1',
+      `map_anim;${anim.anim};2,2`,
+      'game_var;qa_after_anim;1',
+      `change_tilemap;${anim.tilemap}`,
+      'game_var;qa_after_tilemap_1;1',
+      'game_var;qa_after_tilemap_2;1',
+    ]);
+    await page.waitForFunction(() => {
+      (window as any).__harness.stepFrames(5, null);
+      return (window as any).__gameRef.gameVars.get('qa_after_tilemap_2') === 1;
+    }, undefined, { timeout: 15_000 });
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return ['qa_after_music', 'qa_after_anim', 'qa_after_tilemap_1', 'qa_after_tilemap_2']
+        .map((key) => g.gameVars.get(key) ?? null);
+    });
+    expect(vars).toEqual([1, 1, 1, 1]);
+  });
+
   test('add_tag and remove_tag rewind with the turnwheel', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaTags', ['add_tag;Eirika;QaDeployed']);

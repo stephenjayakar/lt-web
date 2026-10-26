@@ -9463,6 +9463,8 @@ export class EventState extends State {
   private portraitPriorityCounter: number = 1;
   /** Portrait loads in flight; blocking/dependent commands wait for completion. */
   private pendingPortraitLoads: number = 0;
+  /** An async command is in flight and will advance the pointer itself. */
+  private asyncCommandPending: boolean = false;
   private blockingPortraitLoads: number = 0;
   private overlaySprites: Map<string, EventOverlaySprite> = new Map();
   /** Persistent event-created tables, such as Rekka's live GoldDisplay. */
@@ -9990,6 +9992,9 @@ export class EventState extends State {
         }
       }
     }
+
+    // An asynchronous command (change_tilemap) resumes the event itself.
+    if (this.asyncCommandPending) return;
 
     // Wait timer
     if (this.waiting) {
@@ -14380,6 +14385,8 @@ export class EventState extends State {
         } else if (musicNid && game.audioManager) {
           void game.audioManager.playMusic(musicNid, fade);
         }
+        // Python music() never blocks. (Advancing and then also waiting made
+        // the wait's completion advance again, skipping the next command.)
         this.advancePointer();
         return false;
       }
@@ -15376,11 +15383,11 @@ export class EventState extends State {
           game.tilemap.animations.push(mapAnim);
         }
 
-        this.advancePointer();
         if (maNoBlock || maPermanent) {
+          this.advancePointer();
           return false;
         }
-        // Block for animation duration
+        // Block for the animation duration; the wait's completion advances.
         this.waiting = true;
         this.waitTimer = mapAnim.getDuration();
         return true;
@@ -15403,10 +15410,12 @@ export class EventState extends State {
         // change_tilemap;TilemapNid[;PositionOffset;reload]
         const tmNid = args[0] ?? '';
         if (tmNid) {
-          // Async: block the event until the tilemap is loaded
-          this.waiting = true;
-          game.changeTilemap(tmNid).then(() => {
-            this.waiting = false;
+          // Python swaps the tilemap synchronously. The web load is async, so
+          // hold the event (not via the frame wait timer, which would expire
+          // and advance early) until the board exists, then continue.
+          this.asyncCommandPending = true;
+          game.changeTilemap(tmNid).finally(() => {
+            this.asyncCommandPending = false;
             this.advancePointer();
           });
           return true;
