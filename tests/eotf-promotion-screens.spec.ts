@@ -13,10 +13,18 @@ test.describe.configure({ mode: 'parallel' });
 async function boot(page: Page): Promise<void> {
   await page.goto('/?harness=true&project=eotf.ltproj&level=87&clean=true&bundle=false');
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, { timeout: 90_000 });
+  // A clean level 87 has no player units, so every player phase auto-ends
+  // within the frame its upkeep finishes (Python FreeState.begin). An
+  // unfinished player unit keeps the next player phase in 'free'.
+  await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    game.spawnUnit(game.db.units.get('Hetja'), 'player', [9, 5], 'None');
+  });
   for (let i = 0; i < 80; i++) {
     await step(page, 10);
     if (await stateName(page) === 'free') break;
   }
+  expect(await stateName(page)).toBe('free');
 }
 
 async function step(page: Page, frames: number, input: string | null = null): Promise<void> {
@@ -30,8 +38,7 @@ const stateName = (page: Page) =>
 async function mercenary(page: Page): Promise<void> {
   await page.evaluate(() => {
     const game = (window as any).__gameRef;
-    // A second player unit keeps the phase from ending once the first waits.
-    game.spawnUnit(game.db.units.get('Hetja'), 'player', [9, 5], 'None');
+    // boot's Hetja keeps the phase from ending once this unit waits.
     const unit = game.spawnUnit(game.db.units.get('Player'), 'player', [8, 3], 'None');
     const klass = game.db.classes.get('Mercenary');
     unit.klass = 'Mercenary';
