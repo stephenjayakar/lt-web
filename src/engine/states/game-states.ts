@@ -193,6 +193,7 @@ export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
 import { getSprite, preloadSprites } from '../../ui/sprites';
+import { roamVisualOffset } from '../../movement/roam-movement';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
@@ -819,8 +820,8 @@ export function drawUnitMarkers(surf: Surface): void {
     const sprites = markers.map((name) => getSprite(`marker_${name}`)).filter((sprite): sprite is Surface => !!sprite);
     if (!sprites.length) continue;
     const icon = sprites[Math.floor(now / 500) % sprites.length];
-    // The roam unit's sprite sits at its sub-tile roam position.
-    const roamOffset = unit === curUnit ? roamState?.movementComponent?.getVisualOffset?.() : null;
+    // Roaming sprites sit at their sub-tile roam position.
+    const roamOffset = roamState ? roamVisualOffset(unit) : null;
     const left = (unit.position[0] + (roamOffset?.[0] ?? 0)) * TILEWIDTH - camX;
     const top = (unit.position[1] + (roamOffset?.[1] ?? 0)) * TILEHEIGHT - camY;
     surf.blit(icon, left - 2, top - 14 + offset);

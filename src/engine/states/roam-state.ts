@@ -24,8 +24,11 @@ import { viewport } from '../viewport';
 import {
   RoamPlayerMovementComponent,
   RationalizeMovementComponent,
-  type RoamPosition,
+  getRoamPosition,
+  roamVisualOffset,
 } from '../../movement/roam-movement';
+import { FreeRoamAIHandler } from '../roam-ai';
+import { movementType } from '../../combat/skill-system';
 import type { UnitObject } from '../../objects/unit';
 import { unitSpriteTint } from '../../combat/skill-system';
 import type { FogRenderConfig } from '../../rendering/map-view';
@@ -46,7 +49,10 @@ function getGame(): any {
   return _game;
 }
 
-const TALK_RANGE = 1.2; // tiles
+/** Python FreeRoamState.TALK_RANGE: 1.0 in EOtF's fork, 1.2 upstream. */
+function talkRange(): number {
+  return isForkEngine() ? 1.0 : 1.2;
+}
 
 // ---------------------------------------------------------------------------
 // Local drawMap helper (duplicates the pattern from game-states.ts since
@@ -56,7 +62,6 @@ const TALK_RANGE = 1.2; // tiles
 /** Collect units for map-view rendering with roam offsets applied. */
 function collectVisibleUnits(
   roamUnit: UnitObject | null,
-  movementComponent: RoamPlayerMovementComponent | null,
 ): {
   x: number;
   y: number;
@@ -73,7 +78,12 @@ function collectVisibleUnits(
 }[] {
   const game = getGame();
   if (!game.board) return [];
+  // Python draws every placed unit; a roaming unit sharing a tile with an
+  // ally is not in the one-unit-per-tile board grid.
   const allUnits: UnitObject[] = game.board.getAllUnits();
+  for (const unit of game.units.values() as Iterable<UnitObject>) {
+    if (unit.position && !allUnits.includes(unit)) allUnits.push(unit);
+  }
   const result: {
     x: number;
     y: number;
@@ -107,13 +117,12 @@ function collectVisibleUnits(
     let visualOffsetX = moveOffset ? moveOffset[0] : 0;
     let visualOffsetY = moveOffset ? moveOffset[1] : 0;
 
-    // Apply roam offset for the player-controlled unit
-    if (u === roamUnit && movementComponent) {
-      const roamOffset = movementComponent.getVisualOffset();
-      if (roamOffset) {
-        visualOffsetX += roamOffset[0];
-        visualOffsetY += roamOffset[1];
-      }
+    // Python sprite roam position: the roam unit, NPC roamers and
+    // rationalizing units draw at their float position.
+    const roamOffset = roamVisualOffset(u);
+    if (roamOffset) {
+      visualOffsetX += roamOffset[0];
+      visualOffsetY += roamOffset[1];
     }
 
     result.push({
@@ -140,7 +149,6 @@ function collectVisibleUnits(
 function drawRoamMap(
   surf: Surface,
   roamUnit: UnitObject | null,
-  movementComponent: RoamPlayerMovementComponent | null,
 ): Surface {
   const game = getGame();
   if (!game.board || !game.tilemap) return surf;
@@ -149,7 +157,7 @@ function drawRoamMap(
   game.cursor.update();
 
   const cullRect = game.camera.getCullRect();
-  const units = collectVisibleUnits(roamUnit, movementComponent);
+  const units = collectVisibleUnits(roamUnit);
   const highlights: Map<string, string> | null = null; // No highlights in roam mode
 
   const cursorInfo = {
@@ -210,10 +218,13 @@ export class FreeRoamState extends MapState {
 
   private roamUnit: UnitObject | null = null;
   private movementComponent: RoamPlayerMovementComponent | null = null;
+  /** Python FreeRoamState.ai_handler. */
+  aiHandler: FreeRoamAIHandler | null = null;
 
   override start(): StateResult {
     this.roamUnit = null;
     this.movementComponent = null;
+    this.aiHandler = new FreeRoamAIHandler(getGame());
   }
 
   override begin(): StateResult {
@@ -225,6 +236,15 @@ export class FreeRoamState extends MapState {
     // Python FreeRoamState.begin: phase.fade_in_phase_music() (the hub's
     // change_music otherwise never played and the title song kept going).
     fadeInPhaseMusic(game);
+
+    // Python begin: restart the roam AIs, add any new roamers, and snap
+    // their movement components to their (rationalized) tiles.
+    this.aiHandler ??= new FreeRoamAIHandler(game);
+    if (!this.aiHandler.active) this.aiHandler.startAllUnits();
+    for (const other of game.units.values() as Iterable<UnitObject>) {
+      if (other.position && !other.isDead() && !this.aiHandler.containsUnit(other)) this.aiHandler.addUnit(other);
+    }
+    this.aiHandler.resetAllUnits();
 
     // Get the roam unit
     const roamInfo = game.roamInfo;
@@ -239,16 +259,18 @@ export class FreeRoamState extends MapState {
       return 'repeat';
     }
 
-    // Assign the roam unit if changed or first time
+    // Assign the roam unit if changed or first time (Python _assign_unit).
     if (this.roamUnit !== unit) {
       if (this.movementComponent) {
         this.movementComponent.finish();
       }
+      this.aiHandler.stop(unit);
       this.roamUnit = unit;
       this.movementComponent = new RoamPlayerMovementComponent(
         unit,
         game.board,
         game.db,
+        game,
       );
     }
 
@@ -305,62 +327,14 @@ export class FreeRoamState extends MapState {
     }
   }
 
-  /** Per-unit roam-AI bookkeeping: behaviour index + timers. */
-  private npcRoamState: Map<string, { idx: number; waitMs: number; stepMs: number }> = new Map();
-
-  private updateNpcRoamAi(game: any, dt: number): void {
-    for (const unit of game.units.values()) {
-      if (!unit.roamAi || !unit.position || unit.dead) continue;
-      if (unit.nid === game.roamInfo?.roamUnitNid) continue;
-      const aiDef = game.db.ai?.get?.(unit.roamAi);
-      const behaviours = aiDef?.behaviours ?? [];
-      if (behaviours.length === 0) continue;
-      let st = this.npcRoamState.get(unit.nid);
-      if (!st) { st = { idx: 0, waitMs: 0, stepMs: 0 }; this.npcRoamState.set(unit.nid, st); }
-      const b = behaviours[st.idx % behaviours.length];
-      if (!b || b.action === 'None') { st.idx++; continue; }
-      if (b.action === 'Wait') {
-        st.waitMs += dt * 1000;
-        const target = typeof b.target_spec === 'number' ? b.target_spec : 1000;
-        if (st.waitMs >= target) { st.waitMs = 0; st.idx++; }
-      } else if (b.action === 'Move_to') {
-        // Tile-step toward the behaviour's starting position target on a
-        // roam_speed-scaled cadence; other target kinds are deferred.
-        st.stepMs += dt * 1000;
-        const cadence = 400 * (100 / Math.max(1, b.roam_speed ?? 100));
-        if (st.stepMs < cadence) continue;
-        st.stepMs = 0;
-        const target = unit.startingPosition ?? null;
-        if (!target) { st.idx++; continue; }
-        const [ux, uy] = unit.position;
-        const [tx, ty] = target;
-        if (ux === tx && uy === ty) { st.idx++; continue; }
-        const dx = Math.sign(tx - ux);
-        const dy = dx === 0 ? Math.sign(ty - uy) : 0;
-        const nx = ux + dx, ny = uy + dy;
-        if (game.board && !game.board.getUnit(nx, ny) && game.board.checkBounds(nx, ny)) {
-          game.board.removeUnit(unit);
-          unit.position = [nx, ny];
-          game.board.setUnit(nx, ny, unit);
-        }
-      } else {
-        // Interact / Move_away_from etc. — deferred; skip to next behaviour.
-        st.idx++;
-      }
-    }
-  }
-
   override update(): StateResult {
     const game = getGame();
     if (!game || !this.movementComponent) return;
 
-    const dt = game.frameDeltaMs / 1000;
-    this.movementComponent.update(dt);
-
-    // NPC roam AI (Python free_roam_ai.FreeRoamAIHandler, simplified):
-    // supports Wait and Move_to behaviours, tile-stepped on a cadence rather
-    // than Python's pixel-smooth movement (documented deviation).
-    this.updateNpcRoamAi(game, dt);
+    // Python update: ai_handler.update(), then the movement system moves
+    // the NPC roamers and the player's unit.
+    this.aiHandler?.update(game.frameDeltaMs);
+    this.movementComponent.update(game.frameDeltaMs / 1000);
 
     // Follow camera to roam unit's sub-tile position
     if (this.roamUnit?.position && this.movementComponent.roamPosition) {
@@ -380,7 +354,7 @@ export class FreeRoamState extends MapState {
   }
 
   override draw(surf: Surface): Surface {
-    return drawRoamMap(surf, this.roamUnit, this.movementComponent);
+    return drawRoamMap(surf, this.roamUnit);
   }
 
   // -- Interaction logic --
@@ -654,7 +628,9 @@ export class FreeRoamState extends MapState {
     const gridDistance =
       Math.abs(unit.position![0] - this.roamUnit.position[0]) +
       Math.abs(unit.position![1] - this.roamUnit.position[1]);
-    return gridDistance < TALK_RANGE
+    // With the fork's 1.0 range grid adjacency never qualifies, so EOtF
+    // measures purely from the sprite, as Python does.
+    return gridDistance < talkRange()
       ? Math.min(subTileDistance, gridDistance)
       : subTileDistance;
   }
@@ -665,7 +641,7 @@ export class FreeRoamState extends MapState {
     if (!game || !this.movementComponent?.roamPosition) return null;
 
     let closest: UnitObject | null = null;
-    let closestDist = TALK_RANGE;
+    let closestDist = talkRange();
 
     for (const unit of game.units.values()) {
       if (unit === this.roamUnit || !unit.position || unit.isDead()) continue;
@@ -706,7 +682,7 @@ export class FreeRoamState extends MapState {
       if (unit === this.roamUnit || !unit.position || unit.isDead()) continue;
 
       const dist = this.getInteractionDistance(unit);
-      if (dist >= TALK_RANGE) continue;
+      if (dist >= talkRange()) continue;
 
       if (mustHaveTalk && !game.eventManager?.hasTalkPair?.(this.roamUnit!.nid, unit.nid)) {
         continue;
@@ -753,7 +729,8 @@ export class FreeRoamState extends MapState {
     const game = getGame();
     if (!game) return;
 
-    // Stop player movement
+    // Python rationalize_all_units: stop the roam AIs and the player.
+    this.aiHandler?.stopAllUnits();
     if (this.movementComponent) {
       this.movementComponent.finish();
     }
@@ -783,6 +760,7 @@ export class FreeRoamState extends MapState {
     const game = getGame();
     if (!game) return;
 
+    this.aiHandler?.stopAllUnits();
     if (this.movementComponent) {
       this.movementComponent.finish();
     }
@@ -802,6 +780,37 @@ export class FreeRoamState extends MapState {
     }
     return null;
   }
+}
+
+/**
+ * Python target_system.get_nearest_open_tile (the fork's): the nearest
+ * weakly traversable tile (mcost <= 5 or <= MOVEMENT) with no unit on it,
+ * searching rings out to radius 9.
+ */
+function nearestOpenTile(game: any, unit: UnitObject, origin: [number, number]): [number, number] | null {
+  const board = game.board;
+  if (!board) return null;
+  const group = movementType(unit, game.db.classes.get(unit.klass)?.movement_group || 'Infantry');
+  const open = (pos: [number, number]) => {
+    if (!board.checkBounds(pos[0], pos[1])) return false;
+    const cost = board.getMovementCost(pos[0], pos[1], group, game.db);
+    if (!(cost <= 5 || cost <= unit.getMovement())) return false;
+    if (board.getUnit(pos[0], pos[1])) return false;
+    for (const other of game.units.values() as Iterable<UnitObject>) {
+      if (other !== unit && other.position && other.position[0] === pos[0] && other.position[1] === pos[1]) return false;
+    }
+    return true;
+  };
+  for (let r = 0; r < 10; r++) {
+    for (let x = -r; x <= r; x++) {
+      const magn = Math.abs(x);
+      const n1: [number, number] = [origin[0] + x, origin[1] + r - magn];
+      const n2: [number, number] = [origin[0] + x, origin[1] - r + magn];
+      if (open(n1)) return n1;
+      if (open(n2)) return n2;
+    }
+  }
+  return null;
 }
 
 // ============================================================================
@@ -827,10 +836,13 @@ export class FreeRoamRationalizeState extends MapState {
     this.components = [];
     this.allDone = false;
 
-    // For now, since we only track the player roam unit's sub-tile
-    // position, just do an immediate grid snap for simplicity.
-    // In a full implementation, this would read each unit's roam position
-    // and create rationalize components for NPC wandering as well.
+    // Python _get_units_to_rationalize: every unit with a roam position
+    // slides back onto its tile (or the nearest open one).
+    const env = { board: game.board, db: game.db, game };
+    for (const unit of [...game.units.values()] as UnitObject[]) {
+      if (!unit.position || !getRoamPosition(unit)) continue;
+      this.components.push(new RationalizeMovementComponent(unit, env, (u, pos) => nearestOpenTile(game, u, pos)));
+    }
 
     // If no components to process, immediately done
     if (this.components.length === 0) {
@@ -864,6 +876,6 @@ export class FreeRoamRationalizeState extends MapState {
   }
 
   override draw(surf: Surface): Surface {
-    return drawRoamMap(surf, null, null);
+    return drawRoamMap(surf, null);
   }
 }
