@@ -100,12 +100,18 @@ test.describe('EOtF engine fork AI', () => {
 
   test('SecondaryAI does not advance on a target it cannot damage (no attack_zero_dam)', async ({ page }) => {
     const result = await page.evaluate(() => {
-      const { keeper, player, place, ai, weapon, both } = (window as any).__forkAi;
+      const { g, keeper, player, place, ai, weapon, both } = (window as any).__forkAi;
+      // EOtF's min_damage of 1 means every weapon hit can damage; a 0 floor
+      // makes the stick a true zero-damage weapon.
+      const minDamage = g.db.constants.get('min_damage');
+      g.db.constants.set('min_damage', 0);
       place(keeper, 'enemy', [10, 13]);
       keeper.items = [weapon('_ForkStick', 0)];
       keeper.ai = ai('_ForkPursue', [{ action: 'Attack', target: 'Enemy', view_range: -4 }]);
       place(player, 'player', [25, 13], { DEF: 20 });
-      return both(keeper);
+      const result = both(keeper);
+      g.db.constants.set('min_damage', minDamage);
+      return result;
     });
     // Upstream scores the 0-damage target (attack_zero_dam) and walks 3 tiles.
     expect(result.upstream).toEqual({ type: 'move', to: [13, 13], target: 'Player' });

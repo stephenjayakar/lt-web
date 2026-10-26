@@ -3,7 +3,7 @@
  *
  * The HUD (src/ui/hud.ts) records where it drew each element in
  * `game.hud.layout` ([x, y, w, h] in scene pixels). The expected numbers are
- * Python's: sprite sizes (tile_info_quick_opaque 45x44, unit_info_bg 122x48,
+ * Python's: sprite sizes (tile_info_quick_opaque 45x44, unit_info_bg 122x48 upstream, 123x60 on the EOtF fork,
  * attack_info_crit_red 130x121) and the corner formulas in UIView.draw /
  * draw_attack_info. Screenshots are attached for visual inspection.
  */
@@ -52,7 +52,8 @@ test('unit, tile and objective panels use the Python sprites and corners', async
   // objective top-right.
   await cursorTo(page, 5, 3);
   let boxes = await layout(page);
-  expect(boxes.unit).toEqual([0, 160 - 48, 122, 48]);
+  // EOtF engine fork unit_info_bg: 123x60 (ui_view.create_unit_info).
+  expect(boxes.unit).toEqual([0, 160 - 60, 123, 60]);
   expect(boxes.tile).toEqual([240 - 45 - 5, 160 - 44 - 3, 45, 44]);
   expect(boxes.objective[0] + boxes.objective[2]).toBe(240 - 4);
   expect(boxes.objective[1]).toBe(1);
@@ -62,7 +63,7 @@ test('unit, tile and objective panels use the Python sprites and corners', async
   // tile info slides out (mirrored) and back in on the left over 4+4 frames.
   await cursorTo(page, 12, 8, 2);
   boxes = await layout(page);
-  expect(boxes.unit).toEqual([0, 0, 122, 48]);
+  expect(boxes.unit).toEqual([0, 0, 123, 60]);
   expect(boxes.tile[0]).toBeGreaterThan(240 - 45 - 5);
   await cursorTo(page, 12, 8, 10);
   boxes = await layout(page);
@@ -71,7 +72,7 @@ test('unit, tile and objective panels use the Python sprites and corners', async
 
   // Onto an empty tile: the unit panel slides out 20 px per frame.
   await cursorTo(page, 9, 8, 1);
-  expect((await layout(page)).unit).toEqual([-20, 0, 122, 48]);
+  expect((await layout(page)).unit).toEqual([-20, 0, 123, 60]);
   await cursorTo(page, 9, 8, 12);
   expect((await layout(page)).unit).toBeUndefined();
 
@@ -225,6 +226,10 @@ test('banners are Python menu windows centred on the scene', async ({ page }) =>
     };
     const text = banner.acquiredItemText('Phantom', 'Iron Sword');
     const b = new banner.Banner(text, { kind: 'item', iconNid: '', iconIndex: [0, 0] });
+    // EOtF's window_display skin (menu_bg_base1, menu_gem_small1) loads on
+    // first use; draw once to start those loads.
+    b.draw(new Surface(240, 160));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const surf = new Surface(240, 160);
     b.draw(surf);
     let length = styled.measureStyledText(text, 'text') + 16;
@@ -287,8 +292,9 @@ test('the unit panel lets map sprites show through like Python (the Act 2 "glyph
     const bg = sprites.getSprite('unit_info_bg')!;
     const panel = game.hud.unitInfoDisp;
     const [px, py] = game.hud.layout.unit;
-    // Between the chibi (x 7..38) and the centred name (x >= 58).
-    const strip: [number, number, number, number] = [41, 6, 15, 14];
+    // An empty stretch of the EOtF fork panel: right of the short name, above
+    // the HP bar (the item icon row starts at x 38).
+    const strip: [number, number, number, number] = [100, 26, 14, 10];
     let panelMatchesBg = true;
     for (let y = strip[1]; y < strip[1] + strip[3]; y++) {
       for (let x = strip[0]; x < strip[0] + strip[2]; x++) {
@@ -302,6 +308,13 @@ test('the unit panel lets map sprites show through like Python (the Act 2 "glyph
     return { panelMatchesBg, alpha: bg.getPixel(48, 12)[3], screen: Array.from(data) };
   });
 
+  // Put the sail under the sampled strip of the panel (camera at 0,0).
+  await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    const [px, py] = game.hud.layout.unit;
+    (window as any).__harness.warpUnit('Fleet_2', Math.floor((px + 100) / 16), Math.floor((py + 26) / 16));
+    (window as any).__harness.stepFrames(3, null);
+  });
   const withShip = await sample();
   await page.locator('canvas').screenshot({ path: testInfo.outputPath('hud-panel-over-ship.png') });
   await page.evaluate(() => (window as any).__harness.warpUnit('Fleet_2', 12, 8));
