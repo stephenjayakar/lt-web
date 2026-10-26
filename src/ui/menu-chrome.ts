@@ -99,17 +99,32 @@ export function blitTranslucent(
 // Fonts
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a Python FONT key. 'text-white' style keys for a font's own
+ * default colour are not registered as shortcuts, so fall back to the base
+ * font with that palette.
+ */
+function resolveFont(font: string, color?: string): [typeof FONT[string] | undefined, string | undefined] {
+  const direct = FONT[font];
+  if (direct) return [direct, color];
+  const dash = font.indexOf('-');
+  if (dash > 0) {
+    const base = FONT[font.slice(0, dash)];
+    if (base) return [base, color ?? font.slice(dash + 1)];
+  }
+  return [undefined, color];
+}
+
 /** FONT[nid].width(text), with a rough estimate before fonts load. */
 export function textWidth(font: string, text: string): number {
-  const f = FONT[font];
+  const [f] = resolveFont(font);
   return f ? f.width(text) : text.length * 6;
 }
 
-/** FONT[font].blit(text, surf, (x, y)). */
+/** FONT[font].blit(text, surf, (x, y)); draws nothing until fonts load. */
 export function blitText(surf: Surface, font: string, text: string, x: number, y: number, color?: string): void {
-  const f = FONT[font];
-  if (f) f.blit(surf, text, x, y, color);
-  else surf.drawText(text, x, y, 'white', font);
+  const [f, c] = resolveFont(font, color);
+  if (f) f.blit(surf, text, x, y, c && f.hasColor(c) ? c : undefined);
 }
 
 /** FONT[font].blit_center(text, surf, (x, y)): centered on x. */

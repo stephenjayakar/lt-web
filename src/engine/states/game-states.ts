@@ -171,6 +171,8 @@ export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { getSprite } from '../../ui/sprites';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
+import { MenuBackground, MenuScene, getSprite as getMenuSprite, lineWrap } from '../../ui/menu-chrome';
+import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
 import { Dialog } from '../../ui/dialog';
@@ -1129,6 +1131,9 @@ export class TitleState extends State {
   private pressStartImage: HTMLImageElement | null = null;
   private logoAssetLoaded: boolean = false;
   private pressStartAssetLoaded: boolean = false;
+  /** Set once the custom_sprites lookups have resolved (engine fallback). */
+  private logoChecked = false;
+  private pressStartChecked = false;
   private pulseTimer: number = 0;
 
   override start(): StateResult {
@@ -1138,7 +1143,10 @@ export class TitleState extends State {
     this.pressStartImage = null;
     this.logoAssetLoaded = false;
     this.pressStartAssetLoaded = false;
+    this.logoChecked = false;
+    this.pressStartChecked = false;
     this.pulseTimer = 0;
+    preloadTitleMenuSprites();
     // Load the title background panorama (try single file, then frame 0 for animated panoramas)
     game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
       if (img) {
@@ -1152,10 +1160,12 @@ export class TitleState extends State {
     });
     game.resources.tryLoadImage('resources/custom_sprites/logo.png').then((image: HTMLImageElement | null) => {
       this.logoAssetLoaded = !!image;
+      this.logoChecked = true;
       this.logoImage = image && imageHasVisiblePixels(image) ? image : null;
     });
     game.resources.tryLoadImage('resources/custom_sprites/press_start.png').then((image: HTMLImageElement | null) => {
       this.pressStartAssetLoaded = !!image;
+      this.pressStartChecked = true;
       this.pressStartImage = image && imageHasVisiblePixels(image) ? image : null;
     });
 
@@ -1186,54 +1196,30 @@ export class TitleState extends State {
     const scene = titleSceneBounds();
     drawTitleBackground(surf, this.bgImage);
 
-    if (this.logoImage) {
+    // Python SPRITES['logo']: the project custom_sprites logo, else the engine one.
+    const logo = this.logoImage ?? (this.logoChecked && !this.logoAssetLoaded ? getMenuSprite('logo') : null);
+    if (logo) {
       // Python TitleStartState: gui.Logo(logo, (WINWIDTH//2, clamp(WINHEIGHT//2 - 40,
       // logo_h//2, WINHEIGHT//2)), num_frames=1) blitted 1:1, centered.
-      const logoW = this.logoImage.naturalWidth || this.logoImage.width;
-      const logoH = this.logoImage.naturalHeight || this.logoImage.height;
+      const logoW = logo.naturalWidth || logo.width;
+      const logoH = logo.naturalHeight || logo.height;
       const centerY = Math.max(80 - 40, Math.min(Math.floor(logoH / 2), 80));
-      drawTitleAssetFrame(surf, this.logoImage, 0, 0, logoW, logoH,
+      drawTitleAssetFrame(surf, logo, 0, 0, logoW, logoH,
         scene.x + 120 - Math.floor(logoW / 2), scene.y + centerY - Math.floor(logoH / 2));
-    } else {
-      const title = String(getGame().db.getConstant('title', 'Lex Talionis'));
-      const titleW = title.length * 8;
-      const titleX = scene.x + Math.floor((scene.width - titleW) / 2);
-      const titleY = scene.y + Math.floor(scene.height / 3);
-      surf.fillRect(titleX - 4, titleY - 2, titleW + 8, 18, 'rgba(0,0,0,0.68)');
-      surf.drawText(
-        title,
-        titleX,
-        titleY,
-        'white',
-        '14px monospace',
-      );
     }
 
-    if (this.pressStartImage) {
+    const pressStart = this.pressStartImage ?? (this.pressStartChecked && !this.pressStartAssetLoaded ? getMenuSprite('press_start') : null);
+    if (pressStart) {
       // Python gui.Logo(press_start, (WINWIDTH//2, 4*WINHEIGHT//5)): an
       // 8-frame vertical strip played 0,0,1..6,7,7,6..1 at 64ms per frame.
-      const sheetW = this.pressStartImage.naturalWidth || this.pressStartImage.width;
-      const sheetH = this.pressStartImage.naturalHeight || this.pressStartImage.height;
+      const sheetW = pressStart.naturalWidth || pressStart.width;
+      const sheetH = pressStart.naturalHeight || pressStart.height;
       const numFrames = 8;
       const frameH = Math.floor(sheetH / numFrames);
       const anim = [0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1];
       const frame = anim[Math.floor(this.pulseTimer / 64) % anim.length];
-      drawTitleAssetFrame(surf, this.pressStartImage, 0, frame * frameH, sheetW, frameH,
+      drawTitleAssetFrame(surf, pressStart, 0, frame * frameH, sheetW, frameH,
         scene.x + 120 - Math.floor(sheetW / 2), scene.y + 128 - Math.floor(frameH / 2));
-    } else {
-      const alpha = 0.5 + 0.5 * Math.sin(this.pulseTimer / 500 * Math.PI);
-      const prompt = 'Press Start';
-      const promptW = prompt.length * 5;
-      const promptX = scene.x + Math.floor((scene.width - promptW) / 2);
-      const promptY = scene.y + Math.floor(scene.height * 4 / 5);
-      surf.fillRect(promptX - 4, promptY - 2, promptW + 8, 12, 'rgba(0,0,0,0.68)');
-      surf.drawText(
-        prompt,
-        promptX,
-        promptY,
-        `rgba(200,200,220,${alpha.toFixed(2)})`,
-        '8px monospace',
-      );
     }
 
     // Python: FONT['text'].blit(translate('_attribution'), surf, (4, WINHEIGHT - 16))
@@ -1261,12 +1247,14 @@ export class TitleMainState extends State {
   override readonly showMap = false;
   override readonly inLevel = false;
 
-  private bgImage: HTMLImageElement | null = null;
+  private bg: MenuBackground | null = null;
+  private scene = new MenuScene();
   private options: string[] = ['New Game', 'Extras'];
-  private cursor: number = 0;
-  private slideX: number = -120;
-  private targetX: number = 0;
-  private slideTimer: number = 0;
+  private menu: TitleMainMenu = new TitleMainMenu(['New Game', 'Extras']);
+  /** Python TitleMainState.state: menu slides in/out horizontally. */
+  private phase: 'transition_in' | 'normal' | 'transition_out' = 'transition_in';
+  private positionX = -WINWIDTH / 2;
+  private selection: string | null = null;
   private hasSaveData: boolean = false;
   private hasSuspendData: boolean = false;
   private suspendWarned: boolean = false;
@@ -1275,19 +1263,11 @@ export class TitleMainState extends State {
 
   override start(): StateResult {
     const game = getGame();
-    game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
-      if (img) {
-        this.bgImage = img;
-      } else {
-        // Animated panorama fallback: try title_background0.png
-        game.resources.tryLoadImage('resources/panoramas/title_background0.png').then((img0: HTMLImageElement | null) => {
-          this.bgImage = img0;
-        });
-      }
-    });
-    this.slideX = -120;
-    this.targetX = 24;
-    this.cursor = 0;
+    this.bg = new MenuBackground('title_background', game.resources, false);
+    preloadTitleMenuSprites();
+    this.phase = 'transition_in';
+    this.positionX = -WINWIDTH / 2;
+    this.selection = null;
 
     // Python TitleMainState.start: ['New Game', 'Extras'], with
     // 'Load Game'/'Restart Level' in front when any save slot has data and
@@ -1299,6 +1279,7 @@ export class TitleMainState extends State {
     this.suspendWarned = false;
     this.banner = null;
     this.busy = false;
+    this.rebuildOptions();
     Promise.all([
       loadSaveSlots(gameNid as string, numSlots as number),
       hasSuspend(gameNid as string),
@@ -1312,11 +1293,7 @@ export class TitleMainState extends State {
   }
 
   override begin(): StateResult {
-    this.slideX = -120;
-    this.cursor = 0;
-    this.slideTimer = 0;
     this.busy = false;
-    this.rebuildOptions();
   }
 
   private rebuildOptions(): void {
@@ -1328,85 +1305,83 @@ export class TitleMainState extends State {
     if (this.hasSuspendData) {
       opts.unshift('Continue');
     }
+    const current = this.menu.getCurrent();
     this.options = opts;
-    // Keep cursor in bounds
-    if (this.cursor >= this.options.length) {
-      this.cursor = 0;
-    }
+    this.menu = new TitleMainMenu(opts, 'title_menu_dark', (t) => getGame().db?.translate?.(t) ?? t);
+    const keep = opts.indexOf(current);
+    if (keep >= 0) this.menu.currentIndex = keep;
   }
 
   override update(): StateResult {
-    // Slide menu in
-    if (this.slideX < this.targetX) {
-      this.slideX = Math.min(this.targetX, this.slideX + 12);
-    }
-    this.slideTimer += getGame().frameDeltaMs ?? 16;
-    if (this.banner && this.banner.update(getGame().frameDeltaMs ?? 16)) {
+    const game = getGame();
+    this.menu.update();
+    this.bg?.update();
+    if (this.banner && this.banner.update(game.frameDeltaMs ?? 16)) {
       this.banner = null;
+    }
+    if (this.phase === 'transition_in') {
+      this.positionX += 20;
+      if (this.positionX >= WINWIDTH / 2) {
+        this.positionX = WINWIDTH / 2;
+        this.phase = 'normal';
+      }
+    } else if (this.phase === 'transition_out') {
+      this.positionX -= 20;
+      if (this.positionX <= -WINWIDTH / 2) {
+        this.positionX = -WINWIDTH / 2;
+        this.phase = 'transition_in';
+        this.choose(this.selection);
+      }
     }
   }
 
   override draw(surf: Surface): Surface {
-    const scene = titleSceneBounds();
-    drawTitleBackground(surf, this.bgImage);
-
-    // Semi-transparent panel behind menu
-    const panelX = Math.floor(scene.x + this.slideX - 8);
-    const panelY = Math.floor(scene.y + scene.height / 2 - 10);
-    const panelW = 90;
-    const panelH = this.options.length * 16 + 8;
-    surf.fillRect(panelX, panelY, panelW, panelH, 'rgba(16,16,48,0.85)');
-    surf.drawRect(panelX, panelY, panelW, panelH, 'rgba(100,100,180,0.7)');
-
-    // Menu options
-    for (let i = 0; i < this.options.length; i++) {
-      const optY = Math.floor(scene.y + scene.height / 2 + i * 16 - 4);
-      const optX = Math.floor(scene.x + this.slideX);
-
-      if (i === this.cursor) {
-        // Highlight bar
-        surf.fillRect(panelX + 2, optY - 2, panelW - 4, 14, 'rgba(64,64,160,0.6)');
-        // Animated cursor arrow with bobbing
-        const bobOffset = Math.sin(this.slideTimer / 300 * Math.PI) * 1.5;
-        surf.drawText('>', optX - 8, optY + bobOffset, 'rgba(255,255,128,1)', '8px monospace');
-      }
-
-      const color = i === this.cursor ? 'white' : 'rgba(180,180,200,1)';
-      surf.drawText(this.options[i], optX, optY, color, '8px monospace');
-    }
-
+    if (this.bg) this.bg.draw(surf);
+    else surf.fill(0, 0, 0);
+    const s = this.scene.begin();
+    this.menu.draw(s, this.positionX, WINHEIGHT / 2, { showCursor: this.phase === 'normal' });
+    this.scene.present(surf);
     if (this.banner) this.banner.draw(surf);
-
     return surf;
+  }
+
+  /** Python TitleMainState.update transition_out branch. */
+  private choose(selected: string | null): void {
+    const game = getGame();
+    if (selected === 'New Game') {
+      game.state.change('title_mode');
+    } else if (selected === 'Load Game') {
+      game.memory.set('load_menu_mode', 'load');
+      game.state.change('load_menu');
+    } else if (selected === 'Restart Level') {
+      game.memory.set('load_menu_mode', 'restart');
+      game.state.change('load_menu');
+    } else if (selected === 'Extras') {
+      game.state.change('title_extras');
+    }
   }
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
-
-    if (event === 'UP') {
-      this.cursor = (this.cursor - 1 + this.options.length) % this.options.length;
-    } else if (event === 'DOWN') {
-      this.cursor = (this.cursor + 1) % this.options.length;
-    } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
-      if (this.busy) return;
-      if (this.banner) {
+    if (this.banner) {
+      // Python: dismissing the suspend alert continues with the selection.
+      if (event) {
         this.banner = null;
-        return;
+        this.phase = 'transition_out';
       }
-      const selected = this.options[this.cursor];
+      return;
+    }
+    if (this.phase !== 'normal' || this.busy) return;
+
+    if (event === 'DOWN') {
+      if (this.menu.moveDown()) game.audioManager.playSfx('Select 6');
+    } else if (event === 'UP') {
+      if (this.menu.moveUp()) game.audioManager.playSfx('Select 6');
+    } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
+      const selected = this.menu.getCurrent();
+      this.selection = selected;
       game.audioManager.playSfx('Select 1');
-      if (this.hasSuspendData && !this.suspendWarned &&
-          (selected === 'New Game' || selected === 'Load Game' || selected === 'Restart Level')) {
-        // Python shows this alert once before an action that drops the suspend.
-        const verb = selected === 'New Game' ? 'Starting a new game'
-          : selected === 'Load Game' ? 'Loading a game' : 'Restarting a game';
-        this.banner = new Banner(`${verb} will remove suspend!`, undefined, 3000);
-        this.suspendWarned = true;
-        return;
-      }
-      if (selected === 'New Game') {
-        game.state.change('title_mode');
-      } else if (selected === 'Continue') {
+      if (selected === 'Continue') {
         // Python continue_suspend: load the suspend and delete it.
         this.busy = true;
         void loadSuspendSave(game).then((ok: boolean) => {
@@ -1416,16 +1391,18 @@ export class TitleMainState extends State {
             game.state.change('free');
           }
         });
-      } else if (selected === 'Load Game') {
-        game.memory.set('load_menu_mode', 'load');
-        game.state.change('load_menu');
-      } else if (selected === 'Restart Level') {
-        game.memory.set('load_menu_mode', 'restart');
-        game.state.change('load_menu');
-      } else if (selected === 'Extras') {
-        game.state.change('title_extras');
+      } else if (this.hasSuspendData && !this.suspendWarned &&
+          (selected === 'New Game' || selected === 'Load Game' || selected === 'Restart Level')) {
+        // Python shows this alert once before an action that drops the suspend.
+        const verb = selected === 'New Game' ? 'Starting a new game'
+          : selected === 'Load Game' ? 'Loading a game' : 'Restarting a game';
+        this.banner = new Banner(`${verb} will remove suspend!`, undefined, 3000);
+        this.suspendWarned = true;
+      } else {
+        this.phase = 'transition_out';
       }
     } else if (event === 'BACK') {
+      game.audioManager.playSfx('Select 4');
       game.state.back(); // Return to press-start screen
     }
   }
@@ -1624,32 +1601,43 @@ export class TitleModeState extends State {
     this.cursor = (this.cursor + delta + this.menuOptions.length) % this.menuOptions.length;
   }
 
+  private modeMenu: ModeSelectMenu | null = null;
+  private modeBg: MenuBackground | null = null;
+  private modeScene = new MenuScene();
+
+  override update(): StateResult {
+    this.modeMenu?.update();
+    this.modeBg?.update();
+  }
+
+  /** Python TitleModeState.draw: label box, option description, ModeSelect. */
   override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
-    surf.fill(16, 16, 32);
-
-    let title = 'Select Difficulty';
-    if (this.phase === 'death_setup') title = 'Permadeath Rule';
-    if (this.phase === 'growth_setup') title = 'Growth Method';
-    const titleX = Math.floor(vw / 2) - (title.length * 4);
-    surf.drawText(title, titleX, 10, 'white', '10px monospace');
-
-    const options = this.menuOptions;
-    for (let i = 0; i < options.length; i++) {
-      const y = 30 + i * 16;
-      const selected = i === this.cursor;
-      if (selected) {
-        surf.fillRect(20, y - 2, vw - 40, 14, 'rgba(60,80,160,0.6)');
-        surf.drawText('>', 12, y, 'rgb(220,200,80)', '9px monospace');
-      }
-      surf.drawText(options[i], 24, y, selected ? 'white' : 'rgb(180,180,200)', '9px monospace');
+    const game = getGame();
+    if (!this.modeBg) this.modeBg = new MenuBackground('title_background', game.resources, false);
+    this.modeBg.draw(surf);
+    const translate = (t: string): string => game.db?.translate?.(t) ?? t;
+    if (!this.modeMenu || this.modeMenu.options.join('|') !== this.menuOptions.join('|')) {
+      this.modeMenu = new ModeSelectMenu(this.menuOptions.slice(), translate);
     }
-
-    if (this.phase !== 'difficulty_setup' && this.currentModeNids.length > 0) {
-      const subtitle = `Mode: ${this.availableModes[Math.max(0, Math.min(this.cursor, this.availableModes.length - 1))]?.name ?? this.availableModes[0]?.name ?? 'None'}`;
-      surf.drawText(subtitle, 14, vh - 16, 'rgba(200,200,240,0.8)', '7px monospace');
+    this.modeMenu.currentIndex = this.cursor;
+    const s = this.modeScene.begin();
+    // Label: base surf 96x88 with menu_shimmer2, translucent .1, at (142, 36).
+    const label = new Surface(96, 88);
+    label.blit(getMenuBackgroundSync(96, 88), 0, 0);
+    const shimmer = getMenuSprite('menus/menu_shimmer2');
+    if (shimmer) label.blitImage(shimmer, 0, 0, shimmer.width, shimmer.height, 95 - shimmer.width, 83 - shimmer.height);
+    label.setAlpha(0.9);
+    s.blit(label, 142, 36);
+    // Dialog(option + '_desc') at (140, 34), text width WINWIDTH - 154, 4 lines.
+    const option = this.menuOptions[this.cursor];
+    if (option) {
+      const desc = translate(`${option}_desc`);
+      lineWrap('text', desc, WINWIDTH - 142 - 12).slice(0, 4).forEach((line, i) => {
+        drawStyledText(s, line, 148, 42 + i * 16, 'white', 'text');
+      });
     }
+    this.modeMenu.draw(s, 68, WINHEIGHT / 2);
+    this.modeScene.present(surf);
     return surf;
   }
 
@@ -1682,53 +1670,68 @@ export class TitleExtrasState extends State {
   override readonly showMap = false;
   override readonly inLevel = false;
 
-  private bgImage: HTMLImageElement | null = null;
-  private options: string[] = ['Options', 'Credits'];
-  private cursor = 0;
+  private bg: MenuBackground | null = null;
+  private scene = new MenuScene();
+  private menu = new TitleMainMenu(['Options', 'Credits']);
+  /** TitleLoadState slide: in from 1.5 * WINWIDTH, out the same way. */
+  private phase: 'transition_in' | 'normal' | 'transition_out' = 'transition_in';
+  private positionX = Math.floor(WINWIDTH * 1.5);
 
   override start(): StateResult {
     const game = getGame();
-    this.cursor = 0;
-    this.options = ['Options', 'Credits'];
+    const options = ['Options', 'Credits'];
     if (game.db.getConstant('title_sound', false) && game.state.hasState?.('extras_sound_room')) {
-      this.options.push('Sound Room');
+      options.push('Sound Room');
     }
-    game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
-      this.bgImage = img;
-    });
+    this.menu = new TitleMainMenu(options, 'title_menu_dark', (t) => game.db?.translate?.(t) ?? t);
+    this.bg = new MenuBackground('title_background', game.resources, false);
+    preloadTitleMenuSprites();
+    this.phase = 'transition_in';
+    this.positionX = Math.floor(WINWIDTH * 1.5);
+  }
+
+  override update(): StateResult {
+    this.menu.update();
+    this.bg?.update();
+    if (this.phase === 'transition_in') {
+      this.positionX -= 20;
+      if (this.positionX <= WINWIDTH / 2) {
+        this.positionX = WINWIDTH / 2;
+        this.phase = 'normal';
+      }
+    } else if (this.phase === 'transition_out') {
+      this.positionX += 20;
+      if (this.positionX >= Math.floor(WINWIDTH * 1.5)) {
+        this.positionX = Math.floor(WINWIDTH * 1.5);
+        this.phase = 'transition_in';
+        getGame().state.back();
+        return 'repeat';
+      }
+    }
   }
 
   override draw(surf: Surface): Surface {
-    const scene = titleSceneBounds();
-    drawTitleBackground(surf, this.bgImage);
-    const rowH = 18;
-    const width = 96;
-    const x = scene.x + Math.floor((scene.width - width) / 2);
-    const top = scene.y + Math.floor((scene.height - this.options.length * rowH) / 2);
-    for (let i = 0; i < this.options.length; i++) {
-      const y = top + i * rowH;
-      const selected = i === this.cursor;
-      surf.fillRect(x, y, width, rowH - 2, selected ? 'rgba(64,64,160,0.9)' : 'rgba(16,16,48,0.85)');
-      surf.drawRect(x, y, width, rowH - 2, 'rgba(160,160,220,0.8)');
-      surf.drawText(this.options[i], x + 8, y, selected ? 'white' : 'rgb(200,200,220)', '8px monospace');
-    }
+    if (this.bg) this.bg.draw(surf);
+    else surf.fill(0, 0, 0);
+    const s = this.scene.begin();
+    this.menu.draw(s, this.positionX, WINHEIGHT / 2);
+    this.scene.present(surf);
     return surf;
   }
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
+    if (this.phase !== 'normal') return;
     if (event === 'UP') {
-      this.cursor = (this.cursor - 1 + this.options.length) % this.options.length;
-      game.audioManager.playSfx('Select 6');
+      if (this.menu.moveUp()) game.audioManager.playSfx('Select 6');
     } else if (event === 'DOWN') {
-      this.cursor = (this.cursor + 1) % this.options.length;
-      game.audioManager.playSfx('Select 6');
+      if (this.menu.moveDown()) game.audioManager.playSfx('Select 6');
     } else if (event === 'BACK') {
       game.audioManager.playSfx('Select 4');
-      game.state.back();
+      this.phase = 'transition_out';
     } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
       game.audioManager.playSfx('Select 1');
-      const selection = this.options[this.cursor];
+      const selection = this.menu.getCurrent();
       if (selection === 'Options') {
         game.state.change('settings_menu');
       } else if (selection === 'Credits') {
@@ -1758,107 +1761,112 @@ export class TitleNewState extends State {
   override readonly showMap = false;
   override readonly inLevel = false;
 
-  private bgImage: HTMLImageElement | null = null;
-  private slots: { idx: number; label: string; used: boolean }[] = [];
-  private cursor = 0;
+  private bg: MenuBackground | null = null;
+  private scene = new MenuScene();
+  private slots: { idx: number; used: boolean }[] = [];
+  private menu: ChapterSelectMenu | null = null;
   private loaded = false;
-  private confirming = false;
-  private confirmCursor = 0;
+  /** TitleNewChildState Overwrite/Back choice, when open. */
+  private child: HorizontalChoice | null = null;
   private building = false;
+  private phase: 'transition_in' | 'normal' | 'transition_out' = 'transition_in';
+  private positionX = Math.floor(WINWIDTH * 1.5);
 
   override start(): StateResult {
     const game = getGame();
-    this.cursor = 0;
     this.loaded = false;
-    this.confirming = false;
+    this.child = null;
     this.building = false;
-    game.resources.tryLoadImage('resources/panoramas/title_background.png').then((img: HTMLImageElement | null) => {
-      this.bgImage = img;
-    });
+    this.menu = null;
+    this.phase = 'transition_in';
+    this.positionX = Math.floor(WINWIDTH * 1.5);
+    this.bg = new MenuBackground('title_background', game.resources, false);
+    preloadTitleMenuSprites();
     const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
     const numSlots = Number(game.db?.getConstant?.('num_save_slots', 3) ?? 3) || 1;
     loadSaveSlots(gameNid as string, numSlots).then((slots) => {
-      this.slots = slots.map((slot) => {
-        const used = slot.name !== '--NO DATA--';
-        const label = used
-          ? `${slot.displayName ?? slot.name}${slot.playtime ? ` - ${formatPlaytime(slot.playtime)}` : ''}`
-          : '--NO DATA--';
-        return { idx: slot.idx, label, used };
-      });
+      this.slots = slots.map((slot) => ({ idx: slot.idx, used: slot.name !== '--NO DATA--' }));
+      this.menu = chapterSelectFromSlots(slots, game.db);
+      const recent = slots.reduce((best, slot, i) => (slot.realtime > (slots[best]?.realtime ?? -1) ? i : best), 0);
+      this.menu.moveTo(recent);
       this.loaded = true;
     }).catch(() => {
-      this.slots = Array.from({ length: numSlots }, (_, idx) => ({ idx, label: '--NO DATA--', used: false }));
+      this.slots = Array.from({ length: numSlots }, (_, idx) => ({ idx, used: false }));
+      this.menu = chapterSelectFromSlots(this.slots.map(() => ({ name: '--NO DATA--' })), game.db);
       this.loaded = true;
     });
   }
 
-  override draw(surf: Surface): Surface {
-    const scene = titleSceneBounds();
-    drawTitleBackground(surf, this.bgImage);
-    const rowH = 18;
-    const width = Math.min(scene.width - 32, 176);
-    const x = scene.x + Math.floor((scene.width - width) / 2);
-    const top = scene.y + Math.floor((scene.height - Math.max(1, this.slots.length) * rowH) / 2);
-    for (let i = 0; i < this.slots.length; i++) {
-      const y = top + i * rowH;
-      const selected = i === this.cursor;
-      surf.fillRect(x, y, width, rowH - 2, selected ? 'rgba(64,64,160,0.9)' : 'rgba(16,16,48,0.85)');
-      surf.drawRect(x, y, width, rowH - 2, 'rgba(160,160,220,0.8)');
-      surf.drawText(this.slots[i].label, x + 8, y, selected ? 'white' : 'rgb(200,200,220)', '8px monospace');
-    }
-    if (this.confirming) {
-      const options = ['Overwrite', 'Back'];
-      const by = scene.y + scene.height - 24;
-      for (let i = 0; i < options.length; i++) {
-        const bx = scene.x + 8 + i * 64;
-        const sel = i === this.confirmCursor;
-        surf.fillRect(bx, by, 60, 16, sel ? 'rgba(64,64,160,0.95)' : 'rgba(16,16,48,0.9)');
-        surf.drawRect(bx, by, 60, 16, 'rgba(160,160,220,0.8)');
-        surf.drawText(options[i], bx + 6, by, 'white', '8px monospace');
+  override update(): StateResult {
+    this.menu?.update();
+    this.child?.update();
+    this.bg?.update();
+    if (this.phase === 'transition_in') {
+      this.positionX -= 20;
+      if (this.positionX <= WINWIDTH / 2) {
+        this.positionX = WINWIDTH / 2;
+        this.phase = 'normal';
+      }
+    } else if (this.phase === 'transition_out') {
+      this.positionX += 20;
+      if (this.positionX >= Math.floor(WINWIDTH * 1.5)) {
+        this.positionX = Math.floor(WINWIDTH * 1.5);
+        this.phase = 'transition_in';
+        // Python TitleNewState.back(): also pop an auto-advanced title_mode.
+        const game = getGame();
+        const stack: string[] = game.state.getStackNames?.() ?? [];
+        if (stack[stack.length - 2] === 'title_mode') game.state.back();
+        game.state.back();
+        return 'repeat';
       }
     }
+  }
+
+  override draw(surf: Surface): Surface {
+    if (this.bg) this.bg.draw(surf);
+    else surf.fill(0, 0, 0);
+    const s = this.scene.begin();
+    this.menu?.draw(s, this.positionX, WINHEIGHT / 2);
+    this.child?.draw(s, 8, WINHEIGHT - 24);
+    this.scene.present(surf);
     return surf;
   }
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
-    if (!this.loaded || this.building) return;
-    if (this.confirming) {
-      if (event === 'LEFT' || event === 'RIGHT') {
-        this.confirmCursor = 1 - this.confirmCursor;
-        game.audioManager.playSfx('Select 6');
+    if (!this.loaded || this.building || !this.menu) return;
+    if (this.child) {
+      if (event === 'RIGHT') {
+        if (this.child.moveDown()) game.audioManager.playSfx('Select 6');
+      } else if (event === 'LEFT') {
+        if (this.child.moveUp()) game.audioManager.playSfx('Select 6');
       } else if (event === 'BACK') {
         game.audioManager.playSfx('Select 4');
-        this.confirming = false;
+        this.child = null;
       } else if (event === 'SELECT') {
-        if (this.confirmCursor === 0) {
-          void this.buildNewGame(this.slots[this.cursor].idx);
+        if (this.child.getCurrent() === 'Overwrite') {
+          void this.buildNewGame(this.slots[this.menu.currentIndex].idx);
         } else {
           game.audioManager.playSfx('Select 4');
-          this.confirming = false;
+          this.child = null;
         }
       }
       return;
     }
-    if (event === 'UP' && this.slots.length > 0) {
-      this.cursor = (this.cursor - 1 + this.slots.length) % this.slots.length;
-      game.audioManager.playSfx('Select 6');
-    } else if (event === 'DOWN' && this.slots.length > 0) {
-      this.cursor = (this.cursor + 1) % this.slots.length;
-      game.audioManager.playSfx('Select 6');
+    if (this.phase !== 'normal') return;
+    if (event === 'UP') {
+      if (this.menu.moveUp()) game.audioManager.playSfx('Select 6');
+    } else if (event === 'DOWN') {
+      if (this.menu.moveDown()) game.audioManager.playSfx('Select 6');
     } else if (event === 'BACK') {
       game.audioManager.playSfx('Select 4');
-      // Python TitleNewState.back(): also pop an auto-advanced title_mode.
-      const stack: string[] = game.state.getStackNames?.() ?? [];
-      if (stack[stack.length - 2] === 'title_mode') game.state.back();
-      game.state.back();
+      this.phase = 'transition_out';
     } else if (event === 'SELECT' || game.input?.mouseClick === 'SELECT') {
-      const slot = this.slots[this.cursor];
+      const slot = this.slots[this.menu.currentIndex];
       if (!slot) return;
       if (slot.used) {
         game.audioManager.playSfx('Select 1');
-        this.confirming = true;
-        this.confirmCursor = 0;
+        this.child = new HorizontalChoice(['Overwrite', 'Back']);
       } else {
         void this.buildNewGame(slot.idx);
       }

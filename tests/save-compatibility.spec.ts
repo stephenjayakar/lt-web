@@ -121,10 +121,10 @@ test.describe('save compatibility and failure reporting', () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
         (window as any).__harness.stepFrames(1, null);
       }
+      // Python TitleLoadState takes input once the slot list has slid in.
+      (window as any).__harness.stepFrames(10, null);
       const state = game.state.getCurrentState() as any;
-      state.menu.selectedIndex = state.menu.options.findIndex(
-        (option: any) => option.value === '0',
-      );
+      state.selectSlot(0);
       state.takeInput('SELECT');
       for (let index = 0; index < 30 && state.restoring; index++) {
         await new Promise((resolve) => setTimeout(resolve, 0));

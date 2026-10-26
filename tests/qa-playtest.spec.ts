@@ -121,6 +121,8 @@ test('New Game picks a save slot and starts the first non-DEBUG level', async ({
   expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('title_new');
   // Wait for slot metadata, then select the first slot.
   await page.waitForFunction(() => ((window as any).__gameRef.state.getCurrentState() as any)?.loaded === true);
+  // Python TitleLoadState ignores input until the slot list has slid in.
+  await stepFrames(page, 10);
   await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
   // The harness drives frames manually; keep stepping while the level loads.
   for (let i = 0; i < 200; i++) {

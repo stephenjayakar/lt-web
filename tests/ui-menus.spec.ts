@@ -169,6 +169,32 @@ test.describe('EOtF menu screens use Python sprites and bitmap fonts', () => {
     await shot(page, 'game_over-late', testInfo);
   });
 
+  test('title main, extras, new game and save screens', async ({ page }, testInfo) => {
+    await boot(page);
+    const open = async (name: string, frames = 30): Promise<void> => {
+      await page.evaluate((state) => (window as any).__gameRef.state.change(state), name);
+      await settleAssets(page, frames);
+      expect(await stateName(page)).toBe(name);
+      await cssText(page);
+      await step(page, 2);
+      await shot(page, name, testInfo);
+      expect(await cssText(page)).toEqual([]);
+    };
+    await page.evaluate(() => (window as any).__gameRef.state.clear());
+    await open('title_main');
+    await press(page, 'DOWN');
+    await step(page, 2);
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().menu.getCurrent()))
+      .toBe('Extras');
+    await open('title_extras');
+    await page.evaluate(() => (window as any).__gameRef.state.back());
+    await step(page, 2);
+    await open('title_new');
+    await page.evaluate(() => (window as any).__gameRef.state.back());
+    await step(page, 2);
+    await open('save_menu');
+  });
+
   test('objective menu and dialog log', async ({ page }, testInfo) => {
     await boot(page);
     await page.evaluate(() => (window as any).__gameRef.state.change('objective_menu'));
