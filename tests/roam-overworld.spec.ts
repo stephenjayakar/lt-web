@@ -280,6 +280,40 @@ test.describe('Roam talk interaction', () => {
       (window as any).__gameRef.gameVars.get('_scoped_talk') ?? null);
     expect(talked).toBe('yes');
   });
+
+  test('roam INFO/AUX/START presses reach level-scoped events', async ({ page }) => {
+    // Python EventManager.get_triggered_events defaults to the current
+    // level, so EOtF's level-scoped `roam_press_info` (Run_Info) and
+    // `roam_press_aux` (Unit_Info) fire on the act node maps.
+    await page.goto('/?harness=true&level=DEBUG&clean=true&bundle=false');
+    await waitForHarness(page);
+    await stepFrames(page, 5);
+    const levelNid = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const levelNid = game.currentLevel?.nid;
+      for (const [trigger, key] of [['roam_press_info', '_info'], ['roam_press_aux', '_aux'], ['roam_press_start', '_start']]) {
+        game.eventManager.allEvents.set(`_qa_${trigger}`, {
+          nid: `_qa_${trigger}`, name: trigger, trigger, level_nid: levelNid, condition: 'True',
+          only_once: false, priority: 0, _source: [`set_game_var;${key};yes`],
+        });
+      }
+      game.roamInfo.roam = true;
+      game.roamInfo.roamUnitNid = 'Eirika';
+      game.state.change('free_roam');
+      return levelNid;
+    });
+    expect(levelNid).toBeTruthy();
+    for (const [button, key] of [['INFO', '_info'], ['AUX', '_aux'], ['START', '_start']]) {
+      await stepFrames(page, 5);
+      await stepFrames(page, 1, button);
+      await stepFrames(page, 20);
+      const result = await page.evaluate((key) => ({
+        fired: (window as any).__gameRef.gameVars.get(key) ?? null,
+        state: (window as any).__gameRef.state.getCurrentState()?.name,
+      }), key);
+      expect(result, button).toEqual({ fired: 'yes', state: 'free_roam' });
+    }
+  });
 });
 
 test.describe('Roam shop interaction', () => {

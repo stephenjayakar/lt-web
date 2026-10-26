@@ -511,7 +511,7 @@ export class FreeRoamState extends MapState {
     if (!game || !this.roamUnit) return;
     const otherUnit = this.getClosestUnit(false);
     const triggered = game.eventManager?.trigger(
-      { type: 'roam_press_info', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { type: 'roam_press_info', levelNid: game.currentLevel?.nid, unit1: this.roamUnit, unit2: otherUnit ?? undefined },
       { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
     );
     if (triggered) {
@@ -534,7 +534,7 @@ export class FreeRoamState extends MapState {
     if (!game || !this.roamUnit) return;
     const otherUnit = this.getClosestUnit(false);
     const triggered = game.eventManager?.trigger(
-      { type: 'roam_press_aux', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { type: 'roam_press_aux', levelNid: game.currentLevel?.nid, unit1: this.roamUnit, unit2: otherUnit ?? undefined },
       { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
     );
     if (!triggered) {
@@ -553,7 +553,7 @@ export class FreeRoamState extends MapState {
     if (!game || !this.roamUnit) return;
     const otherUnit = this.getClosestUnit(false);
     const triggered = game.eventManager?.trigger(
-      { type: 'roam_press_start', unit1: this.roamUnit, unit2: otherUnit ?? undefined },
+      { type: 'roam_press_start', levelNid: game.currentLevel?.nid, unit1: this.roamUnit, unit2: otherUnit ?? undefined },
       { game, unit1: this.roamUnit, unit2: otherUnit ?? undefined, gameVars: game.gameVars, levelVars: game.levelVars },
     );
     if (!triggered) {
@@ -578,6 +578,7 @@ export class FreeRoamState extends MapState {
           const triggered = game.eventManager.trigger(
             {
               type: 'roaming_interrupt',
+              levelNid: game.currentLevel?.nid,
               regionNid: region.nid,
               region,
               unit1: this.roamUnit,
