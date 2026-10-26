@@ -133,6 +133,25 @@ Deviations from Python behavior that are intentional, documented, and covered by
 | Roam region-interact fallback missing | Roam | FIXED 2026-07-18: Shop/Armory regions now fallback from `sub_nid` trigger to `on_region_interact` | `PLAN.md` Recent Changes "Roam talk/shop..." | Verified (fixed) |
 | Roam `press_info`/`press_aux`/`press_start` triggers | Roam | FIXED 2026-07-18: all three triggers now fire before their fallback menus | `PLAN.md` Recent Changes "Roam talk/shop..." | Verified (fixed) |
 | PYEV1 game context missing | Events | FIXED 2026-07-18: `EventManager.setGameGetter()` now threads live GameState into PYEV1 eval context | `PLAN.md` Recent Changes "Trigger payload and EVNT/PYEV1..." | Verified (fixed) |
+| Per-strike combat events run after the last strike | Combat events | Python fires `event_on_hit`/`after_strike`/`after_take_strike` events between solver phases; the web solves every strike up front and applies results at once (an event changing HP mid-presentation would be overwritten), so they run at clean_up0, before combat_death and the exp screen, in Python's stack order | `tests/harness.spec.ts` "CombatState runs item and skill combat hooks in Python stack order..." | Documented |
+
+### EOtF engine-version notes
+
+EOtF d9d2975's `metadata.json` (`"version": "2.0.0"`, 2026-07-25) is the game's
+own release number, written by a private lt-maker fork in the pre-2024-09
+metadata format (upstream switched to `engine_version` in `8206fbc07`). The fork
+branched from upstream between mid-June and early September 2024 and adds
+commands no upstream release has (`heal`, `change_global_level_cap`,
+`change_unit_level_cap`, `unload_unit`, `show_pokedex`, `return`, and
+`change_class`'s `no_wexp` flag). The reference `lt-maker/` is upstream
+`b811e266` (VERSION `2026.02.17a`, cloned 2026-02-21). Where the two disagree the
+web follows what EOtF's engine does:
+
+| Behaviour | Reference (`2026.02.17a`) | EOtF's engine | Web |
+|---|---|---|---|
+| `heal`, `change_class ...;no_wexp`, level-cap and `unload_unit` commands | absent (parse errors) | fork-only commands | implemented from EOtF usage; `no_wexp` skips the class's starting wexp |
+| `has_finished` | no-op: `action.Wait` lost in `0623423e7` (2026-01-24), restored in `8a5e12750` (2026-03-24) | 2024 base waits the unit | `WaitAction` |
+| `push` placement | occupant's own tile counts as open (`da99faa2d`, 2025-12), so units stack; fixed upstream in `0f96fd6f6` (2026-10-23, `can_stay=False`) | 2024 base pushes the occupant | nearest open tile without the occupant's own, then a forced move |
 
 ---
 
