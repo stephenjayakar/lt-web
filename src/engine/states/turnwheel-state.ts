@@ -19,10 +19,11 @@
  */
 
 import { MapState, type StateResult } from '../state';
-import type { Surface } from '../surface';
+import { Surface } from '../surface';
 import type { InputEvent } from '../input';
-import { WINWIDTH, WINHEIGHT } from '../constants';
 import { viewport } from '../viewport';
+import { baseSurf, blitSub, blitText, blitTextRight, getSprite, preloadSprites, textWidth } from '../../ui/menu-chrome';
+import { drawStyledText } from '../../ui/styled-text';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — same pattern as game-states.ts
@@ -66,7 +67,6 @@ class TurnwheelDisplay {
     const vw = viewport.width;
     const vh = viewport.height;
 
-    // Animate transition
     if (this.state === 'in') {
       this.transition += 2;
       if (this.transition >= 0) {
@@ -77,70 +77,67 @@ class TurnwheelDisplay {
       this.transition -= 2;
     }
 
-    // Tinted overlay: red if locked, green if unlocked
-    if (game.actionLog.locked) {
-      surf.fillRect(0, 0, vw, vh, 'rgba(180,40,40,0.15)');
-    } else {
-      surf.fillRect(0, 0, vw, vh, 'rgba(40,180,40,0.15)');
-    }
+    // focus_fade_red when locked, focus_fade_green otherwise (full window).
+    drawCover(surf, getSprite(game.actionLog.locked ? 'focus_fade_red' : 'focus_fade_green'), 1);
 
-    // Description text (top area)
+    // Turnwheel message on a menu_bg_clear strip across the top.
     if (this.desc.length > 0) {
-      const numLines = this.desc.length;
-      const bgH = 8 + 16 * numLines;
-      const alpha = this.transition !== 0 ? Math.max(0, 1 - Math.abs(this.transition) / 24) : 1;
-      surf.fillRect(0, 0, vw, bgH, `rgba(16,16,32,${(0.7 * alpha).toFixed(2)})`);
-      for (let i = 0; i < this.desc.length; i++) {
-        surf.drawText(
-          this.desc[i],
-          4,
-          4 + 16 * i + this.transition,
-          `rgba(255,255,255,${alpha.toFixed(2)})`,
-          '8px monospace',
-        );
-      }
+      const bg = baseSurf(vw, 8 + 16 * this.desc.length, 'menu_bg_clear');
+      const box = new Surface(bg.width, bg.height);
+      box.blit(bg, 0, 0);
+      this.desc.forEach((line, idx) => drawStyledText(box, line, 4, 4 + 16 * idx, 'white', 'text'));
+      if (this.transition !== 0) box.setAlpha(Math.max(0, 1 + this.transition / 24));
+      surf.blit(box, 0, 0);
     }
 
-    // Turn counter (top-right)
-    const turnY = 4 + this.transition;
-    const turnBgW = 48;
-    const turnBgH = 20;
-    const turnX = vw - turnBgW - 4;
-    surf.fillRect(turnX, turnY, turnBgW, turnBgH, 'rgba(16,16,32,0.7)');
-    surf.drawRect(turnX, turnY, turnBgW, turnBgH, 'rgba(80,80,160,0.6)');
-    surf.drawText('Turn', turnX + 4, turnY + 4, 'rgba(200,180,100,1)', '7px monospace');
-    const turnStr = String(this.turn);
-    const turnStrW = turnStr.length * 5;
-    surf.drawText(turnStr, turnX + turnBgW - turnStrW - 4, turnY + 4, 'rgba(120,180,255,1)', '8px monospace');
+    // Turn count: golden_words "Turn" + text-blue number, translucent .1.
+    const turnBox = translucentBox();
+    blitSub(turnBox, getSprite('golden_words'), 0, 17, 26, 10, 4, 6);
+    blitTextRight(turnBox, 'text-blue', String(this.turn), 44, 3);
+    surf.blit(turnBox, vw - 52, 4 + this.transition);
 
-    // Unit count (bottom-left)
-    const countY = vh - 24 - this.transition;
-    const countBgW = 48;
-    const countBgH = 20;
-    surf.fillRect(4, countY, countBgW, countBgH, 'rgba(16,16,32,0.7)');
-    surf.drawRect(4, countY, countBgW, countBgH, 'rgba(80,80,160,0.6)');
+    // Unit count: unused/total player units on the map.
+    const playerUnits = [...(game.units?.values?.() ?? [])]
+      .filter((u: any) => u.team === 'player' && u.position);
+    const unused = playerUnits.filter((u: any) => !u.finished);
+    const countStr = `${unused.length}/${playerUnits.length}`;
+    const countBox = translucentBox();
+    blitText(countBox, 'text-blue', countStr, Math.floor(24 - textWidth('text-blue', countStr) / 2), 3);
+    surf.blit(countBox, 4, vh - 28 - this.transition);
 
-    const playerUnits = game.board?.getTeamUnits('player')?.filter((u: any) => u.position && !u.isDead()) ?? [];
-    const unusedUnits = playerUnits.filter((u: any) => !u.finished);
-    const countStr = `${unusedUnits.length}/${playerUnits.length}`;
-    const countW = countStr.length * 5;
-    surf.drawText(countStr, 4 + Math.floor((countBgW - countW) / 2), countY + 4, 'rgba(120,180,255,1)', '8px monospace');
-
-    // Uses remaining (bottom-right, only if limited)
+    // Uses remaining, only when limited.
     const maxUses = game.gameVars.get('_max_turnwheel_uses') ?? -1;
     if (maxUses > 0) {
-      const currentUses = game.gameVars.get('_current_turnwheel_uses') ?? 0;
-      const usesY = vh - 24 - this.transition;
-      const usesBgW = 48;
-      const usesBgH = 20;
-      const usesX = vw - usesBgW - 4;
-      surf.fillRect(usesX, usesY, usesBgW, usesBgH, 'rgba(16,16,32,0.7)');
-      surf.drawRect(usesX, usesY, usesBgW, usesBgH, 'rgba(80,80,160,0.6)');
-      const usesText = `${currentUses} Left`;
-      const usesTextW = usesText.length * 5;
-      surf.drawText(usesText, usesX + usesBgW - usesTextW - 4, usesY + 4, 'rgba(120,180,255,1)', '8px monospace');
+      const usesText = `${game.gameVars.get('_current_turnwheel_uses') ?? 0} Left`;
+      const usesBox = translucentBox();
+      blitText(usesBox, 'text-blue', usesText, 48 - textWidth('text-blue', usesText) - 8, 4);
+      surf.blit(usesBox, vw - 52, vh - 28 - this.transition);
     }
   }
+}
+
+/** base_surf.create_base_surf(48, 24) made translucent by .1. */
+function translucentBox(): Surface {
+  const box = new Surface(48, 24);
+  const bg = baseSurf(48, 24);
+  const alpha = bg.getAlpha();
+  bg.setAlpha(0.9);
+  box.blit(bg, 0, 0);
+  bg.setAlpha(alpha);
+  return box;
+}
+
+/** Blit a WINWIDTH x WINHEIGHT overlay stretched to cover the viewport. */
+function drawCover(surf: Surface, img: HTMLImageElement | null, alpha: number): void {
+  if (!img || alpha <= 0) return;
+  const s = surf.scale;
+  const ctx = surf.ctx;
+  ctx.imageSmoothingEnabled = false;
+  const prev = ctx.globalAlpha;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0,
+    Math.round(viewport.width * s), Math.round(viewport.height * s));
+  ctx.globalAlpha = prev;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +154,9 @@ export class TurnwheelState extends MapState {
   private transitionOut: number = 0;
   private turnwheelActivated: boolean = false;
   private lastDirection: 'FORWARD' | 'BACKWARD' = 'FORWARD';
+  /** SpriteBackground(focus_fade, fade=True): 100 -> 0 transparency. */
+  private bgFade = 100;
+  private normalVolume: number | null = null;
 
   override begin(): StateResult {
     const game = getGame();
@@ -174,6 +174,16 @@ export class TurnwheelState extends MapState {
 
     // Stop recording while the turnwheel is active
     game.actionLog.stopRecording();
+
+    game.audioManager?.playSfx?.('TurnwheelIn2');
+    // Python lowers the music to half volume while the turnwheel is open.
+    const audio = game.audioManager;
+    if (typeof audio?.getMusicVolume === 'function' && typeof audio?.setMusicVolume === 'function') {
+      this.normalVolume = audio.getMusicVolume();
+      audio.setMusicVolume((this.normalVolume as number) / 2);
+    }
+    this.bgFade = 100;
+    preloadSprites(['focus_fade', 'focus_fade_red', 'focus_fade_green', 'golden_words']);
 
     // Set up navigation
     const turnwheelDesc = game.actionLog.setUp();
@@ -303,7 +313,9 @@ export class TurnwheelState extends MapState {
   }
 
   override draw(surf: Surface): Surface {
-    // Draw the display overlay
+    // SpriteBackground(focus_fade) fading in.
+    if (this.bgFade > 0) this.bgFade = Math.max(0, this.bgFade - 4);
+    drawCover(surf, getSprite('focus_fade'), 1 - this.bgFade / 100);
     if (this.display) {
       this.display.draw(surf);
     }
@@ -312,6 +324,10 @@ export class TurnwheelState extends MapState {
 
   override end(): void {
     const game = getGame();
+    if (this.normalVolume !== null) {
+      game.audioManager?.setMusicVolume?.(this.normalVolume);
+      this.normalVolume = null;
+    }
     // Resume recording
     game.actionLog.startRecording();
   }

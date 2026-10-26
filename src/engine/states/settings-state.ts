@@ -1,16 +1,32 @@
 /**
  * settings-state.ts — Settings menu state for the Lex Talionis web engine.
  *
- * Ported from LT's app/engine/settings.py and settings_menu.py.
- * Provides Config and Controls tabs with various game options
- * (animation speed, volume, display preferences, key bindings).
+ * Ported from LT's app/engine/settings.py and settings_menu.py: a scrolling
+ * default_background, two menu_bg_clear header tabs (Config / Controls), a
+ * translucent menu_bg_base list of icon rows (settings_icons / buttons), and
+ * a menu_bg_clear info banner with the translated `<option>_desc` text.
  */
 
 import { State, type StateResult } from '../state';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
-import { viewport } from '../viewport';
+import { WINHEIGHT, WINWIDTH } from '../constants';
 import { getSyncStore, type SyncKV } from '../../storage/storage';
+import {
+  MenuBackground,
+  MenuCursor,
+  MenuScene,
+  ScrollArrow,
+  ScrollBar,
+  baseSurf,
+  blitSprite,
+  blitSub,
+  blitText,
+  blitTextCenter,
+  getSprite,
+  preloadSprites,
+  textWidth,
+} from '../../ui/menu-chrome';
 
 // ============================================================================
 // Lazy game reference (same pattern as prep-state.ts)
@@ -26,179 +42,78 @@ function getGame(): any {
 }
 
 // ============================================================================
-// Setting definitions
+// Setting definitions (Python settings.config)
 // ============================================================================
+
+type SettingKind = 'bool' | 'slider' | 'choice' | 'simple';
 
 interface SettingDef {
-  name: string;          // Setting key (stored as `_setting_{name}` in gameVars)
-  label: string;         // Display label
-  type: 'bool' | 'slider' | 'choice';
-  values: (string | number)[];  // Possible values
-  defaultIndex: number;  // Default index into values
-  description: string;   // Bottom info bar text
+  /** cf.SETTINGS key. */
+  name: string;
+  kind: SettingKind;
+  /** Python option values, in Python order. */
+  values: (string | number)[];
+  /** Python config.base_config default. */
+  defaultValue: string | number;
+  /** Row of settings_icons.png (each icon is 16x16). */
+  icon: number;
 }
 
+/** Bools are stored as 'ON'/'OFF' (the web's existing settings format). */
+const BOOL_VALUES = ['OFF', 'ON'];
+const VOLUMES = [0, 0.01, 0.02, 0.03, 0.0625, 0.125, 0.25, 0.5, 1];
+
+/**
+ * Python settings.config in order. `screen_size` is omitted: the browser
+ * canvas always scales to the window.
+ */
 const CONFIG_SETTINGS: SettingDef[] = [
-  {
-    name: 'animation',
-    label: 'Animation',
-    type: 'choice',
-    values: ['Always', 'Your Turn', 'Combat Only', 'Never'],
-    defaultIndex: 0,
-    description: 'When to play battle animations.',
-  },
-  {
-    name: 'unit_speed',
-    label: 'Unit Speed',
-    type: 'slider',
-    values: [15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165],
-    defaultIndex: 7, // 120
-    description: 'Movement speed for units on the map.',
-  },
-  {
-    name: 'text_speed',
-    label: 'Text Speed',
-    type: 'slider',
-    values: [0, 3, 8, 15, 32, 50, 64, 80, 112, 150],
-    defaultIndex: 4, // 32
-    description: 'Speed of dialog text display.',
-  },
-  {
-    name: 'music_volume',
-    label: 'Music Vol',
-    type: 'slider',
-    values: [0, 0.01, 0.02, 0.03, 0.0625, 0.125, 0.25, 0.5, 1],
-    defaultIndex: 6, // 0.25 (~0.3)
-    description: 'Background music volume.',
-  },
-  {
-    name: 'sound_volume',
-    label: 'Sound Vol',
-    type: 'slider',
-    values: [0, 0.01, 0.02, 0.03, 0.0625, 0.125, 0.25, 0.5, 1],
-    defaultIndex: 6, // 0.25 (~0.3)
-    description: 'Sound effects volume.',
-  },
-  {
-    name: 'show_terrain',
-    label: 'Show Terrain',
-    type: 'bool',
-    values: ['OFF', 'ON'],
-    defaultIndex: 1, // on
-    description: 'Display terrain info window.',
-  },
-  {
-    name: 'show_objective',
-    label: 'Show Objective',
-    type: 'bool',
-    values: ['OFF', 'ON'],
-    defaultIndex: 1, // on
-    description: 'Display objective info window.',
-  },
-  {
-    name: 'autocursor',
-    label: 'Autocursor',
-    type: 'bool',
-    values: ['OFF', 'ON'],
-    defaultIndex: 1, // on
-    description: 'Snap cursor to active unit at turn start.',
-  },
-  {
-    name: 'autoend_turn',
-    label: 'Autoend Turn',
-    type: 'bool',
-    values: ['OFF', 'ON'],
-    defaultIndex: 1, // on
-    description: 'Automatically end turn when all units have acted.',
-  },
-  {
-    name: 'confirm_end',
-    label: 'Confirm End',
-    type: 'bool',
-    values: ['OFF', 'ON'],
-    defaultIndex: 1, // on
-    description: 'Ask for confirmation before ending your turn.',
-  },
-  {
-    name: 'grid_opacity',
-    label: 'Grid Opacity',
-    type: 'slider',
-    values: [0, 25, 51, 76, 102, 127, 153, 178, 204, 229, 255],
-    defaultIndex: 0, // 0 (off)
-    description: 'Opacity of the tile grid overlay.',
-  },
-  {
-    name: 'hp_map_team',
-    label: 'HP Map Team',
-    type: 'choice',
-    values: ['All', 'Ally', 'Enemy'],
-    defaultIndex: 0, // All
-    description: 'Which teams show HP bars on the map.',
-  },
-  {
-    name: 'hp_map_cull',
-    label: 'HP Map Cull',
-    type: 'choice',
-    values: ['None', 'Wounded', 'All'],
-    defaultIndex: 2, // All (Python config default)
-    description: 'When to hide map HP bars.',
-  },
-  {
-    name: 'display_fps',
-    label: 'Display FPS',
-    type: 'bool',
-    values: ['OFF', 'ON'],
-    defaultIndex: 0, // off
-    description: 'Show frames per second counter.',
-  },
+  { name: 'animation', kind: 'choice', values: ['Always', 'Your Turn', 'Combat Only', 'Never'], defaultValue: 'Always', icon: 0 },
+  { name: 'display_fps', kind: 'bool', values: BOOL_VALUES, defaultValue: 'OFF', icon: 2 },
+  { name: 'battle_bg', kind: 'bool', values: BOOL_VALUES, defaultValue: 'OFF', icon: 17 },
+  { name: 'unit_speed', kind: 'slider', values: [165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15], defaultValue: 120, icon: 1 },
+  { name: 'text_speed', kind: 'slider', values: [150, 112, 80, 64, 50, 32, 15, 8, 3, 0], defaultValue: 32, icon: 2 },
+  { name: 'mouse', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 19 },
+  { name: 'show_terrain', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 7 },
+  { name: 'show_objective', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 6 },
+  { name: 'autocursor', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 13 },
+  { name: 'hp_map_team', kind: 'simple', values: ['All', 'Ally', 'Enemy'], defaultValue: 'All', icon: 10 },
+  { name: 'hp_map_cull', kind: 'simple', values: ['None', 'Wounded', 'All'], defaultValue: 'All', icon: 10 },
+  { name: 'music_volume', kind: 'slider', values: VOLUMES, defaultValue: 0.3, icon: 15 },
+  { name: 'sound_volume', kind: 'slider', values: VOLUMES, defaultValue: 0.3, icon: 16 },
+  { name: 'talk_boop', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 16 },
+  { name: 'show_bounds', kind: 'bool', values: BOOL_VALUES, defaultValue: 'OFF', icon: 7 },
+  { name: 'grid_opacity', kind: 'slider', values: [0, 25, 51, 76, 102, 127, 153, 178, 204, 229, 255], defaultValue: 0, icon: 7 },
+  { name: 'autoend_turn', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 14 },
+  { name: 'confirm_end', kind: 'bool', values: BOOL_VALUES, defaultValue: 'ON', icon: 14 },
+  { name: 'display_hints', kind: 'bool', values: BOOL_VALUES, defaultValue: 'OFF', icon: 3 },
 ];
 
-/** Remappable control names and their default key labels. */
-const CONTROL_ENTRIES: { name: string; label: string; defaultKey: string }[] = [
-  { name: 'SELECT',  label: 'Select',  defaultKey: 'Z / Enter' },
-  { name: 'BACK',    label: 'Back',    defaultKey: 'X / Esc' },
-  { name: 'INFO',    label: 'Info',    defaultKey: 'C / Shift' },
-  { name: 'AUX',     label: 'Aux',     defaultKey: 'V / Tab' },
-  { name: 'LEFT',    label: 'Left',    defaultKey: 'Arrow Left / A' },
-  { name: 'RIGHT',   label: 'Right',   defaultKey: 'Arrow Right / D' },
-  { name: 'UP',      label: 'Up',      defaultKey: 'Arrow Up / W' },
-  { name: 'DOWN',    label: 'Down',    defaultKey: 'Arrow Down / S' },
-  { name: 'START',   label: 'Start',   defaultKey: 'Space' },
+/** Python settings.controls: buttons.png sub-rects for each control icon. */
+const CONTROL_ENTRIES: { name: string; button: string; rect: [number, number, number, number] }[] = [
+  { name: 'key_SELECT', button: 'SELECT', rect: [0, 66, 14, 13] },
+  { name: 'key_BACK', button: 'BACK', rect: [0, 82, 14, 13] },
+  { name: 'key_INFO', button: 'INFO', rect: [1, 149, 16, 9] },
+  { name: 'key_AUX', button: 'AUX', rect: [1, 133, 16, 9] },
+  { name: 'key_LEFT', button: 'LEFT', rect: [1, 4, 13, 12] },
+  { name: 'key_RIGHT', button: 'RIGHT', rect: [1, 19, 13, 12] },
+  { name: 'key_UP', button: 'UP', rect: [1, 50, 12, 13] },
+  { name: 'key_DOWN', button: 'DOWN', rect: [1, 34, 12, 13] },
+  { name: 'key_START', button: 'START', rect: [0, 165, 33, 9] },
 ];
 
-// ============================================================================
-// Rendering constants
-// ============================================================================
-
-const TAB_HEIGHT = 16;
-const ROW_HEIGHT = 16;
-const VISIBLE_ROWS = 6;
-const LIST_Y = TAB_HEIGHT + 4;
-const INFO_BAR_HEIGHT = 16;
-const LABEL_X = 8;
-const VALUE_X_RIGHT_MARGIN = 8; // from right edge
-const SLIDER_WIDTH = 48;
-const SLIDER_HEIGHT = 4;
-
-// Colors
-const COLOR_BG = 'rgba(20,20,40,1)';
-const COLOR_TAB_ACTIVE = 'rgba(255,220,100,1)';
-const COLOR_TAB_INACTIVE = 'rgba(120,120,140,1)';
-const COLOR_TAB_BG_ACTIVE = 'rgba(40,40,80,1)';
-const COLOR_TAB_BG_INACTIVE = 'rgba(24,24,48,1)';
-const COLOR_ROW_HIGHLIGHT = 'rgba(48,48,128,0.6)';
-const COLOR_LABEL = 'rgba(220,220,240,1)';
-const COLOR_VALUE_ON = 'rgba(100,160,255,1)';
-const COLOR_VALUE_OFF = 'rgba(120,120,140,1)';
-const COLOR_VALUE_TEXT = 'rgba(255,255,255,1)';
-const COLOR_ARROW = 'rgba(180,180,220,0.8)';
-const COLOR_SLIDER_BG = 'rgba(60,60,100,1)';
-const COLOR_SLIDER_FILL = 'rgba(100,160,255,1)';
-const COLOR_SLIDER_CURSOR = 'rgba(255,255,255,1)';
-const COLOR_INFO_BG = 'rgba(16,16,48,0.9)';
-const COLOR_INFO_TEXT = 'rgba(180,180,220,1)';
-const COLOR_SCROLL_IND = 'rgba(180,180,220,0.5)';
-const COLOR_CONTROLS_KEY = 'rgba(180,200,255,1)';
+/** Web keyboard bindings (src/engine/input.ts DEFAULT_KEY_MAP), pygame-style names. */
+const KEY_NAMES: Record<string, string> = {
+  SELECT: 'z, enter',
+  BACK: 'x, escape',
+  INFO: 'c, shift',
+  AUX: 'v, tab',
+  LEFT: 'left, a',
+  RIGHT: 'right, d',
+  UP: 'up, w',
+  DOWN: 'down, s',
+  START: 'space',
+};
 
 // ============================================================================
 // Global settings store (Python cf.SETTINGS / saves/config.ini)
@@ -235,7 +150,7 @@ export function getSetting(name: string): any {
   const cache = loadSettingsCache();
   if (name in cache) return cache[name];
   const def = CONFIG_SETTINGS.find((d) => d.name === name);
-  return def ? def.values[def.defaultIndex] : undefined;
+  return def ? def.defaultValue : undefined;
 }
 
 export function setSetting(name: string, value: unknown): void {
@@ -261,12 +176,93 @@ export function applyStoredSettings(game: any): void {
   if (typeof sound === 'number') game.audioManager?.setSfxVolume?.(sound);
 }
 
+/** Effective value shown in the menu: stored, else the live engine value. */
+function currentValue(def: SettingDef): string | number {
+  const cache = loadSettingsCache();
+  if (def.name in cache) return cache[def.name] as string | number;
+  const audio = _game?.audioManager;
+  if (def.name === 'music_volume' && typeof audio?.getMusicVolume === 'function') return audio.getMusicVolume();
+  if (def.name === 'sound_volume' && typeof audio?.getSfxVolume === 'function') return audio.getSfxVolume();
+  return def.defaultValue;
+}
+
+function translate(text: string): string {
+  return _game?.db?.translate?.(text) ?? text;
+}
+
+/** Python ConfigOption.display_name: translate(name).replace('_', ' ').capitalize(). */
+function displayName(name: string): string {
+  const text = translate(name).replace(/_/g, ' ');
+  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+}
+
+// ============================================================================
+// Python menus.Simple scrolling (limit = (WINHEIGHT - 64) // 16)
+// ============================================================================
+
+const MENU_LIMIT = Math.max(2, Math.floor((WINHEIGHT - 64) / 16));
+const OPTION_WIDTH = 224;
+const OPTION_HEIGHT = 16;
+const HEADER_WIDTH = 112;
+const SLIDER_ANIM = [0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 3, 3, 2, 2, 2, 1, 1, 1, 1];
+
+class SimpleList {
+  currentIndex = 0;
+  scroll = 0;
+  takesInput = false;
+  readonly cursor = new MenuCursor();
+  readonly scrollBar = new ScrollBar();
+  readonly count: number;
+
+  constructor(count: number) {
+    this.count = count;
+  }
+
+  /** Python Simple.move_down(first_push=True). */
+  moveDown(): boolean {
+    this.currentIndex += 1;
+    if (this.currentIndex > this.count - 1) {
+      this.currentIndex = 0;
+      this.scroll = 0;
+    } else if (this.currentIndex > this.scroll + MENU_LIMIT - 2 && this.scroll + MENU_LIMIT < this.count) {
+      this.scroll += 1;
+    } else {
+      this.cursor.yOffsetDown();
+    }
+    if (MENU_LIMIT < this.count) this.scroll = Math.min(this.count - MENU_LIMIT, this.scroll);
+    return true;
+  }
+
+  /** Python Simple.move_up(first_push=True). */
+  moveUp(): boolean {
+    this.currentIndex -= 1;
+    if (this.currentIndex < 0) {
+      this.currentIndex = this.count - 1;
+      this.scroll = this.currentIndex - MENU_LIMIT + 1;
+    } else if (this.currentIndex < this.scroll + 1) {
+      this.scroll -= 1;
+    } else {
+      this.cursor.yOffsetUp();
+    }
+    this.scroll = Math.max(0, this.scroll);
+    return true;
+  }
+
+  get menuHeight(): number {
+    return Math.min(this.count, MENU_LIMIT) * OPTION_HEIGHT + 8;
+  }
+
+  /** Python Controls.draw topleft. */
+  topleft(): [number, number] {
+    return [Math.floor((WINWIDTH - OPTION_WIDTH) / 2), Math.floor((WINHEIGHT - this.menuHeight) / 2) + 8];
+  }
+}
+
 // ============================================================================
 // SettingsMenuState
 // ============================================================================
 
-type SettingsTab = 'config' | 'controls';
-type SettingsPhase = 'top_config' | 'top_controls' | 'config' | 'controls';
+type SettingsPhase = 'top_menu_left' | 'top_menu_right' | 'config' | 'controls';
 
 export class SettingsMenuState extends State {
   readonly name = 'settings_menu';
@@ -274,408 +270,325 @@ export class SettingsMenuState extends State {
   override readonly showMap = false;
   override readonly transparent = false;
 
-  private phase: SettingsPhase = 'top_config';
-  private configCursor: number = 0;
-  private configScroll: number = 0;
-  private controlsCursor: number = 0;
-  private controlsScroll: number = 0;
-  /** Current value index for each config setting. */
-  private configValues: number[] = [];
+  private phase: SettingsPhase = 'top_menu_left';
+  private configMenu = new SimpleList(CONFIG_SETTINGS.length);
+  private controlsMenu = new SimpleList(CONTROL_ENTRIES.length);
+  private topCursor = new MenuCursor();
+  private bg: MenuBackground | null = null;
+  private scene = new MenuScene();
+  /** SliderOption.counter, per row. */
+  private sliderCounters: number[] = CONFIG_SETTINGS.map(() => 0);
+  /** ChoiceOption side arrows (right arrow counter offset 0.5). */
+  private choiceArrows: Map<string, [ScrollArrow, ScrollArrow]> = new Map();
 
   // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
 
   override start(): StateResult {
-    this.phase = 'top_config';
-    this.configCursor = 0;
-    this.configScroll = 0;
-    this.controlsCursor = 0;
-    this.controlsScroll = 0;
-    this.loadSettings();
-  }
-
-  override begin(): StateResult {
-    this.loadSettings();
-  }
-
-  // -----------------------------------------------------------------------
-  // Settings persistence
-  // -----------------------------------------------------------------------
-
-  /** Load current values from game.gameVars or use defaults. */
-  private loadSettings(): void {
     const game = getGame();
-    void game;
-    this.configValues = CONFIG_SETTINGS.map((def) => {
-      const stored = getSetting(def.name);
-      if (stored !== undefined) {
-        // Find the index of the stored value
-        const idx = def.values.indexOf(stored);
-        if (idx >= 0) return idx;
-        // For numeric sliders, find closest
-        if (def.type === 'slider' && typeof stored === 'number') {
-          let bestIdx = 0;
-          let bestDist = Math.abs((def.values[0] as number) - stored);
-          for (let i = 1; i < def.values.length; i++) {
-            const dist = Math.abs((def.values[i] as number) - stored);
-            if (dist < bestDist) {
-              bestDist = dist;
-              bestIdx = i;
-            }
-          }
-          return bestIdx;
-        }
+    this.phase = 'top_menu_left';
+    this.configMenu = new SimpleList(CONFIG_SETTINGS.length);
+    this.controlsMenu = new SimpleList(CONTROL_ENTRIES.length);
+    this.topCursor = new MenuCursor();
+    this.bg = new MenuBackground('settings_background', game.resources);
+    preloadSprites(['settings_icons', 'buttons', 'scroll_bar', 'page_arrows', 'waiting_cursor', 'menus/health_bar_bg', 'menus/menu_hand']);
+    baseSurf(HEADER_WIDTH, 24, 'menu_bg_clear');
+    baseSurf(WINWIDTH + 16, 16, 'menu_bg_clear');
+    for (const def of CONFIG_SETTINGS) {
+      if (def.kind === 'choice') {
+        this.choiceArrows.set(def.name, [new ScrollArrow('left', 0, 0, 0), new ScrollArrow('right', 0, 0, 0.5)]);
       }
-      return def.defaultIndex;
-    });
-  }
-
-  /** Save all settings to game.gameVars. */
-  private saveSettings(): void {
-    for (let i = 0; i < CONFIG_SETTINGS.length; i++) {
-      const def = CONFIG_SETTINGS[i];
-      setSetting(def.name, def.values[this.configValues[i]]);
     }
   }
 
-  /** Apply immediate side effects for a setting change. */
-  private applyImmediate(settingIndex: number): void {
-    const game = getGame();
-    const def = CONFIG_SETTINGS[settingIndex];
-    const val = def.values[this.configValues[settingIndex]];
+  private get currentMenu(): SimpleList {
+    return this.phase === 'top_menu_left' || this.phase === 'config' ? this.configMenu : this.controlsMenu;
+  }
 
-    if (def.name === 'music_volume' && typeof val === 'number') {
-      if (game.audioManager && typeof game.audioManager.setMusicVolume === 'function') {
-        game.audioManager.setMusicVolume(val);
-      }
-      setSetting('music_volume', val);
-    } else if (def.name === 'sound_volume' && typeof val === 'number') {
-      if (game.audioManager && typeof game.audioManager.setSfxVolume === 'function') {
-        game.audioManager.setSfxVolume(val);
-      }
-      setSetting('sound_volume', val);
+  // -----------------------------------------------------------------------
+  // Option value changes (Python ConfigOption subclasses)
+  // -----------------------------------------------------------------------
+
+  private setValue(def: SettingDef, value: string | number): void {
+    setSetting(def.name, value);
+    if (def.name === 'music_volume' || def.name === 'sound_volume') this.updateSound();
+  }
+
+  private moveLeft(def: SettingDef): void {
+    const value = currentValue(def);
+    const idx = def.values.indexOf(value);
+    if (def.kind === 'bool') {
+      // BoolOption.move_left: turn on.
+      if (value !== 'ON') this.setValue(def, 'ON');
+    } else if (def.kind === 'choice') {
+      this.setValue(def, idx >= 0 ? def.values[(idx - 1 + def.values.length) % def.values.length] : def.values[0]);
+      this.choiceArrows.get(def.name)?.[0].pulse();
+    } else {
+      this.setValue(def, idx >= 0 ? def.values[Math.max(0, idx - 1)] : def.values[0]);
     }
   }
 
-  // -----------------------------------------------------------------------
-  // Helpers
-  // -----------------------------------------------------------------------
-
-  private get activeTab(): SettingsTab {
-    if (this.phase === 'top_controls' || this.phase === 'controls') return 'controls';
-    return 'config';
+  private moveRight(def: SettingDef): void {
+    const value = currentValue(def);
+    const idx = def.values.indexOf(value);
+    if (def.kind === 'bool') {
+      // BoolOption.move_right: turn off.
+      if (value === 'ON') this.setValue(def, 'OFF');
+    } else if (def.kind === 'choice') {
+      this.setValue(def, idx >= 0 ? def.values[(idx + 1) % def.values.length] : def.values[def.values.length - 1]);
+      this.choiceArrows.get(def.name)?.[1].pulse();
+    } else {
+      this.setValue(def, idx >= 0 ? def.values[Math.min(def.values.length - 1, idx + 1)] : def.values[def.values.length - 1]);
+    }
   }
 
-  private cycleValue(settingIndex: number, delta: number): void {
-    const def = CONFIG_SETTINGS[settingIndex];
-    const len = def.values.length;
-    this.configValues[settingIndex] = (this.configValues[settingIndex] + delta + len) % len;
-    this.applyImmediate(settingIndex);
+  private moveNext(def: SettingDef): void {
+    const value = currentValue(def);
+    if (def.kind === 'bool') {
+      this.setValue(def, value === 'ON' ? 'OFF' : 'ON');
+      return;
+    }
+    const idx = def.values.indexOf(value);
+    this.setValue(def, idx >= 0 ? def.values[(idx + 1) % def.values.length] : def.values[def.values.length - 1]);
+  }
+
+  private updateSound(): void {
+    const game = getGame();
+    const music = Number(getSetting('music_volume'));
+    const sound = Number(getSetting('sound_volume'));
+    game.audioManager?.setMusicVolume?.(music);
+    game.audioManager?.setSfxVolume?.(sound);
   }
 
   // -----------------------------------------------------------------------
-  // Input
+  // Input (Python SettingsMenuState.take_input)
   // -----------------------------------------------------------------------
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
-
-    // Accept mouse click as SELECT
     let effective = event;
-    if (game.input?.mouseClick === 'SELECT' && !effective) {
-      effective = 'SELECT';
-    }
-
+    if (game.input?.mouseClick === 'SELECT' && !effective) effective = 'SELECT';
     if (!effective) return;
+    const sfx = (name: string): void => game.audioManager?.playSfx?.(name);
 
-    switch (this.phase) {
-      case 'top_config':
-      case 'top_controls':
-        this.handleTopInput(effective);
-        break;
-      case 'config':
-        this.handleConfigInput(effective);
-        break;
-      case 'controls':
-        this.handleControlsInput(effective);
-        break;
+    if (this.phase === 'top_menu_left' || this.phase === 'top_menu_right') {
+      if (effective === 'DOWN' || effective === 'SELECT') {
+        sfx('Select 6');
+        this.phase = this.phase === 'top_menu_left' ? 'config' : 'controls';
+        this.currentMenu.takesInput = true;
+      } else if (effective === 'LEFT') {
+        if (this.phase === 'top_menu_right') {
+          sfx('Select 6');
+          this.phase = 'top_menu_left';
+        }
+      } else if (effective === 'RIGHT') {
+        if (this.phase === 'top_menu_left') {
+          sfx('Select 6');
+          this.phase = 'top_menu_right';
+        }
+      } else if (effective === 'BACK') {
+        this.back();
+      }
+      return;
+    }
+
+    const menu = this.currentMenu;
+    if (effective === 'DOWN') {
+      if (menu.moveDown()) sfx('Select 6');
+    } else if (effective === 'UP') {
+      if (menu.currentIndex <= 0) {
+        menu.takesInput = false;
+        this.phase = this.phase === 'config' ? 'top_menu_left' : 'top_menu_right';
+        sfx('Select 6');
+      } else if (menu.moveUp()) {
+        sfx('Select 6');
+      }
+    } else if (effective === 'LEFT' || effective === 'RIGHT') {
+      if (this.phase === 'config') {
+        const def = CONFIG_SETTINGS[menu.currentIndex];
+        if (effective === 'LEFT') this.moveLeft(def);
+        else this.moveRight(def);
+        sfx('Select 6');
+      }
+    } else if (effective === 'BACK') {
+      this.back();
+    } else if (effective === 'SELECT') {
+      if (this.phase === 'config') {
+        sfx('Select 6');
+        this.moveNext(CONFIG_SETTINGS[menu.currentIndex]);
+      } else {
+        // Key remapping is not supported in the browser build; the bindings
+        // are fixed (src/engine/input.ts).
+        sfx('Error');
+      }
     }
   }
 
-  private handleTopInput(event: InputEvent): void {
+  private back(): void {
     const game = getGame();
-
-    if (event === 'LEFT' || event === 'RIGHT') {
-      // Switch between tabs
-      this.phase = this.phase === 'top_config' ? 'top_controls' : 'top_config';
-    } else if (event === 'DOWN' || event === 'SELECT') {
-      // Enter the active tab's list
-      if (this.activeTab === 'config') {
-        this.phase = 'config';
-      } else {
-        this.phase = 'controls';
-      }
-    } else if (event === 'BACK') {
-      this.saveSettings();
-      game.state.back();
-    }
+    game.audioManager?.playSfx?.('Select 4');
+    game.state.back();
   }
 
-  private handleConfigInput(event: InputEvent): void {
-    const game = getGame();
-
-    if (event === 'UP') {
-      if (this.configCursor === 0) {
-        // Return to top tab bar
-        this.phase = 'top_config';
-      } else {
-        this.configCursor--;
-        if (this.configCursor < this.configScroll) {
-          this.configScroll = this.configCursor;
-        }
-      }
-    } else if (event === 'DOWN') {
-      if (this.configCursor < CONFIG_SETTINGS.length - 1) {
-        this.configCursor++;
-        if (this.configCursor >= this.configScroll + VISIBLE_ROWS) {
-          this.configScroll = this.configCursor - VISIBLE_ROWS + 1;
-        }
-      }
-    } else if (event === 'LEFT') {
-      this.cycleValue(this.configCursor, -1);
-    } else if (event === 'RIGHT') {
-      this.cycleValue(this.configCursor, 1);
-    } else if (event === 'SELECT') {
-      // Cycle to next value
-      this.cycleValue(this.configCursor, 1);
-    } else if (event === 'BACK') {
-      this.saveSettings();
-      game.state.back();
-    }
-  }
-
-  private handleControlsInput(event: InputEvent): void {
-    const game = getGame();
-
-    if (event === 'UP') {
-      if (this.controlsCursor === 0) {
-        this.phase = 'top_controls';
-      } else {
-        this.controlsCursor--;
-        if (this.controlsCursor < this.controlsScroll) {
-          this.controlsScroll = this.controlsCursor;
-        }
-      }
-    } else if (event === 'DOWN') {
-      if (this.controlsCursor < CONTROL_ENTRIES.length - 1) {
-        this.controlsCursor++;
-        if (this.controlsCursor >= this.controlsScroll + VISIBLE_ROWS) {
-          this.controlsScroll = this.controlsCursor - VISIBLE_ROWS + 1;
-        }
-      }
-    } else if (event === 'BACK') {
-      this.saveSettings();
-      game.state.back();
-    }
+  override update(): StateResult {
+    const menu = this.currentMenu;
+    menu.cursor.update();
+    this.topCursor.update();
+    this.bg?.update();
   }
 
   // -----------------------------------------------------------------------
-  // Rendering
+  // Rendering (Python SettingsMenuState.draw)
   // -----------------------------------------------------------------------
 
   override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
+    if (this.bg) this.bg.draw(surf);
+    else surf.fill(0, 0, 0);
 
-    // 1. Background
-    surf.fill(20, 20, 40);
-
-    // 2. Tab headers
-    this.drawTabs(surf, vw);
-
-    // 3. Option list for active tab
-    if (this.activeTab === 'config') {
-      this.drawConfigList(surf, vw, vh);
-    } else {
-      this.drawControlsList(surf, vw, vh);
-    }
-
-    // 4. Info bar at bottom
-    this.drawInfoBar(surf, vw, vh);
-
+    const scene = this.scene.begin();
+    this.drawTopMenu(scene);
+    if (this.currentMenu === this.configMenu) this.drawConfig(scene);
+    else this.drawControls(scene);
+    this.drawInfoBanner(scene);
+    this.scene.present(surf);
     return surf;
   }
 
-  private drawTabs(surf: Surface, vw: number): void {
-    const halfW = Math.floor(vw / 2);
-    const isTopPhase = this.phase === 'top_config' || this.phase === 'top_controls';
-
-    // Config tab
-    const configActive = this.activeTab === 'config';
-    const configBg = configActive ? COLOR_TAB_BG_ACTIVE : COLOR_TAB_BG_INACTIVE;
-    surf.fillRect(0, 0, halfW, TAB_HEIGHT, configBg);
-    if (isTopPhase && configActive) {
-      // Draw selection border
-      surf.drawRect(0, 0, halfW, TAB_HEIGHT, COLOR_TAB_ACTIVE);
+  private drawTopMenu(surf: Surface): void {
+    const bg = baseSurf(HEADER_WIDTH, 24, 'menu_bg_clear');
+    const offset = Math.floor((WINWIDTH / 2 - HEADER_WIDTH) / 2);
+    surf.blit(bg, offset, 4);
+    surf.blit(bg, WINWIDTH / 2 + offset, 4);
+    const onConfig = this.currentMenu === this.configMenu;
+    const top = this.phase === 'top_menu_left' || this.phase === 'top_menu_right';
+    blitTextCenter(surf, onConfig ? 'text-yellow' : 'text-grey', 'Config', offset + HEADER_WIDTH / 2, 8);
+    blitTextCenter(surf, onConfig ? 'text-grey' : 'text-yellow', 'Controls', WINWIDTH / 2 + offset + HEADER_WIDTH / 2, 8);
+    if (top) {
+      if (onConfig) this.topCursor.draw(surf, HEADER_WIDTH / 2 - 16, 8);
+      else this.topCursor.draw(surf, WINWIDTH / 2 + 2 + HEADER_WIDTH / 2 - 16, 8);
     }
-    const configColor = configActive ? COLOR_TAB_ACTIVE : COLOR_TAB_INACTIVE;
-    surf.drawText('Config', halfW / 2 - 15, 4, configColor, '8px monospace');
-
-    // Controls tab
-    const controlsActive = this.activeTab === 'controls';
-    const controlsBg = controlsActive ? COLOR_TAB_BG_ACTIVE : COLOR_TAB_BG_INACTIVE;
-    surf.fillRect(halfW, 0, vw - halfW, TAB_HEIGHT, controlsBg);
-    if (isTopPhase && controlsActive) {
-      surf.drawRect(halfW, 0, vw - halfW, TAB_HEIGHT, COLOR_TAB_ACTIVE);
-    }
-    const controlsColor = controlsActive ? COLOR_TAB_ACTIVE : COLOR_TAB_INACTIVE;
-    surf.drawText('Controls', halfW + (vw - halfW) / 2 - 20, 4, controlsColor, '8px monospace');
-
-    // Divider line under tabs
-    surf.fillRect(0, TAB_HEIGHT, vw, 1, 'rgba(80,80,140,0.5)');
   }
 
-  private drawConfigList(surf: Surface, vw: number, vh: number): void {
-    const inList = this.phase === 'config';
-    const visibleEnd = Math.min(CONFIG_SETTINGS.length, this.configScroll + VISIBLE_ROWS);
+  /** Controls.draw / Config.draw background, scroll bar, and rows. */
+  private drawMenuFrame(surf: Surface, menu: SimpleList): [number, number] {
+    const [tx, ty] = menu.topleft();
+    const bg = baseSurf(OPTION_WIDTH - (OPTION_WIDTH % 8), menu.menuHeight, 'menu_bg_base');
+    const alpha = bg.getAlpha();
+    bg.setAlpha(0.9); // image_mods.make_translucent(bg, .1)
+    surf.blit(bg, tx, ty);
+    bg.setAlpha(alpha);
+    if (menu.count > MENU_LIMIT) {
+      menu.scrollBar.draw(surf, tx + OPTION_WIDTH - (OPTION_WIDTH % 8), ty, menu.scroll, MENU_LIMIT, menu.count);
+    }
+    return [tx, ty];
+  }
 
-    for (let i = this.configScroll; i < visibleEnd; i++) {
+  private drawConfig(surf: Surface): void {
+    const menu = this.configMenu;
+    const [tx, ty] = this.drawMenuFrame(surf, menu);
+    const icons = getSprite('settings_icons');
+    const end = Math.min(menu.count, menu.scroll + MENU_LIMIT);
+    for (let i = menu.scroll; i < end; i++) {
       const def = CONFIG_SETTINGS[i];
-      const rowIdx = i - this.configScroll;
-      const y = LIST_Y + rowIdx * ROW_HEIGHT;
-
-      // Highlight bar on selected row
-      if (inList && i === this.configCursor) {
-        surf.fillRect(2, y, vw - 4, ROW_HEIGHT - 1, COLOR_ROW_HIGHLIGHT);
+      const top = ty + 4 + (i - menu.scroll) * OPTION_HEIGHT;
+      const left = tx - 4;
+      const active = i === menu.currentIndex && menu.takesInput;
+      blitSub(surf, icons, 0, def.icon * 16, 16, 16, left + 16, top);
+      blitText(surf, 'text', displayName(def.name), left + 32, top);
+      const value = currentValue(def);
+      switch (def.kind) {
+        case 'bool': this.drawBool(surf, left, top, value === 'ON'); break;
+        case 'slider': this.drawSlider(surf, i, def, left, top, value, active); break;
+        case 'choice': this.drawChoice(surf, def, left, top, value); break;
+        case 'simple': this.drawSimple(surf, def, left, top, value); break;
       }
-
-      // Label
-      surf.drawText(def.label, LABEL_X, y + 3, COLOR_LABEL, '7px monospace');
-
-      // Value display on the right side
-      const valueIdx = this.configValues[i];
-      const val = def.values[valueIdx];
-      const rightX = vw - VALUE_X_RIGHT_MARGIN;
-
-      switch (def.type) {
-        case 'bool':
-          this.drawBoolValue(surf, rightX, y + 3, valueIdx === 1);
-          break;
-        case 'slider':
-          this.drawSliderValue(surf, rightX, y + 3, valueIdx, def.values.length);
-          break;
-        case 'choice':
-          this.drawChoiceValue(surf, rightX, y + 3, String(val));
-          break;
-      }
-    }
-
-    // Scroll indicators
-    if (this.configScroll > 0) {
-      surf.drawText('^', Math.floor(vw / 2), LIST_Y - 4, COLOR_SCROLL_IND, '6px monospace');
-    }
-    if (visibleEnd < CONFIG_SETTINGS.length) {
-      const bottomY = LIST_Y + VISIBLE_ROWS * ROW_HEIGHT;
-      surf.drawText('v', Math.floor(vw / 2), bottomY, COLOR_SCROLL_IND, '6px monospace');
+      if (active) menu.cursor.draw(surf, left + 8, top);
     }
   }
 
-  private drawBoolValue(surf: Surface, rightX: number, y: number, isOn: boolean): void {
-    if (isOn) {
-      surf.drawText('ON', rightX - 14, y, COLOR_VALUE_ON, '7px monospace');
-    } else {
-      surf.drawText('OFF', rightX - 18, y, COLOR_VALUE_OFF, '7px monospace');
+  /** BoolOption.draw */
+  private drawBool(surf: Surface, x: number, y: number, on: boolean): void {
+    const onFont = on ? 'text-blue' : 'text-grey';
+    const offFont = on ? 'text-grey' : 'text-blue';
+    const onStr = `${translate('ON')}    `;
+    blitText(surf, onFont, onStr, x + 112, y);
+    blitText(surf, offFont, translate('OFF'), x + 112 + textWidth(onFont, onStr), y);
+  }
+
+  /** SliderOption.draw */
+  private drawSlider(
+    surf: Surface, idx: number, def: SettingDef, x: number, y: number, value: string | number, active: boolean,
+  ): void {
+    this.sliderCounters[idx] = (this.sliderCounters[idx] + 1) % SLIDER_ANIM.length;
+    const bar = getSprite('menus/health_bar_bg');
+    if (!bar) return;
+    blitSprite(surf, bar, x + 112, y + 4);
+    const cursor = getSprite('waiting_cursor');
+    if (!cursor) return;
+    const values = def.values as number[];
+    const vidx = values.indexOf(value as number);
+    // Python's fallback for an off-list value keeps its operator precedence:
+    // value - values[0] / (values[-1] - values[0]).
+    const fraction = vidx >= 0
+      ? vidx / (values.length - 1)
+      : Number(value) - values[0] / (values[values.length - 1] - values[0]);
+    const offset = fraction * (bar.width - 6);
+    const bop = active ? Math.floor(SLIDER_ANIM[this.sliderCounters[idx]] / 2) - 1 : 0;
+    blitSprite(surf, cursor, Math.floor(x + 112 + offset), y + 4 + bop);
+  }
+
+  /** ChoiceOption.draw */
+  private drawChoice(surf: Surface, def: SettingDef, x: number, y: number, value: string | number): void {
+    blitTextCenter(surf, 'text-blue', translate(String(value)), x + 164, y);
+    const arrows = this.choiceArrows.get(def.name);
+    if (!arrows) return;
+    const [leftArrow, rightArrow] = arrows;
+    leftArrow.x = x + 112;
+    rightArrow.x = x + 216 - 8;
+    leftArrow.y = rightArrow.y = y;
+    leftArrow.draw(surf);
+    rightArrow.draw(surf);
+  }
+
+  /** SimpleOption.draw */
+  private drawSimple(surf: Surface, def: SettingDef, x: number, y: number, value: string | number): void {
+    let running = 0;
+    for (const choice of def.values) {
+      const font = String(choice) === String(value) ? 'text-blue' : 'text-grey';
+      const text = `${translate(String(choice))}    `;
+      blitText(surf, font, text, x + 112 + running, y);
+      running += textWidth(font, text);
     }
   }
 
-  private drawSliderValue(surf: Surface, rightX: number, y: number, index: number, total: number): void {
-    const sliderX = rightX - SLIDER_WIDTH;
-    const sliderY = y + 3;
-    const fraction = total > 1 ? index / (total - 1) : 0;
-    const fillW = Math.round(SLIDER_WIDTH * fraction);
-
-    // Background track
-    surf.fillRect(sliderX, sliderY, SLIDER_WIDTH, SLIDER_HEIGHT, COLOR_SLIDER_BG);
-    // Filled portion
-    if (fillW > 0) {
-      surf.fillRect(sliderX, sliderY, fillW, SLIDER_HEIGHT, COLOR_SLIDER_FILL);
-    }
-    // Cursor pip
-    const pipX = sliderX + fillW - 1;
-    surf.fillRect(Math.max(sliderX, pipX), sliderY - 1, 3, SLIDER_HEIGHT + 2, COLOR_SLIDER_CURSOR);
-  }
-
-  private drawChoiceValue(surf: Surface, rightX: number, y: number, text: string): void {
-    const textW = text.length * 5; // approximate width for 7px monospace
-    const textX = rightX - textW - 12;
-
-    // Left/right arrows
-    surf.drawText('<', textX - 6, y, COLOR_ARROW, '7px monospace');
-    surf.drawText(text, textX + 2, y, COLOR_VALUE_TEXT, '7px monospace');
-    surf.drawText('>', rightX - 6, y, COLOR_ARROW, '7px monospace');
-  }
-
-  private drawControlsList(surf: Surface, vw: number, vh: number): void {
-    const inList = this.phase === 'controls';
-    const visibleEnd = Math.min(CONTROL_ENTRIES.length, this.controlsScroll + VISIBLE_ROWS);
-
-    for (let i = this.controlsScroll; i < visibleEnd; i++) {
+  /** Controls.draw + ControlOption.draw */
+  private drawControls(surf: Surface): void {
+    const menu = this.controlsMenu;
+    const [tx, ty] = this.drawMenuFrame(surf, menu);
+    const buttons = getSprite('buttons');
+    const end = Math.min(menu.count, menu.scroll + MENU_LIMIT);
+    for (let i = menu.scroll; i < end; i++) {
       const entry = CONTROL_ENTRIES[i];
-      const rowIdx = i - this.controlsScroll;
-      const y = LIST_Y + rowIdx * ROW_HEIGHT;
-
-      // Highlight bar
-      if (inList && i === this.controlsCursor) {
-        surf.fillRect(2, y, vw - 4, ROW_HEIGHT - 1, COLOR_ROW_HIGHLIGHT);
-      }
-
-      // Action label
-      surf.drawText(entry.label, LABEL_X, y + 3, COLOR_LABEL, '7px monospace');
-
-      // Key binding (read-only)
-      const keyText = entry.defaultKey;
-      const keyW = keyText.length * 4;
-      surf.drawText(keyText, vw - VALUE_X_RIGHT_MARGIN - keyW, y + 3, COLOR_CONTROLS_KEY, '6px monospace');
-    }
-
-    // Scroll indicators
-    if (this.controlsScroll > 0) {
-      surf.drawText('^', Math.floor(vw / 2), LIST_Y - 4, COLOR_SCROLL_IND, '6px monospace');
-    }
-    if (visibleEnd < CONTROL_ENTRIES.length) {
-      const bottomY = LIST_Y + VISIBLE_ROWS * ROW_HEIGHT;
-      surf.drawText('v', Math.floor(vw / 2), bottomY, COLOR_SCROLL_IND, '6px monospace');
+      const top = ty + 4 + (i - menu.scroll) * OPTION_HEIGHT;
+      const left = tx - 4;
+      const active = i === menu.currentIndex && menu.takesInput;
+      const [sx, sy, sw, sh] = entry.rect;
+      blitSub(surf, buttons, sx, sy, sw, sh, left + 32 - Math.floor(sw / 2), top + 8 - Math.floor(sh / 2));
+      blitText(surf, 'text', translate(entry.name), left + 56, top);
+      blitText(surf, 'text-blue', KEY_NAMES[entry.button] ?? '', left + 128, top);
+      if (active) menu.cursor.draw(surf, left + 8, top);
     }
   }
 
-  private drawInfoBar(surf: Surface, vw: number, vh: number): void {
-    const barY = vh - INFO_BAR_HEIGHT;
-    surf.fillRect(0, barY, vw, INFO_BAR_HEIGHT, COLOR_INFO_BG);
-
-    let description = '';
-
-    if (this.phase === 'config') {
-      if (this.configCursor >= 0 && this.configCursor < CONFIG_SETTINGS.length) {
-        description = CONFIG_SETTINGS[this.configCursor].description;
-      }
-    } else if (this.phase === 'controls') {
-      if (this.controlsCursor >= 0 && this.controlsCursor < CONTROL_ENTRIES.length) {
-        description = `${CONTROL_ENTRIES[this.controlsCursor].label}: ${CONTROL_ENTRIES[this.controlsCursor].defaultKey}`;
-      }
-    } else if (this.phase === 'top_config') {
-      description = 'Game configuration options.';
-    } else if (this.phase === 'top_controls') {
-      description = 'View key bindings.';
-    }
-
-    surf.drawText(description, 4, barY + 4, COLOR_INFO_TEXT, '6px monospace');
-
-    // Button hints on the right
-    const hintText = this.phase === 'top_config' || this.phase === 'top_controls'
-      ? 'L/R: Tab  DOWN: Enter  B: Exit'
-      : 'L/R: Change  B: Exit';
-    const hintW = hintText.length * 4;
-    surf.drawText(hintText, vw - hintW - 4, barY + 4, 'rgba(120,120,160,0.8)', '6px monospace');
+  /** SettingsMenuState.draw_info_banner */
+  private drawInfoBanner(surf: Surface): void {
+    const height = 16;
+    surf.blit(baseSurf(WINWIDTH + 16, height, 'menu_bg_clear'), -8, WINHEIGHT - height);
+    let text: string;
+    if (this.phase === 'top_menu_left') text = 'config_desc';
+    else if (this.phase === 'config') text = `${CONFIG_SETTINGS[this.configMenu.currentIndex].name}_desc`;
+    else text = 'keymap_desc'; // Python's top_menu_right branch is unreachable
+    blitTextCenter(surf, 'text', translate(text), WINWIDTH / 2, WINHEIGHT - height);
   }
 }

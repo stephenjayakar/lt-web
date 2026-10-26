@@ -1,6 +1,35 @@
+/**
+ * objective-dialog-states.ts — ObjectiveMenuState and DialogLogState.
+ *
+ * Ports lt-maker/app/engine/objective_menu.py (with menus.Table in its
+ * 'objective_menu' mode) and dialog_log.py / graphics/dialog/dialog_log_ui.py.
+ */
+
 import { State, type StateResult } from '../state';
-import type { Surface } from '../surface';
+import { Surface } from '../surface';
 import type { InputEvent } from '../input';
+import { WINHEIGHT, WINWIDTH } from '../constants';
+import { viewport } from '../viewport';
+import { drawStyledText } from '../../ui/styled-text';
+import {
+  MenuBackground,
+  MenuScene,
+  ScrollBar,
+  blitBaseSurf,
+  blitSprite,
+  blitSub,
+  blitText,
+  blitTextCenter,
+  blitTextRight,
+  drawChibi,
+  formatPlaytime,
+  getSprite,
+  lineWrap,
+  passiveFrame,
+  preloadSprites,
+  textWidth,
+  unitDisplayName,
+} from '../../ui/menu-chrome';
 
 let _game: any = null;
 export function setObjectiveDialogGameRef(game: any): void {
@@ -11,14 +40,7 @@ function getGame(): any {
   return _game;
 }
 
-const FONT = '7px monospace';
-const SMALL = '6px monospace';
-const GOLD = '#f6d77a';
-const TEXT = '#f7f3df';
-const MUTED = '#a9b4c8';
-const PANEL = 'rgba(10, 18, 33, 0.94)';
-const EDGE = '#8da9cf';
-
+/** Python DialogLog.clean_speak_text, with {br} stored as '\n'. */
 function cleanDialogText(text: string): string {
   return text
     .trim()
@@ -29,163 +51,336 @@ function cleanDialogText(text: string): string {
     .replace(/\{rcb\}/g, '}')
     .replace(/\||\{br\}|\{clear\}|\{sub_break\}/g, '\n')
     .replace(/\{[^{}]*\}/g, '')
-    .replace(/[ \t]+/g, ' ');
+    .replace(/ +/g, ' ');
 }
 
-function wrap(text: string, columns: number): string[] {
-  const lines: string[] = [];
-  for (const paragraph of cleanDialogText(text).split('\n')) {
-    const words = paragraph.split(' ');
-    let line = '';
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (candidate.length > columns && line) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = candidate;
-      }
+/** text_renderer.fix_tags: re-open/close tags that span split lines. */
+function fixTags(lines: string[]): string[] {
+  const stack: string[] = [];
+  return lines.map((line) => {
+    let fixed = line;
+    for (const tag of [...stack].reverse()) fixed = `<${tag}>${fixed}`;
+    for (const match of line.matchAll(/<([^<>]*)>/g)) {
+      if (match[1].includes('/')) stack.pop();
+      else stack.push(match[1]);
     }
-    lines.push(line);
-  }
-  return lines.filter((line, index, all) => line || all.length === 1 || index < all.length - 1);
+    for (let i = 0; i < stack.length; i++) fixed = `${fixed}</>`;
+    return fixed;
+  });
 }
 
-function panel(surf: Surface, x: number, y: number, width: number, height: number): void {
-  surf.fillRect(x, y, width, height, PANEL);
-  surf.drawRect(x, y, width, height, EDGE);
-  surf.drawLine(x + 2, y + 2, x + width - 3, y + 2, 'rgba(255,255,255,.18)');
+/** ','+condition split on commas, '{comma}' restored (objective_menu.get_surfaces). */
+function conditionLines(condition: string): string[] {
+  return fixTags(`,${condition}`.split(',').map((line) => line.replace(/\{comma\}/g, ',')));
 }
+
+// ============================================================================
+// ObjectiveMenuState
+// ============================================================================
+
+const TABLE_TOPLEFT: [number, number] = [4, 60];
+const TABLE_ROWS = 6;
 
 export class ObjectiveMenuState extends State {
   readonly name = 'objective_menu';
   override readonly showMap = false;
-  private scroll = 0;
+  override readonly inLevel = false;
 
-  override begin(): StateResult {
+  private bg: MenuBackground | null = null;
+  private scene = new MenuScene();
+  private options: string[] = [];
+  private currentIndex = 0;
+  private scroll = 0;
+  private winCount = 0;
+  private scrollBar = new ScrollBar();
+
+  override start(): StateResult {
+    const game = getGame();
+    this.bg = new MenuBackground('settings_background', game.resources);
+    preloadSprites([
+      'menus/chapter_select_green', 'golden_words', 'menus/lowlight', 'scroll_bar',
+      'menus/menu_shimmer1', 'menus/menu_shimmer_green', 'menus/menu_shimmer_red', 'menus/menu_shimmer_purple',
+    ]);
+    const objective = game.currentLevel?.objective ?? {};
+    const win = String(objective.win ?? '');
+    const loss = String(objective.loss ?? '');
+    this.winCount = (win.match(/,/g) ?? []).length;
+    this.options = [...conditionLines(win), ...conditionLines(loss)];
+    this.currentIndex = 0;
     this.scroll = 0;
+  }
+
+  // -- menus.Table move_down/move_up in 'objective_menu' mode (columns = 1) --
+
+  private moveDown(): void {
+    const n = this.options.length;
+    let row = this.currentIndex + 5;
+    if (row >= n) {
+      row = 0;
+      this.scroll = 0;
+    }
+    if (row > this.scroll + TABLE_ROWS - 5) this.scroll += 5;
+    else if (row > this.scroll + TABLE_ROWS - 2) this.scroll += 1;
+    this.currentIndex = row;
+    this.scroll = Math.max(0, Math.min(this.scroll, Math.max(0, n - TABLE_ROWS)));
+  }
+
+  private moveUp(): void {
+    const n = this.options.length;
+    let row = this.currentIndex - 5;
+    if (row < 0) {
+      row = n - 1;
+      this.scroll = n - TABLE_ROWS;
+    }
+    if (row < this.scroll + 4) this.scroll -= 5;
+    else if (row < this.scroll + 1) this.scroll -= 1;
+    this.currentIndex = row;
+    this.scroll = Math.max(0, this.scroll);
   }
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
-    if (event === 'UP') this.scroll = Math.max(0, this.scroll - 1);
-    else if (event === 'DOWN') this.scroll += 1;
-    else if (event === 'BACK' || event === 'INFO' || game.input?.mouseClick === 'BACK') {
+    if (event === 'DOWN' || event === 'UP') {
+      const before = this.scroll;
+      if (event === 'DOWN') this.moveDown();
+      else this.moveUp();
+      if (before !== this.scroll) game.audioManager?.playSfx?.('Select 6');
+    }
+    if (event === 'BACK' || game.input?.mouseClick === 'BACK') {
       game.audioManager?.playSfx?.('Select 4');
       game.state.back();
     }
   }
 
+  override update(): StateResult {
+    this.bg?.update();
+  }
+
+  /** ObjectiveMenuState.determine_party_leader */
+  private partyLeader(): any {
+    const game = getGame();
+    let unit: any = null;
+    if (game.roamInfo?.roam) {
+      unit = game.roamInfo.roamUnitNid ? game.units.get(game.roamInfo.roamUnitNid) : null;
+    } else {
+      const leader = game.getParty?.()?.leaderNid;
+      unit = leader ? game.units.get(leader) : null;
+    }
+    if (!unit) {
+      const all: any[] = game.getUnitsInParty?.() ?? [];
+      unit = all.find((u) => (u.tags ?? []).includes('Lord')) ?? all[0] ?? null;
+    }
+    return unit;
+  }
+
   override draw(surf: Surface): Surface {
     const game = getGame();
-    const level = game.currentLevel;
-    surf.fill(6, 11, 23, 1);
-    surf.fillRect(0, 0, surf.width, 30, '#10294a');
-    surf.fillRect(0, 29, surf.width, 1, '#d5a94a');
+    if (this.bg) this.bg.draw(surf);
+    else surf.fill(0, 0, 0);
+    const s = this.scene.begin();
 
-    surf.drawText(level?.name ?? 'Current Mission', 8, 7, TEXT, 'bold 10px monospace');
-    surf.drawText('MISSION BRIEF', 8, 20, GOLD, SMALL);
-    const seed = String(game.gameVars.get('_random_seed') ?? 0);
-    surf.drawText(`#${seed}`, surf.width - 9 - seed.length * 6, 9, MUTED, SMALL);
+    this.drawTable(s);
 
-    panel(surf, 5, 35, surf.width - 10, 28);
-    const playSeconds = Math.floor(Number(game.playtime ?? 0) / 1000);
-    const playtime = `${Math.floor(playSeconds / 3600)}:${String(Math.floor(playSeconds / 60) % 60).padStart(2, '0')}:${String(playSeconds % 60).padStart(2, '0')}`;
-    const stats = [
-      ['TURN', String(game.turnCount ?? 1)],
-      ['FUNDS', `${game.getMoney?.() ?? 0}G`],
-      ['TIME', playtime],
-    ];
-    stats.forEach(([label, value], index) => {
-      const x = 12 + index * Math.floor((surf.width - 24) / 3);
-      surf.drawText(label, x, 40, GOLD, SMALL);
-      surf.drawText(value, x, 50, TEXT, FONT);
-    });
+    // Chapter name on chapter_select_green.
+    const nameBack = getSprite('menus/chapter_select_green');
+    if (nameBack) {
+      blitSprite(s, nameBack, 24, 2);
+      blitTextCenter(s, 'chapter-green', game.currentLevel?.name ?? '', 24 + Math.floor(nameBack.width / 2),
+        2 + Math.floor(nameBack.height / 2) - 8);
+    }
 
-    panel(surf, 5, 68, Math.floor(surf.width * 0.62), 86);
-    surf.drawText('OBJECTIVES', 12, 74, GOLD, SMALL);
-    const objective = level?.objective ?? {};
-    const lines = [
-      ...wrap(`VICTORY  ${objective.win || objective.simple || 'Complete the mission'}`, 31),
-      '',
-      ...wrap(`DEFEAT   ${objective.loss || 'The party falls'}`, 31),
-    ];
-    const visible = lines.slice(this.scroll, this.scroll + 8);
-    visible.forEach((line, index) => {
-      surf.drawText(line, 12, 86 + index * 8, line.startsWith('VICTORY') || line.startsWith('DEFEAT') ? GOLD : TEXT, SMALL);
-    });
-    this.scroll = Math.min(this.scroll, Math.max(0, lines.length - 8));
+    // Turn / funds / playtime strip.
+    blitBaseSurf(s, WINWIDTH - 8, 24, 'menu_bg_white', 4, 34);
+    const golden = getSprite('golden_words');
+    blitSub(s, golden, 0, 17, 26, 10, 10, 42);
+    blitSub(s, golden, 0, 33, 32, 10, Math.floor(WINWIDTH / 3) - 8, 42);
+    blitSub(s, golden, 32, 15, 17, 13, Math.floor(2 * WINWIDTH / 3) + 6, 39);
+    blitSub(s, golden, 40, 47, 9, 12, Math.floor(2 * WINWIDTH / 3) - 9, 40);
+    const topCount = (a: number, pos: [number, number], value: unknown): void => {
+      const text = String(value);
+      const w = textWidth('text-blue', text) + 1;
+      blitText(s, 'text-blue', text, Math.floor(a * WINWIDTH / 3) - pos[0] - w, pos[1]);
+    };
+    topCount(1, [16, 38], game.turnCount ?? 1);
+    topCount(2, [12, 38], game.getMoney?.() ?? 0);
 
-    const rightX = Math.floor(surf.width * 0.62) + 9;
-    const rightW = surf.width - rightX - 5;
-    panel(surf, rightX, 68, rightW, 58);
-    surf.drawText('FORCES', rightX + 7, 74, GOLD, SMALL);
-    const teamRows = [
-      ['PLAYER', 'player', '#76d6ff'],
-      ['ENEMY', 'enemy', '#ff7c72'],
-      ['OTHER', 'other', '#9be49b'],
-    ];
-    teamRows.forEach(([label, team, color], index) => {
-      const count = game.getTeamUnits?.(team).filter((unit: any) => unit.position).length ?? 0;
-      surf.drawText(label, rightX + 7, 87 + index * 11, color, SMALL);
-      surf.drawText(String(count || '--'), rightX + rightW - 18, 87 + index * 11, TEXT, FONT);
-    });
+    // Random seed.
+    const seed = String(game.gameVars?.get?.('_random_seed') ?? 0);
+    blitTextCenter(s, 'text_numbers', seed, WINWIDTH - 28 + 14, 4);
 
-    panel(surf, rightX, 131, rightW, 23);
-    surf.drawText('↑↓ scroll', rightX + 6, 137, MUTED, SMALL);
-    surf.drawText('B close', rightX + 6, 146, TEXT, SMALL);
+    // Unit count per team.
+    const onField = (team: string): any[] => [...game.units.values()]
+      .filter((u: any) => u.team === team && u.position && !u.isDead?.());
+    const teamBox = (pos: [number, number], bgNid: string, shimmer: string): void => {
+      const w = WINWIDTH - 192;
+      blitBaseSurf(s, w, 24, bgNid, pos[0], pos[1]);
+      const sh = getSprite(`menus/${shimmer}`);
+      if (sh) blitSprite(s, sh, pos[0] + w - 1 - sh.width, pos[1] + 24 - sh.height - 5);
+    };
+    const partyWord = (x: number, y: number, w: number, h: number, pos: [number, number]): void => {
+      blitSub(s, golden, x, y, w, h, WINWIDTH - pos[0], pos[1]);
+    };
+    const unitCount = (pos: [number, number], units: any[]): void => {
+      const text = units.length > 0 ? String(units.length) : '--';
+      const w = textWidth('text-blue', String(units.length)) + 6;
+      blitText(s, 'text-blue', text, WINWIDTH - pos[0] - w + (units.length > 0 ? 5 : 0), pos[1]);
+    };
+    teamBox([132, 60], 'menu_bg_base', 'menu_shimmer1');
+    partyWord(56, 12, 40, 8, [104, 57]);
+    unitCount([75, 62], onField('player'));
+    teamBox([132, 80], 'menu_bg_green', 'menu_shimmer_green');
+    partyWord(56, 36, 40, 8, [104, 77]);
+    unitCount([75, 82], onField('other'));
+    teamBox([188, 60], 'menu_bg_red', 'menu_shimmer_red');
+    partyWord(56, 20, 40, 8, [48, 57]);
+    unitCount([16, 62], onField('enemy'));
+    teamBox([188, 80], 'menu_bg_purple', 'menu_shimmer_purple');
+    unitCount([16, 82], onField('enemy2'));
+
+    // Party leader box.
+    blitBaseSurf(s, WINWIDTH - 136, 62, 'menu_bg_white', 132, 100);
+    const unit = this.partyLeader();
+    if (unit) {
+      drawChibi(s, game.resources, unit.portraitNid, WINWIDTH - 44 + 7, 111 + 8);
+      blitTextRight(s, 'text-white', String(unit.name ?? ''), WINWIDTH - 40 - 1, 104);
+      blitSub(s, golden, 0, 48, 16, 24, 140, 122);
+      blitTextRight(s, 'text-blue', String(unit.level ?? 1), WINWIDTH - 42 - 1, 120);
+      blitSub(s, golden, 16, 48, 20, 24, 140, 136);
+      const hp = String(unit.getHp?.() ?? unit.currentHp ?? 0);
+      const maxHp = String(unit.getMaxHp?.() ?? unit.maxHp ?? 0);
+      const hpW = textWidth('text-blue', hp) + 20;
+      blitText(s, 'text-blue', `${hp}/${maxHp}`, WINWIDTH - 42 - hpW, 134);
+      const frame = passiveFrame(unit.sprite);
+      if (frame) s.blit(frame, 116, 82);
+    }
+
+    blitTextRight(s, 'text-blue', formatPlaytime(Number(game.playtime ?? 0)), WINWIDTH - 8, 38);
+
+    this.scene.present(surf);
     return surf;
   }
+
+  /** menus.Table.draw in 'objective_menu' mode. */
+  private drawTable(s: Surface): void {
+    const [tx, ty] = TABLE_TOPLEFT;
+    const width = 120;
+    const height = 16 * TABLE_ROWS + 8;
+    blitBaseSurf(s, width, height, 'menu_bg_base', tx, ty, 0.1);
+    if (this.options.length > TABLE_ROWS) {
+      this.scrollBar.draw(s, tx + width, ty, this.scroll, TABLE_ROWS, this.options.length);
+    }
+    const lowlight = getSprite('menus/lowlight');
+    const wc = this.winCount;
+    const visible = this.options.slice(this.scroll, this.scroll + TABLE_ROWS);
+    visible.forEach((text, idx) => {
+      const absolute = idx + this.scroll;
+      const top = ty + 4 + idx * 16;
+      if (absolute < 1) {
+        blitSprite(s, lowlight, tx + 2, ty + 12);
+        blitText(s, 'text-yellow', 'Win Conditions', tx + 4, ty + 4);
+        blitSprite(s, lowlight, tx + 2, ty + 44 + wc * 16);
+        blitText(s, 'text-yellow', 'Loss Conditions', tx + 4, ty + 36 + wc * 16);
+      } else if (absolute === this.currentIndex) {
+        if (this.currentIndex <= 6 || wc >= this.scroll - 2) {
+          const offset = (wc - this.scroll + 2) * 16;
+          blitSprite(s, lowlight, tx + 2, ty + 12 + offset);
+          blitText(s, 'text-yellow', 'Loss Conditions', tx + 4, ty + 4 + offset);
+        }
+      }
+      drawStyledText(s, text, tx + 5, top, 'white', 'text');
+    });
+  }
+}
+
+// ============================================================================
+// DialogLogState (dialog_log_ui.DialogLogUI)
+// ============================================================================
+
+const LOG_FONT_HEIGHT = 16;
+const LOG_CHIBI_SIZE = 32;
+const LOG_SCROLL_DISTANCE = 4;
+
+interface LogEntryLayout {
+  name: string;
+  portraitNid: string | null;
+  lines: string[];
+  height: number;
 }
 
 export class DialogLogState extends State {
   readonly name = 'dialog_log';
   override readonly transparent = true;
+  /** Pixels scrolled up from the bottom of the tray. */
   private scroll = 0;
+  private layoutCache: { source: unknown[]; length: number; entries: LogEntryLayout[] } | null = null;
 
   override begin(): StateResult {
-    this.scroll = Math.max(0, (getGame().dialogLogEntries?.length ?? 0) - 4);
+    this.scroll = 0; // scroll_to_bottom
+  }
+
+  private entries(): LogEntryLayout[] {
+    const game = getGame();
+    const source: Array<{ speaker: string; text: string }> = game.dialogLogEntries ?? [];
+    if (this.layoutCache && this.layoutCache.source === source && this.layoutCache.length === source.length) {
+      return this.layoutCache.entries;
+    }
+    const entries = source.map((entry) => {
+      const lines: string[] = [];
+      for (const chunk of entry.text.split('\n')) lines.push(...lineWrap('text', chunk, WINWIDTH - LOG_CHIBI_SIZE));
+      return {
+        name: entry.speaker ? unitDisplayName(game, entry.speaker) : '',
+        portraitNid: this.portraitFor(entry.speaker),
+        lines,
+        height: Math.max(LOG_CHIBI_SIZE, LOG_FONT_HEIGHT + lines.length * LOG_FONT_HEIGHT),
+      };
+    });
+    this.layoutCache = { source, length: source.length, entries };
+    return entries;
+  }
+
+  /** DialogLog.get_chibi portrait lookup. */
+  private portraitFor(name: string): string | null {
+    if (!name) return null;
+    const game = getGame();
+    const unit = game.units?.get?.(name);
+    if (unit?.portraitNid) return unit.portraitNid;
+    const prefab = game.db?.units?.get?.(name);
+    if (prefab) return prefab.portraitNid ?? prefab.portrait_nid ?? null;
+    return name;
   }
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
-    const max = Math.max(0, (game.dialogLogEntries?.length ?? 0) - 1);
-    if (event === 'UP') this.scroll = Math.max(0, this.scroll - 1);
-    else if (event === 'DOWN') this.scroll = Math.min(max, this.scroll + 1);
-    else if (event === 'INFO' || event === 'BACK' || game.input?.mouseClick === 'BACK') {
+    const entries = this.entries();
+    if (event === 'UP') {
+      const total = entries.reduce((sum, e) => sum + e.height, 0);
+      this.scroll = Math.min(Math.max(0, total - WINHEIGHT), this.scroll + LOG_SCROLL_DISTANCE);
+    } else if (event === 'DOWN') {
+      this.scroll = Math.max(0, this.scroll - LOG_SCROLL_DISTANCE);
+    }
+    if (event === 'INFO' || event === 'BACK' || game.input?.mouseClick === 'BACK') {
       game.state.back();
     }
   }
 
   override draw(surf: Surface): Surface {
-    const entries: Array<{ speaker: string; text: string }> = getGame().dialogLogEntries ?? [];
-    surf.fillRect(0, 0, surf.width, surf.height, 'rgba(2, 6, 14, 0.82)');
-    panel(surf, 8, 7, surf.width - 16, surf.height - 14);
-    surf.drawText('DIALOG LOG', 16, 14, GOLD, 'bold 9px monospace');
-    surf.drawText('INFO / B  close', surf.width - 91, 16, MUTED, SMALL);
-    surf.drawLine(15, 28, surf.width - 16, 28, 'rgba(141,169,207,.55)');
-
-    let y = 35;
-    for (let index = this.scroll; index < entries.length && y < surf.height - 15; index++) {
-      const entry = entries[index];
-      const lines = wrap(entry.text, 43);
-      const height = 12 + lines.length * 8;
-      if (y + height > surf.height - 10 && index > this.scroll) break;
-      if (entry.speaker) surf.drawText(entry.speaker.toUpperCase(), 17, y, GOLD, SMALL);
-      lines.forEach((line, lineIndex) => {
-        surf.drawText(line, 17, y + 9 + lineIndex * 8, TEXT, SMALL);
+    const game = getGame();
+    // Fuzzy black background (33, 33, 33, 192) over the whole window.
+    surf.fillRect(0, 0, viewport.width, viewport.height, 'rgba(33,33,33,0.753)');
+    const entries = this.entries();
+    const total = entries.reduce((sum, e) => sum + e.height, 0);
+    const { x: ox, y: oy } = MenuScene.origin();
+    let y = total < WINHEIGHT ? total : WINHEIGHT + this.scroll;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
+      y -= entry.height;
+      if (y > WINHEIGHT || y < -entry.height) continue;
+      const top = oy + y;
+      if (entry.name) blitText(surf, 'text-yellow', entry.name, ox + LOG_CHIBI_SIZE, top);
+      entry.lines.forEach((line, idx) => {
+        drawStyledText(surf, line, ox + LOG_CHIBI_SIZE, top + LOG_FONT_HEIGHT + idx * LOG_FONT_HEIGHT, 'white', 'text');
       });
-      y += height + 5;
-    }
-    if (entries.length === 0) {
-      surf.drawText('No dialog recorded yet.', 17, 42, MUTED, FONT);
-    } else {
-      const trackY = 34;
-      const trackH = surf.height - 52;
-      surf.fillRect(surf.width - 14, trackY, 2, trackH, 'rgba(255,255,255,.16)');
-      const thumbH = Math.max(8, Math.floor(trackH * Math.min(1, 4 / entries.length)));
-      const thumbY = trackY + Math.floor((trackH - thumbH) * (this.scroll / Math.max(1, entries.length - 1)));
-      surf.fillRect(surf.width - 14, thumbY, 2, thumbH, GOLD);
+      drawChibi(surf, game.resources, entry.portraitNid, ox, top);
     }
     return surf;
   }
