@@ -55,6 +55,8 @@ class WebEngine {
   h: any = w.__harness;
   frame = 0;
   suppressEvents = false;
+  /** do_shot captures, keyed by name (PNG data URLs). */
+  shots: Record<string, string> = {};
 
   step(button: string | null = null): void {
     this.frame++;
@@ -412,7 +414,7 @@ class Runner {
           g.state.change('event');
         }
       }
-      await e.settle({ skip: a.skip, maxFrames: a.max_frames });
+      if (a.settle !== false) await e.settle({ skip: a.skip, maxFrames: a.max_frames });
     } finally {
       e.suppressEvents = was;
     }
@@ -435,6 +437,22 @@ class Runner {
 
   async do_settle(a: Action): Promise<void> {
     await this.e.settle({ skip: a.skip, maxFrames: a.max_frames });
+  }
+
+  /** Run JavaScript against the page (visual set-ups); `game`, `harness` and `e` are bound. */
+  async do_exec(a: Action): Promise<void> {
+    const fn = new Function('game', 'harness', 'e', `return (async () => { ${a.js} })();`);
+    await fn(this.e.game, this.e.h, this.e);
+  }
+
+  /** Draw one more frame and keep the screen (written out by web-driver.mjs). */
+  async do_shot(a: Action): Promise<void> {
+    // As many frames as Python's do_shot: all but the last before a pause
+    // that lets real-time image loads land.
+    for (let i = 1; i < Number(a.frames ?? 1); i++) this.e.step(null);
+    await new Promise((resolve) => setTimeout(resolve, Number(a.wait_ms ?? 300)));
+    this.e.step(null);
+    this.e.shots[String(a.name)] = await this.e.h.screenshot();
   }
 
   async run(a: Action): Promise<void> {
@@ -622,5 +640,6 @@ export async function runScenario(scn: Scenario): Promise<Json> {
     console.error(err);
     out.error = `${err?.name ?? 'Error'}: ${err?.message ?? err}\n${err?.stack ?? ''}`;
   }
+  if (Object.keys(e.shots).length) out.shots = e.shots;
   return out;
 }

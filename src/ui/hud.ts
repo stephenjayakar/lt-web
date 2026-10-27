@@ -56,6 +56,9 @@ const HUD_SPRITES = [
   'Minimap_Tiles', 'Minimap_Sprites', 'Minimap_Cursor',
   'marker_talk', 'marker_interact', 'marker_warning', 'marker_danger', 'marker_steal',
   'trade_window', 'rescue_window', 'give_window', 'pennant_bg',
+  // HighlightController sprites (Python loads them at boot).
+  'highlight_blue', 'highlight_lightblue', 'highlight_red', 'highlight_lightred',
+  'highlight_green', 'highlight_lightgreen', 'highlight_lightpurple', 'highlight_yellow',
   // EOtF project sprites for its engine's weather window.
   'Weather_Window', 'Sun_Icon', 'Rain_Icon', 'Sand_Icon', 'Snow_Icon',
 ];

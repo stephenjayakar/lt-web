@@ -39,7 +39,11 @@ export class PathSystem {
    * Get all valid positions a unit can move to this turn.
    * Includes the unit's current position (staying in place is valid).
    */
-  getValidMoves(unit: UnitObject, board: GameBoard): [number, number][] {
+  /**
+   * @param includeOccupied Keep every reachable tile, allies' included, as
+   *   Python's get_valid_moves returns them (the highlight ranges show them).
+   */
+  getValidMoves(unit: UnitObject, board: GameBoard, includeOccupied = false): [number, number][] {
     const pos = unit.position;
     if (!pos) return [];
 
@@ -67,7 +71,7 @@ export class PathSystem {
       const occupant = board.getUnit(x, y);
       // Python keeps occupied tiles in valid_moves; MoveState only refuses a
       // visible occupant, so a fog-hidden enemy's tile can be chosen.
-      if (!occupant || occupant === unit ||
+      if (!occupant || occupant === unit || (includeOccupied && this.db.areAllied(unit.team, occupant.team)) ||
           (!this.db.areAllied(unit.team, occupant.team) && this.hiddenFrom(unit.team, x, y, board))) {
         validMoves.push([x, y]);
       }

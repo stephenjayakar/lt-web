@@ -107,15 +107,24 @@ export class Camera {
     this.pendingPanFrames = Math.max(1, Math.ceil(durationMs / (1000 / 60)));
   }
 
+  /**
+   * Python Camera.set_center: the tile becomes the camera's
+   * (TILEX // 2, TILEY // 2) tile (x - TILEX // 2, y - TILEY // 2), so with
+   * an even TILEY (10) the tile sits half a tile below the exact middle.
+   */
+  private centerOrigin(tileX: number, tileY: number): [number, number] {
+    const tilesX = Math.floor(viewport.width / TILEWIDTH);
+    const tilesY = Math.floor(viewport.height / TILEHEIGHT);
+    return [(tileX - Math.floor(tilesX / 2)) * TILEWIDTH, (tileY - Math.floor(tilesY / 2)) * TILEHEIGHT];
+  }
+
   focusTile(tileX: number, tileY: number): void {
-    const px = tileX * TILEWIDTH + TILEWIDTH / 2 - viewport.width / 2;
-    const py = tileY * TILEHEIGHT + TILEHEIGHT / 2 - viewport.height / 2;
+    const [px, py] = this.centerOrigin(tileX, tileY);
     this.setTarget(px, py);
   }
 
   forceTile(tileX: number, tileY: number): void {
-    const px = tileX * TILEWIDTH + TILEWIDTH / 2 - viewport.width / 2;
-    const py = tileY * TILEHEIGHT + TILEHEIGHT / 2 - viewport.height / 2;
+    const [px, py] = this.centerOrigin(tileX, tileY);
     this.forcePosition(px, py);
   }
 

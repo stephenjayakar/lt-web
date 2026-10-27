@@ -316,6 +316,8 @@ import {
   healAmount as itemHealAmount,
   solomonHpChange,
   canUnlock as itemCanUnlock,
+  rangeRestrict as itemRangeRestrict,
+  noAttackAfterMove as itemNoAttackAfterMove,
 } from '../../combat/item-system';
 import {
   ignoreForcedMovement,
@@ -579,7 +581,7 @@ function collectVisibleUnits(): {
   tintAlpha: number;
   showHp: boolean;
   fx: MapSpriteFx | null;
-  poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
+  poseOverride: { state: 'standing' | 'moving' | 'active'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
   overlay: ((surf: Surface, left: number, top: number, cameraX: number, cameraY: number) => void) | null;
 }[] {
   const game = getGame();
@@ -588,6 +590,7 @@ function collectVisibleUnits(): {
   // still on its fake tile while a departure transition plays.
   const allUnits: UnitObject[] = [...game.board.getAllUnits(), ...offBoardTransitionUnits()];
   const currentTeam = game.phase.getCurrent();
+  const eventOnStack = !!game.state.getStackNames?.().includes('event');
   const result: {
     x: number;
     y: number;
@@ -605,7 +608,7 @@ function collectVisibleUnits(): {
     tintAlpha: number;
     showHp: boolean;
     fx: MapSpriteFx | null;
-    poseOverride: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
+    poseOverride: { state: 'standing' | 'moving' | 'active'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
     overlay: ((surf: Surface, left: number, top: number, cameraX: number, cameraY: number) => void) | null;
   }[] = [];
 
@@ -703,8 +706,11 @@ function collectVisibleUnits(): {
       // (Python's map_view likewise draws HP only for culled units).
       get maxHp() { return u.maxHp; },
       get showHp() {
-        // UnitSprite.draw_hp: only with transition_state 'normal'.
+        // UnitSprite.draw_hp: only with transition_state 'normal', and Python
+        // map_view passes event=True (no bars) whenever an event is on the
+        // stack (prep and other event-opened screens included).
         if (unitFx?.transitioning) return false;
+        if (eventOnStack) return false;
         return shouldDrawMapHp(game, { team: u.team, currentHp: u.currentHp, maxHp: u.maxHp, isDying: unitFx?.dying, dead: u.dead });
       },
       specialTag,
@@ -715,11 +721,131 @@ function collectVisibleUnits(): {
       fx: unitFx,
       poseOverride: unitFx?.direction
         ? { state: 'moving', direction: unitFx.direction }
-        : null,
+        : (!u.finished && !game.movementSystem.isUnitMoving(u) ? chosenSpritePose(game, u) : null),
       overlay: (s, left, top, cameraX, cameraY) => drawUnitTransitionOverlay(s, u, left, top, cameraX, cameraY),
     });
   }
   return result;
+}
+
+/**
+ * Python target_system._get_all_attackable_positions: every tile `items`
+ * reach from `moves` (range shell, special-range restriction, whole map for
+ * a 99+ range), skipping all of them once the unit has attacked.
+ */
+function attackablePositions(game: any, unit: UnitObject, moves: [number, number][], items: ItemObject[]): [number, number][] {
+  if (unit.hasAttacked) return [];
+  const board = game.board;
+  const out = new Map<string, [number, number]>();
+  for (const item of items) {
+    const minRange = modifiedMinimumRange(unit, item, game);
+    const maxRange = modifiedMaximumRange(unit, item, game);
+    if (maxRange < minRange || maxRange <= 0) continue;
+    const from: [number, number][] = itemNoAttackAfterMove(unit, item) && unit.position
+      ? [[unit.position[0], unit.position[1]]] : moves;
+    if (maxRange >= 99) {
+      for (let x = 0; x < board.width; x++) for (let y = 0; y < board.height; y++) out.set(`${x},${y}`, [x, y]);
+      continue;
+    }
+    const restriction = itemRangeRestrict(unit, item, maxRange);
+    for (const [mx, my] of from) {
+      for (let dx = -maxRange; dx <= maxRange; dx++) {
+        for (let dy = -maxRange; dy <= maxRange; dy++) {
+          const dist = Math.abs(dx) + Math.abs(dy);
+          if (dist < minRange || dist > maxRange) continue;
+          if (restriction && !restriction.has(`${dx},${dy}`)) continue;
+          const x = mx + dx;
+          const y = my + dy;
+          if (board.inBounds(x, y)) out.set(`${x},${y}`, [x, y]);
+        }
+      }
+    }
+  }
+  return [...out.values()];
+}
+
+/** LevelCursor.get_hover's visibility test (fog of war). */
+function inVisionForHover(game: any, pos: [number, number]): boolean {
+  return game.board?.inVision?.(pos, 'player', game.getCurrentFogInfo?.(), game.db, game.getAllUnits?.()) ?? true;
+}
+
+/**
+ * Python CombatTargetingState.display_single_attack: the item's whole range
+ * from where the unit stands in the light colour, then the splash around the
+ * cursor and the cursor tile itself in the full colour (green for spells,
+ * red otherwise).
+ */
+function displaySingleAttack(game: any, unit: UnitObject, item: ItemObject, cursor: [number, number]): void {
+  if (!unit.position) return;
+  const spell = item.isSpell();
+  game.highlight.clear();
+  const range = attackablePositions(game, unit, [[unit.position[0], unit.position[1]]], [item]);
+  game.highlight.addHighlights(range, spell ? 'spell_splash' : 'splash');
+  const splash: [number, number][] = game.targetSystem?.getTargetFromPosition?.(unit, item, cursor)?.splash ?? [];
+  game.highlight.addHighlights(splash, spell ? 'spell' : 'attack');
+  game.highlight.addHighlights([cursor], spell ? 'spell' : 'attack');
+}
+
+/** Python AIPrefab.guard_ai: no behaviour ever moves the unit. */
+function aiNeverMoves(prefab: any): boolean {
+  const behaviours: any[] = prefab?.behaviours ?? [];
+  if (behaviours.every((b) => b.action === 'None')) return false;
+  return behaviours.every((b) => b.action === 'None' || Number(b.view_range) === -1);
+}
+
+/**
+ * Python HighlightController.display_highlights(unit, light=True), shown
+ * while the cursor hovers a unit: light spell range, light attack range and
+ * light move range (each later layer replacing the earlier on shared tiles).
+ */
+function displayHoverHighlights(game: any, unit: UnitObject): void {
+  if (!unit.position || !game.pathSystem) return;
+  let moves: [number, number][] = game.pathSystem.getValidMoves(unit, game.board, true);
+  if (game.db.getConstant('zero_move', false)) {
+    const ai = changeAi(unit, unit.ai, game);
+    if (ai && !game.isAiGroupActive?.(unit.aiGroup) && aiNeverMoves(game.db.ai?.get?.(ai))) {
+      moves = [[unit.position[0], unit.position[1]]];
+    }
+  }
+  const usable = (item: ItemObject): boolean => itemAvailable(unit, item, game.db, game);
+  const items: ItemObject[] = unit.items ?? [];
+  game.highlight.addHighlights(attackablePositions(game, unit, moves, items.filter((i) => i.isSpell() && usable(i))), 'spell_splash');
+  game.highlight.addHighlights(attackablePositions(game, unit, moves, items.filter((i) => i.isWeapon() && usable(i))), 'splash');
+  game.highlight.addHighlights(moves, 'possible_move');
+}
+
+/** UnitSprite.change_state('selected' | 'chosen' | 'normal') for the acting unit. */
+export function setSpritePose(unit: UnitObject | null | undefined, pose: 'selected' | 'chosen' | null): void {
+  if (!unit) return;
+  (unit as any).mapSpritePose = pose;
+  if (pose !== 'chosen') (unit as any).chosenNet = null;
+}
+
+/**
+ * Python UnitSprite.update_state for 'selected' (walking in place facing
+ * down) and 'chosen' (walking in place facing the cursor, keeping the last
+ * direction while the cursor sits on the unit).
+ */
+function chosenSpritePose(
+  game: any, unit: UnitObject,
+): { state: 'moving' | 'active'; direction?: 'up' | 'down' | 'left' | 'right' } | null {
+  const pose = (unit as any).mapSpritePose;
+  if (pose === 'selected') return { state: 'moving', direction: 'down' };
+  if (!pose && unit.position && unit.team === 'player' && game.cursor.visible) {
+    // 'normal' state: the player unit under the visible cursor shows its
+    // active frames.
+    const [hx, hy] = game.cursor.getPosition();
+    if (hx === unit.position[0] && hy === unit.position[1]) return { state: 'active' };
+  }
+  if (pose !== 'chosen' || !unit.position) return null;
+  const [cx, cy] = game.cursor.getPosition();
+  const net: [number, number] = [cx - unit.position[0], cy - unit.position[1]];
+  if (net[0] !== 0 || net[1] !== 0) (unit as any).chosenNet = net;
+  const [dx, dy]: [number, number] = (unit as any).chosenNet ?? [0, 0];
+  let direction: 'up' | 'down' | 'left' | 'right';
+  if (Math.abs(dx) >= Math.abs(dy)) direction = dx > 0 ? 'right' : dx < 0 ? 'left' : 'down';
+  else direction = dy < 0 ? 'up' : 'down';
+  return { state: 'moving', direction };
 }
 
 /** Render the map through MapView and blit onto `surf`. */
@@ -728,13 +854,14 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
   if (!game.board || !game.tilemap) return surf; // No level loaded
   game.syncSkillMapAnimations();
   game.camera.update();
+  // Python MapState.draw: game.highlight.update() once per drawn map.
+  game.highlight.update();
   game.cursor.update();
 
   const cullRect = game.camera.getCullRect();
   const units = collectVisibleUnits();
-  const highlights: Map<string, string> | null = showHighlights
-    ? game.highlight.getHighlights()
-    : null;
+  // Python HighlightController sprites (the manager hands MapView its layers).
+  const highlights = showHighlights ? game.highlight : null;
 
   const cursorInfo = {
     x: game.cursor.getHover().x,
@@ -2339,6 +2466,8 @@ export class OptionMenuState extends State {
     // when guide lore is unlocked; Turnwheel at index 1 when enabled; custom
     // options inserted before Options.
     // TODO(qa): Python lists 'Unit' first (unit_menu); not ported yet.
+    // Python OptionMenuState.start: game.cursor.hide().
+    game.cursor.visible = false;
     const options: MenuOption[] = [
       { label: 'Objective', value: 'objective', enabled: !!game.currentLevel },
       { label: 'Options', value: 'options', enabled: true },
@@ -2556,6 +2685,8 @@ export class FreeState extends MapState {
 
     // Clear any stale highlights from previous states (matching Python's FreeState.begin)
     game.highlight.clear();
+    // No unit is acting in free: every map sprite is back to 'normal'.
+    for (const u of game.units.values()) setSpritePose(u, null);
     this.auraHoverNid = null;
 
     // Check for free roam mode
@@ -2754,12 +2885,17 @@ export class FreeState extends MapState {
       return;
     }
 
+    // Python HighlightController.handle_hover: the hovered unit's light
+    // move/attack/spell ranges and its auras, cleared when the hover changes.
     const pos = game.cursor.getHover();
     const unit = game.board.getUnit(pos.x, pos.y);
-    const auraHoverNid = unit?.nid ?? null;
+    const visibleUnit = unit && !unitHasTag(unit, 'Tile') && inVisionForHover(game, [pos.x, pos.y]) ? unit : null;
+    const auraHoverNid = visibleUnit?.nid ?? null;
     if (auraHoverNid !== this.auraHoverNid) {
+      for (const type of ['possible_move', 'splash', 'spell_splash'] as const) game.highlight.clearType(type);
+      if (visibleUnit) displayHoverHighlights(game, visibleUnit);
       game.highlight.setAuraHighlights(
-        unit ? auraHighlightPositions(unit, game.board) : [],
+        visibleUnit ? auraHighlightPositions(visibleUnit, game.board) : [],
       );
       this.auraHoverNid = auraHoverNid;
     }
@@ -2880,6 +3016,10 @@ export class MoveState extends MapState {
       return 'repeat';
     }
 
+    // Python MoveState.begin: game.cursor.show() (the menu hid it) and the
+    // unit's sprite walks in place facing down ('selected').
+    game.cursor.show?.();
+    setSpritePose(unit, 'selected');
     this.previousPosition = [unit.position[0], unit.position[1]];
     // Save origin so MenuState can undo the move
     game._moveOrigin = [unit.position[0], unit.position[1]];
@@ -2893,10 +3033,21 @@ export class MoveState extends MapState {
       this.validMoves,
     );
 
-    // Show highlights
+    // Python MoveState.begin: display_highlights (spell, attack, then move
+    // ranges, each replacing the earlier on shared tiles) or, after a trade,
+    // only the remaining moves; plus the unit's auras.
     game.highlight.clear();
-    game.highlight.setMoveHighlights(this.validMoves);
-    game.highlight.setAttackHighlights(this.attackPositions);
+    // Python's valid moves keep allies' tiles (passable, shown in blue).
+    const shownMoves: [number, number][] = game.pathSystem.getValidMoves(unit, game.board, true);
+    if (!unit.hasTraded) {
+      const usable = (item: ItemObject): boolean => itemAvailable(unit, item, game.db, game);
+      game.highlight.addHighlights(
+        attackablePositions(game, unit, shownMoves, unit.items.filter((i) => i.isSpell() && usable(i))), 'spell');
+      game.highlight.addHighlights(
+        attackablePositions(game, unit, shownMoves, unit.items.filter((i) => i.isWeapon() && usable(i))), 'attack');
+    }
+    game.highlight.addHighlights(shownMoves, 'move');
+    game.highlight.setAuraHighlights(auraHighlightPositions(unit, game.board));
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -3037,7 +3188,6 @@ export class MoveState extends MapState {
 
   override draw(surf: Surface): Surface {
     const game = getGame();
-    game.highlight.update();
     surf = drawMap(surf, true);
 
     // Draw path preview from unit to cursor
@@ -3110,6 +3260,8 @@ export class CantoWaitState extends State {
     const game = getGame();
     const unit: UnitObject | null = game.selectedUnit;
     game.audioManager?.playSfx?.('Select 2');
+    // Python CantoWaitState.begin: change_state('selected').
+    setSpritePose(unit, 'selected');
     const options: MenuOption[] = [{ label: 'Wait', value: 'wait', enabled: true }];
     // The EOtF fork's CantoWaitState offers only Wait (no Supply).
     if (unit && !isForkEngine() && supplyAvailableOnMap(unit, game)) {
@@ -3384,6 +3536,22 @@ export class MenuState extends State {
       }
     }
 
+    // Python MenuState.begin: game.cursor.hide(); the sprite faces the
+    // cursor ('chosen'), or walks facing down once it has attacked.
+    game.cursor.visible = false;
+    setSpritePose(unit, unit.hasAttacked ? 'selected' : 'chosen');
+    // Python MenuState.begin "Draw highlights": the first of Attack/Spells
+    // offered shows its range from where the unit stands, plus its auras.
+    game.highlight.clear();
+    const here: [number, number][] = [[ux, uy]];
+    const usable = (item: ItemObject): boolean => itemAvailable(unit, item, game.db, game);
+    if (options.some((o) => o.value === 'attack')) {
+      game.highlight.addHighlights(attackablePositions(game, unit, here, unit.items.filter((i) => i.isWeapon() && usable(i))), 'attack');
+    } else if (options.some((o) => o.value === 'spells')) {
+      game.highlight.addHighlights(attackablePositions(game, unit, here, unit.items.filter((i) => i.isSpell() && usable(i))), 'spell');
+    }
+    game.highlight.setAuraHighlights(auraHighlightPositions(unit, game.board));
+
     // Python menus.Choice 'auto' placement: top-right when the cursor is on
     // the left half of the screen, top-left otherwise.
     this.menu = new ChoiceMenu(options, 0, 8);
@@ -3620,6 +3788,11 @@ export class MenuState extends State {
       this.menu.draw(surf);
     }
     return surf;
+  }
+
+  /** Python MenuState.end: remove_highlights(). */
+  override end(): StateResult {
+    getGame().highlight.clear();
   }
 }
 
@@ -4413,6 +4586,8 @@ export class ItemMenuState extends State {
     const unit: UnitObject | null = game.selectedUnit;
     if (showPendingAlerts(game)) return 'repeat';
     if (unit && enterCantoAfterItemUse(game, unit)) return 'repeat';
+    // Python ItemState.start: the sprite faces the cursor ('chosen').
+    setSpritePose(unit, 'chosen');
     if (!unit || !unit.position || unit.finished) {
       game.state.back();
       return 'repeat';
@@ -4535,9 +4710,11 @@ export class ItemMenuState extends State {
         game.memory.set('item_menu_use_item', item);
         game.state.change('item_use');
       } else if (choice === 'Trade') {
+        // Python ItemChildState: Trade goes through TargetingState too.
         this.child = null;
         this.menu = null;
-        game.state.change('trade');
+        game.memory.set('ability', 'trade');
+        game.state.change('targeting');
       } else if (choice === 'Storage' || choice === 'Discard') {
         this.confirmAction = choice;
         this.confirm = new ChoiceMenu([
@@ -4568,10 +4745,12 @@ export class ItemMenuState extends State {
   }
 
   override draw(surf: Surface): Surface {
-    this.menu?.draw(surf);
     const game = getGame();
     const current = this.items[this.menu?.selectedIndex ?? -1];
-    if (current && !this.child) drawItemDescriptionPanel(surf, game, game.selectedUnit, current);
+    // Python ItemState.draw: the description panel, then the menu; the panel
+    // stays under the transparent item_child menu.
+    if (current) drawItemDescriptionPanel(surf, game, game.selectedUnit, current);
+    this.menu?.draw(surf);
     this.child?.draw(surf);
     this.confirm?.draw(surf);
     return surf;
@@ -4645,9 +4824,13 @@ function drawItemDescriptionPanel(surf: Surface, game: any, unit: UnitObject | n
   const portrait = portraitNid ? getPanelPortrait(game, portraitNid, cursorLeft) : null;
   if (portrait) surf.blitImage(portrait, 0, 0, 96, 80, left + 2, top - 76);
 
-  const bx = left + 2;
-  const by = top + 4;
-  surf.blit(getMenuBackgroundSync(width, height), bx, by);
+  // The window 2 px right of and 4 px below the small gem, translucent by .1.
+  const framed = new Surface(width + 2, height + 4);
+  framed.blit(getMenuBackgroundSync(width, height), 2, 4);
+  const gem = getSprite('menu_gem_small');
+  if (gem) framed.blit(gem, 0, 0);
+  framed.setAlpha(0.9);
+  surf.blit(framed, left, top);
   const available = itemAvailable(unit, item, game.db, game);
   if (item.isWeapon() && available) {
     const t = top + 4;
@@ -4706,77 +4889,6 @@ function drawItemDescriptionPanel(surf: Surface, game: any, unit: UnitObject | n
     lines.slice(0, 3).forEach((line, index) => {
       drawStyledText(surf, line, left + 6, top + 8 + index * 16, 'white', 'text');
     });
-  }
-}
-
-// ============================================================================
-// 4a3. TravelerTransferState — Python TakeAbility / GiveAbility targeting.
-// ============================================================================
-
-export class TravelerTransferState extends State {
-  readonly name = 'traveler_transfer';
-  override readonly transparent = true;
-
-  private menu: ChoiceMenu | null = null;
-  private mode: 'take' | 'give' = 'take';
-  private candidates: UnitObject[] = [];
-
-  override start(): StateResult {
-    const game = getGame();
-    this.mode = game.memory.get('traveler_transfer_mode') === 'give' ? 'give' : 'take';
-    game.memory.delete('traveler_transfer_mode');
-  }
-
-  override begin(): StateResult {
-    const game = getGame();
-    const unit: UnitObject | null = game.selectedUnit;
-    if (!unit || !unit.position) {
-      game.state.back();
-      return 'repeat';
-    }
-    const allies = getAdjacentAllies(unit, unit.position[0], unit.position[1]);
-    this.candidates = this.mode === 'take'
-      ? allies.filter((ally) => ally.isRescuing() && !!ally.rescuing && canCarry(unit, ally.rescuing, game))
-      : allies.filter((ally) => !ally.isRescuing() && !ally.isRescued() &&
-        !!unit.rescuing && canCarry(ally, unit.rescuing, game));
-    if (this.candidates.length === 0) {
-      game.state.back();
-      return 'repeat';
-    }
-    this.menu = new ChoiceMenu(this.candidates.map((ally, index) => ({
-      label: ally.name, value: String(index), enabled: true,
-    })), 0, 8);
-    placeAutoMenu(this.menu, game);
-  }
-
-  override takeInput(event: InputEvent): StateResult {
-    if (!this.menu || event === null) return;
-    const game = getGame();
-    const result = this.menu.handleInput(event);
-    if (!result) return;
-    if ('back' in result) {
-      this.menu = null;
-      game.state.back();
-      return;
-    }
-    const unit: UnitObject = game.selectedUnit;
-    const other = this.candidates[Number(result.selected)];
-    if (!unit || !other) return;
-    // Python: HasTraded + Take/Give; neither counts as the major action, so
-    // the unit returns to its action menu.
-    game.actionLog.doAction(new HasTradedAction(unit));
-    if (this.mode === 'take' && other.rescuing) {
-      game.actionLog.doAction(new TransferTravelerAction(other, unit, other.rescuing, 'take'));
-    } else if (this.mode === 'give' && unit.rescuing) {
-      game.actionLog.doAction(new TransferTravelerAction(unit, other, unit.rescuing, 'give'));
-    }
-    this.menu = null;
-    game.state.back();
-  }
-
-  override draw(surf: Surface): Surface {
-    this.menu?.draw(surf);
-    return surf;
   }
 }
 
@@ -5155,6 +5267,65 @@ export class BaseUseState extends State {
 // 4c. ItemTargetingState - Select a component-valid tile for a usable item
 // ============================================================================
 
+/**
+ * Python ItemTargetingState's menu: a menus.Choice of the target's eligible
+ * items (ItemOption rows) at the automatic Choice spot, top-right when the
+ * cursor is on the left half of the screen and (14, 8) otherwise.
+ */
+class TargetItemChoice {
+  readonly choice: PrepChoice;
+  private readonly values: string[];
+
+  constructor(game: any, items: ItemObject[], values: string[]) {
+    this.values = values;
+    this.choice = new PrepChoice(game, items.map((item) => ({ kind: 'item' as const, item })), [0, 8]);
+    const cursorX = game.cursor?.getPosition?.()?.[0] ?? 0;
+    const cameraX = Math.floor((game.camera?.getOffset?.()?.[0] ?? 0) / TILEWIDTH);
+    const tilesAcross = Math.floor(viewport.width / TILEWIDTH);
+    const width = this.choice.getMenuWidth();
+    this.choice.topleft = [cursorX > Math.floor(tilesAcross / 2) + cameraX ? 14 : viewport.width - width - 14, 8];
+  }
+
+  private selected(): { selected: string } | null {
+    const value = this.values[this.choice.currentIndex];
+    return value === undefined ? null : { selected: value };
+  }
+
+  handleClick(gx: number, gy: number, button: 'SELECT' | 'BACK'): { selected: string } | { back: true } | null {
+    if (button === 'BACK') return { back: true };
+    const [ox, oy] = prepScreenOrigin();
+    return this.choice.handleMouse(gx, gy, ox, oy) >= 0 ? this.selected() : null;
+  }
+
+  handleMouseHover(gx: number, gy: number): void {
+    const [ox, oy] = prepScreenOrigin();
+    this.choice.handleMouse(gx, gy, ox, oy);
+  }
+
+  handleInput(event: InputEvent): { selected: string } | { back: true } | null {
+    const game = getGame();
+    const sfx = (name: string): void => game.audioManager?.playSfx?.(name);
+    if (event === 'DOWN') {
+      if (this.choice.moveDown()) sfx('Select 6');
+    } else if (event === 'UP') {
+      if (this.choice.moveUp()) sfx('Select 6');
+    } else if (event === 'BACK') {
+      sfx('Select 4');
+      return { back: true };
+    } else if (event === 'SELECT') {
+      sfx('Select 1');
+      return this.selected();
+    }
+    return null;
+  }
+
+  draw(surf: Surface): void {
+    this.choice.update();
+    const [ox, oy] = prepScreenOrigin();
+    this.choice.draw(surf, ox, oy);
+  }
+}
+
 export class ItemTargetingState extends MapState {
   readonly name = 'item_targeting';
 
@@ -5163,7 +5334,7 @@ export class ItemTargetingState extends MapState {
   private targetIndex = 0;
   private sequenceIndex = 0;
   private selectedTargets: [number, number][][] = [];
-  private targetItemMenu: ChoiceMenu | null = null;
+  private targetItemMenu: TargetItemChoice | null = null;
   private pendingTarget: [number, number] | null = null;
   private selectableTargetItems: ItemObject[] = [];
   private targetItemMode: 'repair' | 'steal' | 'trace' | null = null;
@@ -5242,7 +5413,6 @@ export class ItemTargetingState extends MapState {
     }
     this.targetIndex = start ? Math.max(0, this.targets.indexOf(start)) : 0;
     game.highlight.clear();
-    game.highlight.setAttackHighlights(this.targets);
     if (this.targets.length > 0) this.focusTarget();
     return this.targets.length > 0;
   }
@@ -5265,6 +5435,9 @@ export class ItemTargetingState extends MapState {
     if (!target) return;
     game.cursor.setPos(target[0], target[1]);
     if (isSmallScreen()) game.camera.focusTile(target[0], target[1]);
+    const unit: UnitObject | null = game.selectedUnit;
+    const item = this.activeItem();
+    if (unit && item) displaySingleAttack(game, unit, item, [target[0], target[1]]);
   }
 
   private selectTarget(index: number): void {
@@ -5355,15 +5528,9 @@ export class ItemTargetingState extends MapState {
       if (this.selectableTargetItems.length === 0) return;
       this.pendingTarget = target;
       this.targetItemMode = 'repair';
-      const options: MenuOption[] = this.selectableTargetItems.map((candidate, itemIndex) => ({
-        label: `${candidate.name} ${candidate.uses}/${candidate.maxUses}`,
-        value: `repair_${itemIndex}`,
-        enabled: true,
-      }));
-      const [cameraX, cameraY] = game.camera.getOffset();
-      const menuX = Math.min(target[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100);
-      const menuY = Math.min(target[1] * TILEHEIGHT - cameraY, viewport.height - options.length * 16 - 8);
-      this.targetItemMenu = new ChoiceMenu(options, Math.max(0, menuX), Math.max(0, menuY));
+      game.cursor.visible = false;
+      this.targetItemMenu = new TargetItemChoice(game, this.selectableTargetItems,
+        this.selectableTargetItems.map((_, itemIndex) => `repair_${itemIndex}`));
       return;
     }
 
@@ -5375,15 +5542,9 @@ export class ItemTargetingState extends MapState {
       if (!defender || this.selectableTargetItems.length === 0) return;
       this.pendingTarget = target;
       this.targetItemMode = 'steal';
-      const options: MenuOption[] = this.selectableTargetItems.map((candidate, itemIndex) => ({
-        label: candidate.name,
-        value: `steal_${itemIndex}`,
-        enabled: true,
-      }));
-      const [cameraX, cameraY] = game.camera.getOffset();
-      const menuX = Math.min(target[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100);
-      const menuY = Math.min(target[1] * TILEHEIGHT - cameraY, viewport.height - options.length * 16 - 8);
-      this.targetItemMenu = new ChoiceMenu(options, Math.max(0, menuX), Math.max(0, menuY));
+      game.cursor.visible = false;
+      this.targetItemMenu = new TargetItemChoice(game, this.selectableTargetItems,
+        this.selectableTargetItems.map((_, itemIndex) => `steal_${itemIndex}`));
       return;
     }
 
@@ -5395,15 +5556,9 @@ export class ItemTargetingState extends MapState {
       if (!defender || this.selectableTargetItems.length === 0) return;
       this.pendingTarget = target;
       this.targetItemMode = 'trace';
-      const options: MenuOption[] = this.selectableTargetItems.map((candidate, itemIndex) => ({
-        label: candidate.name,
-        value: `trace_${itemIndex}`,
-        enabled: true,
-      }));
-      const [cameraX, cameraY] = game.camera.getOffset();
-      const menuX = Math.min(target[0] * TILEWIDTH - cameraX + TILEWIDTH + 4, viewport.width - 100);
-      const menuY = Math.min(target[1] * TILEHEIGHT - cameraY, viewport.height - options.length * 16 - 8);
-      this.targetItemMenu = new ChoiceMenu(options, Math.max(0, menuX), Math.max(0, menuY));
+      game.cursor.visible = false;
+      this.targetItemMenu = new TargetItemChoice(game, this.selectableTargetItems,
+        this.selectableTargetItems.map((_, itemIndex) => `trace_${itemIndex}`));
       return;
     }
 
@@ -5514,10 +5669,14 @@ export class ItemTargetingState extends MapState {
       if (!menuResult && event !== null) menuResult = this.targetItemMenu.handleInput(event);
       if (!menuResult) return;
       if ('back' in menuResult) {
+        // Python ItemTargetingState BACK pops it and the combat targeting
+        // beneath, returning to the action menu.
         this.targetItemMenu = null;
         this.pendingTarget = null;
         this.selectableTargetItems = [];
         this.targetItemMode = null;
+        game.cursor.show?.();
+        this.cancelTargeting();
         return;
       }
       const itemIndex = Number.parseInt(menuResult.selected.replace(/^(repair|steal|trace)_/, ''), 10);
@@ -5601,7 +5760,6 @@ export class ItemTargetingState extends MapState {
 
   override draw(surf: Surface): Surface {
     const game = getGame();
-    game.highlight.update();
     const result = drawMap(surf, true);
     this.drawSpellForecast(result);
     this.drawTargetItemsPreview(result);
@@ -5673,57 +5831,31 @@ export class TradeState extends State {
   readonly name = 'trade';
   override readonly transparent = true;
 
-  private targetMenu: ChoiceMenu | null = null;
-  private adjacentAllies: UnitObject[] = [];
   private tradePartner: UnitObject | null = null;
 
   /** Python menus.Trade (shared with prep trading). */
   menu: TradeMenu | null = null;
-  private phase: 'select_partner' | 'select_items' = 'select_partner';
+  private phase: 'select_items' | null = null;
+
+  override start(): StateResult {
+    this.menu = null;
+    this.phase = null;
+  }
 
   override begin(): StateResult {
     const game = getGame();
+    if (this.menu) return;
     const unit: UnitObject = game.selectedUnit;
-    if (!unit) {
+    // Python TradeState.start: the partner comes from game.memory, set by the
+    // Trade targeting state, the open_trade event command or a combat trade.
+    const partner = game.memory?.get?.('trade_partner') ?? null;
+    game.memory?.delete?.('trade_partner');
+    if (!unit || !partner) {
       game.state.back();
       return;
     }
-
-    // Python's open_trade event command trades two explicit units directly,
-    // bypassing the adjacency/partner menu.
-    const forcedPartner = game.memory?.get?.('trade_partner');
-    if (forcedPartner) {
-      game.memory.delete('trade_partner');
-      this.tradePartner = forcedPartner;
-      this.openTrade(unit);
-      return;
-    }
-
-    if (!unit.position) {
-      game.state.back();
-      return;
-    }
-
-    this.adjacentAllies = getTradePartners(unit);
-    if (this.adjacentAllies.length === 0) {
-      game.state.back();
-      return;
-    }
-
-    if (this.adjacentAllies.length === 1) {
-      // Only one partner, skip selection
-      this.tradePartner = this.adjacentAllies[0];
-      this.openTrade(unit);
-    } else {
-      const options: MenuOption[] = this.adjacentAllies.map((ally) => ({
-        label: ally.name,
-        value: ally.nid,
-        enabled: true,
-      }));
-
-      this.targetMenu = new ChoiceMenu(options, viewport.width / 2 - 30, viewport.height / 2 - 16);
-      this.phase = 'select_partner';
-    }
+    this.tradePartner = partner;
+    this.openTrade(unit);
   }
 
   /** Python TradeState.start: menus.Trade(initiator, partner). */
@@ -5759,26 +5891,6 @@ export class TradeState extends State {
   override takeInput(event: InputEvent): StateResult {
     if (event === null) return;
     const game = getGame();
-
-    if (this.phase === 'select_partner' && this.targetMenu) {
-      const result = this.targetMenu.handleInput(event);
-      if (!result) return;
-
-      if ('back' in result) {
-        this.targetMenu = null;
-        game.state.back();
-        return;
-      }
-
-      if ('selected' in result) {
-        this.tradePartner = this.adjacentAllies.find((a) => a.nid === result.selected) ?? null;
-        if (this.tradePartner) {
-          this.openTrade(game.selectedUnit);
-          this.targetMenu = null;
-        }
-      }
-      return;
-    }
 
     const menu = this.menu;
     if (this.phase !== 'select_items' || !menu) return;
@@ -5819,9 +5931,6 @@ export class TradeState extends State {
   }
 
   override draw(surf: Surface): Surface {
-    if (this.phase === 'select_partner' && this.targetMenu) {
-      this.targetMenu.draw(surf);
-    }
     if (this.phase === 'select_items' && this.menu) {
       // Python TradeState is a MapState: menus.Trade draws over the map.
       const { x, y } = MenuScene.origin();
@@ -5829,254 +5938,6 @@ export class TradeState extends State {
       this.menu.drawInfo(surf, x, y);
     }
     return surf;
-  }
-}
-
-// ============================================================================
-// 4d. RescueState - Select an adjacent ally to rescue
-// ============================================================================
-
-export class RescueState extends State {
-  readonly name = 'rescue';
-  override readonly transparent = true;
-
-  private menu: ChoiceMenu | null = null;
-  private rescuableUnits: UnitObject[] = [];
-
-  override begin(): StateResult {
-    const game = getGame();
-    const unit: UnitObject = game.selectedUnit;
-    if (!unit || !unit.position) {
-      game.state.back();
-      return;
-    }
-
-    const pairUp = !!game.db.getConstant('pairup', false);
-    this.rescuableUnits = getAdjacentAllies(unit, unit.position[0], unit.position[1])
-      .filter((ally) => !ally.isRescued() && !ally.isRescuing() &&
-        (pairUp ? ally.team === unit.team : canCarry(unit, ally, game)));
-
-    if (this.rescuableUnits.length === 0) {
-      game.state.back();
-      return;
-    }
-
-    const options: MenuOption[] = this.rescuableUnits.map((ally) => ({
-      label: ally.name,
-      value: ally.nid,
-      enabled: true,
-    }));
-
-    this.menu = new ChoiceMenu(options, viewport.width / 2 - 30, viewport.height / 2 - 16);
-  }
-
-  override takeInput(event: InputEvent): StateResult {
-    if (!this.menu || event === null) return;
-    const game = getGame();
-
-    const result = this.menu.handleInput(event);
-    if (!result) return;
-
-    if ('back' in result) {
-      this.menu = null;
-      game.state.back();
-      return;
-    }
-
-    if ('selected' in result) {
-      const target = this.rescuableUnits.find((u) => u.nid === result.selected);
-      const unit: UnitObject = game.selectedUnit;
-
-      if (target && unit) {
-        const pairUp = game.db.getConstant('pairup', false) &&
-          !game.db.getConstant('attack_stance_only', false);
-        if (pairUp) {
-          // Python PairUpAbility pairs the acting unit into the selected leader.
-          game.actionLog.doAction(new PairUpAction(unit, target, game.board, game.db));
-        } else {
-          game.actionLog.doAction(new RescueAction(unit, target, game.board));
-          // EOtF's engine (abilities.RescueAbility.do): a Canto unit marks
-          // HasTraded and returns to the action menu instead of waiting.
-          if (isForkEngine() && unitHasCanto(unit, target, game)) {
-            game.actionLog.doAction(new HasTradedAction(unit));
-          } else {
-            game.actionLog.doAction(new WaitAction(unit));
-          }
-        }
-      }
-
-      this.menu = null;
-      game.state.back();
-    }
-  }
-
-  override draw(surf: Surface): Surface {
-    if (this.menu) {
-      this.menu.draw(surf);
-    }
-    return surf;
-  }
-}
-
-// ============================================================================
-// 4e. TransferState - Exchange guard-stance travelers with an adjacent ally
-// ============================================================================
-
-export class TransferState extends State {
-  readonly name = 'transfer';
-  override readonly transparent = true;
-
-  private menu: ChoiceMenu | null = null;
-  private targets: UnitObject[] = [];
-
-  override begin(): StateResult {
-    const game = getGame();
-    const unit: UnitObject | null = game.selectedUnit;
-    if (!unit?.position || !game.db.getConstant('pairup', false) || unit.hasGiven) {
-      game.state.back();
-      return 'repeat';
-    }
-    this.targets = getAdjacentAllies(unit, unit.position[0], unit.position[1])
-      .filter((ally) => !!ally.traveler || !!unit.traveler);
-    if (this.targets.length === 0) {
-      game.state.back();
-      return 'repeat';
-    }
-    this.menu = new ChoiceMenu(this.targets.map((target) => ({
-      label: target.name,
-      value: target.nid,
-      enabled: true,
-    })), viewport.width / 2 - 30, viewport.height / 2 - 16);
-  }
-
-  override takeInput(event: InputEvent): StateResult {
-    if (!this.menu || event === null) return;
-    const game = getGame();
-    const result = this.menu.handleInput(event);
-    if (!result) return;
-    if ('back' in result) {
-      this.menu = null;
-      game.state.back();
-      return;
-    }
-    const unit: UnitObject | null = game.selectedUnit;
-    const target = this.targets.find((candidate) => candidate.nid === result.selected);
-    if (unit && target) {
-      game.actionLog.doAction(new HasTradedAction(unit));
-      game.actionLog.doAction(new TransferPairUpAction(unit, target, game.db));
-    }
-    this.menu = null;
-    game.state.back();
-  }
-
-  override draw(surf: Surface): Surface {
-    this.menu?.draw(surf);
-    return surf;
-  }
-}
-
-// ============================================================================
-// 4f. DropState - Select a tile to drop a rescued unit
-// ============================================================================
-
-export class DropState extends MapState {
-  readonly name = 'drop';
-
-  private dropTiles: [number, number][] = [];
-
-  override begin(): StateResult {
-    const game = getGame();
-    const unit: UnitObject = game.selectedUnit;
-    if (!unit || !unit.position || !unit.rescuing) {
-      game.state.back();
-      return;
-    }
-
-    this.dropTiles = getAdjacentEmptyTiles(unit.position[0], unit.position[1], unit.rescuing);
-
-    if (this.dropTiles.length === 0) {
-      game.state.back();
-      return;
-    }
-
-    // Highlight drop tiles
-    game.highlight.clear();
-    for (const [tx, ty] of this.dropTiles) {
-      game.highlight.addHighlight(tx, ty, 'move');
-    }
-
-    // Position cursor on first drop tile
-    game.cursor.setPos(this.dropTiles[0][0], this.dropTiles[0][1]);
-  }
-
-  override takeInput(event: InputEvent): StateResult {
-    const game = getGame();
-
-    // Process mouse input for map interaction
-    const mouseAction = processMouseForMap(event);
-    const effective = mouseAction ?? event;
-
-    if (effective === null) return;
-
-    switch (effective) {
-      case 'UP':
-        moveCursor(0, -1);
-        break;
-      case 'DOWN':
-        moveCursor(0, 1);
-        break;
-      case 'LEFT':
-        moveCursor(-1, 0);
-        break;
-      case 'RIGHT':
-        moveCursor(1, 0);
-        break;
-
-      case 'SELECT': {
-        const pos = game.cursor.getHover();
-        const isValid = this.dropTiles.some(([x, y]) => x === pos.x && y === pos.y);
-        if (isValid) {
-          const unit: UnitObject = game.selectedUnit;
-          const target = unit?.rescuing;
-          if (unit && target) {
-            if (game.db.getConstant('pairup', false) && unit.leadUnit) {
-              game.actionLog.doAction(new SeparatePairUpAction(
-                unit, target, game.board, game.db, [pos.x, pos.y], true,
-              ));
-              game.actionLog.doAction(new WaitAction(unit));
-            } else {
-              game.actionLog.doAction(new DropAction(unit, target, game.board, [pos.x, pos.y]));
-              // EOtF's engine (abilities.DropAbility.do): a Canto unit marks
-              // HasTraded and returns to the action menu instead of waiting.
-              if (isForkEngine() && unitHasCanto(unit, target, game)) {
-                game.actionLog.doAction(new HasTradedAction(unit));
-              } else {
-                game.actionLog.doAction(new WaitAction(unit));
-              }
-            }
-          }
-          game.highlight.clear();
-          game.state.back();
-        }
-        break;
-      }
-
-      case 'BACK':
-        game.highlight.clear();
-        game.state.back();
-        break;
-    }
-  }
-
-  override draw(surf: Surface): Surface {
-    const game = getGame();
-    game.highlight.update();
-    return drawMap(surf, true);
-  }
-
-  override end(): StateResult {
-    const game = getGame();
-    game.highlight.clear();
   }
 }
 
@@ -6226,6 +6087,7 @@ export class AbilityTargetingState extends MapState {
     const game = getGame();
     game.cursor.combatShow?.();
     game.cursor.visible = true;
+    setSpritePose(game.selectedUnit, 'chosen');
   }
 
   private setCursor(pos: [number, number] | null): void {
@@ -6541,6 +6403,8 @@ export class WeaponChoiceState extends State {
       game.state.back();
       return 'repeat';
     }
+    // Python WeaponChoiceState.start: the sprite faces the cursor ('chosen').
+    setSpritePose(unit, 'chosen');
 
     // If the unit already finished (returned from combat), pop back.
     if (unit.finished || !unit.canStillAct()) {
@@ -6845,29 +6709,6 @@ export class TargetingState extends MapState {
     const closest = byPos(this.selection.getClosest([unit.position[0], unit.position[1]]));
     this.targetIndex = closest ? Math.max(0, this.targets.indexOf(closest)) : 0;
 
-    // Show attack range highlights
-    game.highlight.clear();
-    const weapon = getEquippedWeapon(unit, game.db, game);
-    if (weapon) {
-      const minRange = modifiedMinimumRange(unit, weapon, game);
-      const maxRange = modifiedMaximumRange(unit, weapon, game);
-      const attackTiles: [number, number][] = [];
-      const ux = unit.position[0];
-      const uy = unit.position[1];
-      for (let dx = -maxRange; dx <= maxRange; dx++) {
-        for (let dy = -maxRange; dy <= maxRange; dy++) {
-          const dist = Math.abs(dx) + Math.abs(dy);
-          if (dist >= minRange && dist <= maxRange) {
-            const tx = ux + dx;
-            const ty = uy + dy;
-            if (game.board.inBounds(tx, ty)) {
-              attackTiles.push([tx, ty]);
-            }
-          }
-        }
-      }
-      game.highlight.setAttackHighlights(attackTiles);
-    }
 
     // Python CombatTargetingState.begin: game.cursor.combat_show().
     game.cursor.combatShow?.();
@@ -6894,6 +6735,9 @@ export class TargetingState extends MapState {
     const target = this.targets[this.targetIndex];
     if (target && target.position) {
       game.cursor.setPos(target.position[0], target.position[1]);
+      const unit: UnitObject | null = game.selectedUnit;
+      const weapon = unit ? getEquippedWeapon(unit, game.db, game) : null;
+      if (unit && weapon) displaySingleAttack(game, unit, weapon, [target.position[0], target.position[1]]);
       // Only pan camera to target on mobile; desktop users can pan manually
       if (isSmallScreen()) {
         game.camera.focusTile(target.position[0], target.position[1]);
@@ -7062,7 +6906,6 @@ export class TargetingState extends MapState {
 
   override draw(surf: Surface): Surface {
     const game = getGame();
-    game.highlight.update();
     surf = drawMap(surf, true);
 
     // Python CombatTargetingState.draw: the forecast window for the unit
@@ -12019,6 +11862,12 @@ export class EventState extends State {
         createPixelAnimation,
       ),
     };
+    // Python LevelUpScreen draws the unit's portrait beside the stat panel.
+    const screen = this.levelUpPresentation.screen;
+    const portraitNid = (unit as any).portraitNid ?? null;
+    if (portraitNid) {
+      game.resources?.loadPortrait?.(portraitNid)?.then?.((img: HTMLImageElement) => screen.setPortrait(img))?.catch?.(() => {});
+    }
     return true;
   }
 

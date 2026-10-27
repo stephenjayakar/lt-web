@@ -1,7 +1,7 @@
 import { Surface, surfaceFromImage, colorConvert } from '../engine/surface';
 import { TILEWIDTH, TILEHEIGHT, ANIMATION_COUNTERS, COLORKEY } from '../engine/constants';
 
-export type SpriteState = 'standing' | 'moving' | 'gray';
+export type SpriteState = 'standing' | 'moving' | 'gray' | 'active';
 export type Direction = 'down' | 'left' | 'right' | 'up';
 
 /** Per-draw unit sprite effects (see combat/map-unit-fx.ts). */
@@ -153,7 +153,8 @@ export class MapSprite {
    */
   getCurrentFrame(): Surface {
     if (this.state === 'moving') {
-      const frameIdx = ANIMATION_COUNTERS.active % 4;
+      // Python select_frame: walking frames follow move_sprite_counter.
+      const frameIdx = ANIMATION_COUNTERS.move;
       const dirFrames = this.moveFrames.get(this.direction);
       if (dirFrames && dirFrames.length > 0) {
         return dirFrames[frameIdx % dirFrames.length];
@@ -162,9 +163,12 @@ export class MapSprite {
       return this.standFrames[0];
     }
 
-    // Standing or gray: use passive counter with 0,1,2,1 bobbing
-    const passive = ANIMATION_COUNTERS.passive;
-    const frameIdx = passive < 3 ? passive : 1;
+    if (this.state === 'active' && this.activeFrames.length) {
+      // Python select_frame('active'): active_sprite_counter.
+      return this.activeFrames[ANIMATION_COUNTERS.activeSprite % this.activeFrames.length];
+    }
+    // Standing or gray: Python passive_sprite_counter (0, 1, 2, 1 ...).
+    const frameIdx = ANIMATION_COUNTERS.passive;
     const frames = this.state === 'gray' ? this.grayFrames : this.standFrames;
 
     if (frames.length > 0) {
