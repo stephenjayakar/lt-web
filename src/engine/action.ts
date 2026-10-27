@@ -5132,6 +5132,47 @@ export class ResurrectAction extends Action {
   }
 }
 
+/** Python AddTalk: append a talk pair (pairs may repeat). */
+export class AddTalkAction extends Action {
+  private unit1: string;
+  private unit2: string;
+
+  constructor(unit1: string, unit2: string) {
+    super();
+    this.unit1 = unit1;
+    this.unit2 = unit2;
+  }
+
+  execute(): void {
+    _getGame?.()?.eventManager?.addTalkPair(this.unit1, this.unit2);
+  }
+
+  reverse(): void {
+    _getGame?.()?.eventManager?.removeTalkPair(this.unit1, this.unit2);
+  }
+}
+
+/** Python RemoveTalk: remove one instance of a talk pair, if listed. */
+export class RemoveTalkAction extends Action {
+  private unit1: string;
+  private unit2: string;
+  private removed = false;
+
+  constructor(unit1: string, unit2: string) {
+    super();
+    this.unit1 = unit1;
+    this.unit2 = unit2;
+  }
+
+  execute(): void {
+    this.removed = !!_getGame?.()?.eventManager?.removeTalkPair(this.unit1, this.unit2);
+  }
+
+  reverse(): void {
+    if (this.removed) _getGame?.()?.eventManager?.addTalkPair(this.unit1, this.unit2);
+  }
+}
+
 /** Unlock a lore entry for the current playthrough. */
 export class AddLoreAction extends Action {
   private loreNid: string;

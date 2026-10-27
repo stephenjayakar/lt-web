@@ -940,10 +940,9 @@ export class GameState {
     this.cursor.setMapSize(this.tilemap.width, this.tilemap.height);
     this.cursor.setPos(0, 0);
 
-    // j. Set up music ------------------------------------------------------
-    if (levelPrefab.music?.player_phase) {
-      await this.audioManager.playMusic(levelPrefab.music.player_phase);
-    }
+    // j. Music: Python's start_level plays none. The phase music starts when
+    // the first phase change ends (or free / free roam begins), so the level
+    // start events and preparations keep whatever was playing.
 
     // k2. Set up roam info from level prefab ---------------------------------
     this.roamInfo = new RoamInfo(

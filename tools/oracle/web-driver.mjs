@@ -51,7 +51,8 @@ async function ready(timeoutMs = 15_000) {
  * only a server this call started, by PID.
  */
 export async function ensureServer() {
-  if (await ok(`${BASE}/`, 5_000)) {
+  // A busy dev server can take seconds to answer; a refused connection fails at once.
+  if (await ok(`${BASE}/`, 30_000)) {
     const deadline = Date.now() + STARTUP_MS;
     while (!(await ready())) {
       if (Date.now() > deadline) throw new Error(`server on ${PORT} answers but never became ready`);

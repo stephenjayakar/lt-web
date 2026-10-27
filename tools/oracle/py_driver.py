@@ -406,6 +406,11 @@ class Engine:
         from app.engine.objects.unit import UnitObject
         from app.engine.source_type import SourceType
         from app.engine.persistent_records import RECORDS
+        import copy
+        # Restores keep references to the dicts they are given (unit wexp,
+        # item data...), so work on a copy or one level's changes would leak
+        # into the next start from the same run state.
+        state = copy.deepcopy(state)
         g = self.game
         for k, v in state.get('game_vars', {}).items():
             if k != '_random_seed':
@@ -896,6 +901,110 @@ class Runner:
             e.choose('Wait')
             e.settle()
 
+    # -- free roam -----------------------------------------------------------
+    def roam_targets(self):
+        """Talk partners of the roam unit (sorted by nid), then the level's
+        event regions in level order: what a player can walk up to and
+        interact with in free roam."""
+        g = self.e.game
+        ru = g.get_roam_unit()
+        if not ru:
+            return []
+        talks = sorted(set(b for a, b in g.talk_options
+                           if a == ru.nid and g.get_unit(b) and g.get_unit(b).position))
+        regions = [r.nid for r in g.level.regions
+                   if str(getattr(r.region_type, 'value', r.region_type)).lower() == 'event' and r.position]
+        return [['unit', nid] for nid in talks] + [['region', nid] for nid in regions]
+
+    def do_roam_interact(self, a) -> None:
+        """Walk-up interaction in free roam: put the roam unit next to the
+        target unit (its sprite 0.4 tiles away, inside the 1.0 talk range) or
+        on the target region, press SELECT, and answer the menus that follow
+        (``choices``: 'first', 'back' or an option value; default 'first')."""
+        from app.engine import action
+        from app.engine.movement import movement_funcs
+        e = self.e
+        g = e.game
+        e.expect('free_roam')
+        st = g.state.current_state()
+        ru = st.roam_unit
+        if a['kind'] == 'unit':
+            t = g.get_unit(a['target'])
+            tx, ty = t.position
+            place = None
+            for cand in ((tx - 1, ty), (tx + 1, ty), (tx, ty + 1), (tx, ty - 1)):
+                occupant = g.board.get_unit(cand)
+                if g.board.check_bounds(cand) and (occupant is None or occupant is ru) and \
+                        movement_funcs.get_mcost(ru, cand) < 99:
+                    place = cand
+                    break
+            if place is None:
+                raise OracleError('no tile to approach %s from' % a['target'])
+            fpos = (place[0] + 0.6 * (tx - place[0]), place[1] + 0.6 * (ty - place[1]))
+        else:
+            region = g.level.regions.get(a['target'])
+            place = tuple(region.position)
+            fpos = place
+        if tuple(ru.position) != place:
+            action.do(action.Teleport(ru, place))
+        st.movement_component.position = fpos
+        ru.sprite.set_roam_position(fpos)
+        e.press('SELECT')
+        self.settle_interaction(list(a.get('choices', [])), a.get('max_frames', 20000))
+
+    def settle_interaction(self, choices, max_frames=20000) -> None:
+        """Run until the interaction is over: back in free roam, or settled
+        in another level (a chosen room). Choice menus take the next entry of
+        ``choices`` ('first' when empty); menus the oracle does not model
+        (shops, info screens...) are left with BACK."""
+        e = self.e
+        g = e.game
+        stable = 0
+        stuck = 0
+        last = None
+        picks = 0
+        for _ in range(max_frames):
+            top = e.top()
+            # Rest: free roam or a turn-based level again, or the title
+            # screen after an event that ends the game.
+            if top in ('free_roam', 'free', 'prep_main', 'title_start', 'title_main') and not g.state.temp_state:
+                stable += 1
+                if stable >= 3:
+                    return
+                e.step(None)
+                continue
+            stable = 0
+            stuck = stuck + 1 if top == last else 0
+            last = top
+            if top == 'player_choice' and stuck >= 2:
+                st = g.state.current_state()
+                pick = choices.pop(0) if choices else 'first'
+                picks += 1
+                if picks > 40:
+                    raise OracleError('more than 40 menu picks')
+                if pick == 'back':
+                    e.press('BACK')
+                else:
+                    data = [str(getattr(d, 'nid', d)) for d in st.menu._data]
+                    idx = 0 if pick == 'first' else data.index(pick)
+                    st.menu._cursor_idx = idx
+                    e.press('SELECT')
+                stuck = 0
+            elif top == 'text_entry' and stuck >= 2:
+                e.press('START')  # finish the entry (with its default text)
+                stuck = 0
+            elif top == 'text_confirm' and stuck >= 2:
+                e.press('SELECT')  # Yes
+                stuck = 0
+            elif top in ('event', 'dialog', 'transition_in', 'transition_out', 'chapter_title') and stuck >= 2 and stuck % 2 == 0:
+                e.press('SELECT')
+            elif top not in ('event', 'player_choice', 'free_roam_rationalize', 'transition_to', 'turn_change',
+                             'phase_change', 'status_upkeep', 'start_level_asset_loading') and stuck >= 30 and stuck % 30 == 0:
+                e.press('BACK')
+            else:
+                e.step(None)
+        raise OracleError('interaction did not settle; stack=%s' % e.stack())
+
     def do_choose(self, a) -> None:
         """Pick a named option in whatever menu the top state shows."""
         self.e.choose(a['option'])
@@ -976,6 +1085,17 @@ class Runner:
 def _item_data(it) -> dict:
     """Runtime item data (uses, cooldowns, counters) without engine bookkeeping."""
     return {k: _jsonable(v) for k, v in it.data.items()}
+
+
+def _records():
+    """Persistent records (name -> value)."""
+    from app.engine.persistent_records import RECORDS
+    return {r.nid: _jsonable(r.value) for r in RECORDS}
+
+
+def _parties(g):
+    """Money and convoy item nids per party."""
+    return {p.nid: {'money': p.money, 'convoy': [it.nid for it in p.convoy]} for p in g.parties.values()}
 
 
 def _current_music():
@@ -1061,6 +1181,9 @@ def snapshot(e: Engine) -> dict:
         'level_vars': _jsonable(dict(g.level_vars)),
         'regions': regions,
         'objective': _jsonable(dict(g.level.objective)) if g.level else None,
+        'talks': sorted([list(t) for t in g.talk_options]),
+        'records': _records(),
+        'parties': _parties(g),
         'music': _current_music(),
         'events': events,
         'already_triggered': sorted(g.already_triggered_events),
@@ -1120,8 +1243,13 @@ def run_scenario(scn: dict, backend: str = 'upstream', base: Path | None = None)
         sweep = scn.get('levels')
         for level in (sweep or [scn['level']]):
             step = {'action': {'do': 'level', 'level': str(level)} if sweep else {'do': 'start'}}
-            try:
+            def start():
                 RECORDS.restore(baseline_records)
+                if sweep:
+                    # Every sweep level starts in silence (the web harness
+                    # never plays the title music).
+                    from app.engine.sound import get_sound_thread
+                    get_sound_thread().clear()
                 e.start_level(str(level), scn.get('seed', 0), scn.get('events', True),
                               scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'),
                               scn.get('start_game_vars'), run_state)
@@ -1134,6 +1262,8 @@ def run_scenario(scn: dict, backend: str = 'upstream', base: Path | None = None)
                     e.settle(until=lambda en: en.top() != 'prep_main', max_frames=600)
                     e.settle(skip=scn.get('skip', 'SELECT'), max_frames=scn.get('start_frames', 20000))
                 Runner(e, scn).setup(scn.get('setup', []))
+            try:
+                start()
             except Exception as exc:
                 traceback.print_exc()
                 step['error'] = '%s: %s' % (type(exc).__name__, exc)
@@ -1144,6 +1274,27 @@ def run_scenario(scn: dict, backend: str = 'upstream', base: Path | None = None)
             except Exception as exc:
                 step.setdefault('error', 'snapshot failed: %s' % exc)
             out['steps'].append(step)
+            # Free roam tour: every walk-up interaction, each from a fresh
+            # start of the level, one snapshot after each.
+            if sweep and scn.get('roam_tour') and not step.get('error') and e.top() == 'free_roam':
+                targets = Runner(e, scn).roam_targets()
+                step['snapshot']['roam_targets'] = targets
+                for i, (kind, nid) in enumerate(targets):
+                    a = {'do': 'roam_interact', 'kind': kind, 'target': nid,
+                         'choices': scn.get('roam_choices', {}).get('%s:%s' % (level, nid), [])}
+                    act = {'action': dict(a, level=str(level))}
+                    try:
+                        if i:
+                            start()
+                        Runner(e, scn).run_action(a)
+                    except Exception as exc:
+                        traceback.print_exc()
+                        act['error'] = '%s: %s' % (type(exc).__name__, exc)
+                    try:
+                        act['snapshot'] = snapshot(e)
+                    except Exception as exc:
+                        act.setdefault('error', 'snapshot failed: %s' % exc)
+                    out['steps'].append(act)
             # Sweep: the same actions on every level that settled into a
             # turn-based phase (free roam levels have no turns to end).
             if sweep and not step.get('error') and e.top() != 'free_roam':

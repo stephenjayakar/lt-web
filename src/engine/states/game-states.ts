@@ -108,6 +108,8 @@ import {
   DamageAction,
   WeaponUsesAction,
   SetCurrentHpAction,
+  AddTalkAction,
+  RemoveTalkAction,
   SetCurrentManaAction,
   GainExpAction,
   DeathAction,
@@ -16740,7 +16742,7 @@ export class EventState extends State {
       case 'add_talk': {
         // add_talk;unit1_nid;unit2_nid
         if (game.eventManager && args.length >= 2) {
-          game.eventManager.addTalkPair(args[0], args[1]);
+          game.actionLog.doAction(new AddTalkAction(args[0], args[1]));
         }
         this.advancePointer();
         return false;
@@ -16748,7 +16750,7 @@ export class EventState extends State {
 
       case 'remove_talk': {
         if (game.eventManager && args.length >= 2) {
-          game.eventManager.removeTalkPair(args[0], args[1]);
+          game.actionLog.doAction(new RemoveTalkAction(args[0], args[1]));
         }
         this.advancePointer();
         return false;
