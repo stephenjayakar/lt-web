@@ -1340,20 +1340,30 @@ export function applyCombatSkillEndHooks(
         applied++;
       }
 
-      if (target.currentHp <= 0) {
-        applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_kill'));
-        if (unit === initiator) {
+      // EOtF's engine: these run once per unit's end_combat, whose target is
+      // the main defender (None without one) or the initiator.
+      const forkOnce = (component: string): boolean =>
+        !isForkEngine() || (skill.hasComponent(component) && claimGlobalHook(skill, component));
+      if (target.currentHp <= 0 && (!isForkEngine() || isHookTarget)) {
+        if (forkOnce('gain_skill_after_kill')) {
+          applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_kill'));
+        }
+        if (unit === initiator && forkOnce('gain_skill_after_active_kill')) {
           applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_active_kill'));
         }
-        applied += grantAreaSkills(
-          unit,
-          skill,
-          skill.getComponent('aoe_gain_skill_after_kill'),
-        );
+        if (forkOnce('aoe_gain_skill_after_kill')) {
+          applied += grantAreaSkills(
+            unit,
+            skill,
+            skill.getComponent('aoe_gain_skill_after_kill'),
+          );
+        }
       }
-      applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_combat'));
+      if (forkOnce('gain_skill_after_combat')) {
+        applied += grantSkill(unit, skill, skill.getComponent('gain_skill_after_combat'));
+      }
       const multipleCombatGains = skill.getComponent<unknown>('gain_skills_after_combat');
-      if (Array.isArray(multipleCombatGains)) {
+      if (Array.isArray(multipleCombatGains) && forkOnce('gain_skills_after_combat')) {
         for (const skillNid of multipleCombatGains) {
           applied += grantSkill(unit, skill, skillNid, null, false);
         }

@@ -1767,6 +1767,19 @@ export class CombatPhaseSolver {
       }
     }
 
+    if (fork) {
+      // EOtF's engine runs cleanup_combat (Miracle and its kin) for the
+      // attacker, the main defender and every splash unit. coreGen already
+      // covered the attacker and main defender.
+      if (!mainDefender) {
+        const attackerRefs = this.simHps.get(attacker);
+        const attackerRef = attackerRefs?.[attackerRefs.length - 1];
+        if (attackerRef) this.applyMiracleCleanup(attacker, attackerRef);
+      }
+      for (const [unit, hpRef] of splashHp) {
+        if (unit !== attacker) this.applyMiracleCleanup(unit, hpRef);
+      }
+    }
     this.strikes = result;
   }
 
