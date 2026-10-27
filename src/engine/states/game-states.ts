@@ -14266,8 +14266,11 @@ export class EventState extends State {
         const unitNid = muArgs.value('Unit') ?? '';
         const unit = this.findUnit(unitNid);
         const posStr = muArgs.value('Position') ?? '';
-        let targetPos = this.resolvePosition(posStr, game);
-        if (!targetPos && unit?.startingPosition) {
+        // Python: `_parse_pos(position) if position else starting_position`.
+        // Only a missing Position falls back to the starting tile; one that
+        // does not parse (an unset `{v:...}` reads '??') moves nobody.
+        let targetPos = posStr ? this.resolvePosition(posStr, game) : null;
+        if (!posStr && unit?.startingPosition) {
           targetPos = [unit.startingPosition[0], unit.startingPosition[1]];
         }
         if (!unit || !unit.position || !targetPos || !game.board) {

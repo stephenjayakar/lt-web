@@ -248,3 +248,24 @@ test('move_unit with no path leaves the unit where it is', async ({ page }) => {
   const state = await fx(page, 'Seth');
   expect(state).toMatchObject({ position: [4, 4], afterVar: 1 });
 });
+
+// Python move_unit: `_parse_pos(position) if position else starting_position`.
+// A Position that does not parse (an unset {v:...} reads '??', as in EOtF's
+// Hurricane_Caught upkeep event) moves nobody; only a missing one falls back
+// to the starting tile.
+test('move_unit with an unparseable position leaves the unit where it is', async ({ page }) => {
+  await boot(page);
+  const start = await page.evaluate(() => {
+    const g = (window as any).__gameRef;
+    const seth = g.units.get('Seth');
+    const free = [[4, 5], [5, 4], [3, 4], [4, 3]].find(([x, y]) => !g.board.getUnit(x, y));
+    seth.startingPosition = free;
+    return { position: seth.position, free };
+  });
+  await startEvent(page, 'TestBadPos', ['move_unit;Seth;{v:_no_such_var};immediate', 'game_var;_after;1']);
+  const bad = await fx(page, 'Seth');
+  expect(bad).toMatchObject({ position: start.position, afterVar: 1 });
+  await startEvent(page, 'TestNoPos', ['move_unit;Seth;;immediate', 'game_var;_after2;1']);
+  const fallback = await fx(page, 'Seth');
+  expect(fallback.position).toEqual(start.free);
+});
