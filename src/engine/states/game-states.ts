@@ -8300,8 +8300,12 @@ export class CombatState extends State {
         if (!wasEventCombat) {
           // Queue the post-combat continuation before EventState so the event
           // is layered above it and pops back to the correct state. Python's
-          // stack preserves menu/Canto/trade while combat events run.
-          if (tradePair) {
+          // stack preserves menu/Canto/trade while combat events run. An AI
+          // combat (a player unit's AI on End included) returns to the AI,
+          // which moves a Canto unit itself (handle_state_stack's ai branch).
+          if (aiCombat) {
+            // nothing: AIState continues
+          } else if (tradePair) {
             game.selectedUnit = tradePair.unit;
             if (tradePair.partner.position) {
               game.cursor.setPos(tradePair.partner.position[0], tradePair.partner.position[1]);
