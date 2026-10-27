@@ -140,6 +140,18 @@ function evaluatedTurnAmount(
   }, 0);
 }
 
+/**
+ * Python SourceType.removable: a RemoveSkill with the default source leaves
+ * an aura, terrain, region, item or global skill in place (unit.remove_skill
+ * only takes removable or same-source instances), so such a timed skill
+ * keeps counting down past 0.
+ */
+function skillIsRemovable(skill: SkillObject): boolean {
+  const data = skill.data;
+  return !(data.get('sourceType') === 'global' || data.has('auraSourceType') ||
+    data.has('positionStatusSourceType') || data.has('itemSourceType'));
+}
+
 /** One recorded combat-stream draw outside the solver (RecordRandomState). */
 function drawCombatRoll(game: SkillTurnGame, minimum: number, maximum: number): number {
   const randomGame = game as SkillTurnGame & { gameVars: Map<string, any> };
@@ -371,7 +383,7 @@ export function collectSkillTurnHooks(
           }
         } else if (phase === 'upkeep' && component === 'purge_ailments' && conditional) {
           for (const ailment of [...unit.skills]) {
-            if (ailment.hasComponent('negative')) {
+            if (ailment.hasComponent('negative') && skillIsRemovable(ailment)) {
               game.actionLog.doAction(new RemoveSkillAction(unit, ailment));
             }
           }
@@ -419,7 +431,7 @@ export function collectSkillTurnHooks(
         }
       }
 
-      if (removeAfterHooks) {
+      if (removeAfterHooks && skillIsRemovable(skill)) {
         deferred.push(() => game.actionLog.doAction(new RemoveSkillAction(unit, skill)));
       }
     }

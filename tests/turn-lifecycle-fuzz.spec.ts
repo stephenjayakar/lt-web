@@ -182,3 +182,45 @@ test('with heal/damage playback, upkeep events run before the pending HP changes
   // Python: the event sets 10, then the regeneration computed at 5 HP lands.
   expect(result.hp).toBe(result.expected);
 });
+
+test('a timed item-sourced skill is not removed by its time hook and keeps counting', async ({ page }) => {
+  await boot(page);
+  await definePrefabs(page, [{ nid: '_FzTimed', components: [['time', 1]] }]);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const { SkillObject } = await import('/src/objects/skill.ts');
+    const { applySkillTurnHooks } = await import('/src/engine/skill-turn-lifecycle.ts');
+    const unit = g.units.get('Eirika');
+    const sourced = new SkillObject(g.db.skills.get('_FzTimed'));
+    sourced.data.set('itemSourceType', 'item');
+    unit.skills.push(sourced);
+    const plain = new SkillObject(g.db.skills.get('_FzTimed'));
+    g.units.get('Seth').skills.push(plain);
+    applySkillTurnHooks(g, [unit, g.units.get('Seth')], 'upkeep');
+    return {
+      sourced: { kept: unit.skills.includes(sourced), turns: sourced.data.get('turns') },
+      plainKept: g.units.get('Seth').skills.includes(plain),
+    };
+  });
+  expect(result).toEqual({ sourced: { kept: true, turns: 0 }, plainKept: false });
+});
+
+test('giving a unit an aura skill propagates the aura at once', async ({ page }) => {
+  await boot(page);
+  await definePrefabs(page, [
+    { nid: '_FzAuraChild', components: [] },
+    { nid: '_FzAura', components: [['aura', '_FzAuraChild'], ['aura_range', 99], ['aura_target', 'ally']] },
+  ]);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const { SkillObject } = await import('/src/objects/skill.ts');
+    const { AddSkillAction } = await import('/src/engine/action.ts');
+    const seth = g.units.get('Seth');
+    const action = new AddSkillAction(g.units.get('Eirika'), new SkillObject(g.db.skills.get('_FzAura')));
+    action.execute();
+    const given = seth.skills.some((s: any) => s.nid === '_FzAuraChild');
+    action.reverse();
+    return { given, released: !seth.skills.some((s: any) => s.nid === '_FzAuraChild') };
+  });
+  expect(result).toEqual({ given: true, released: true });
+});

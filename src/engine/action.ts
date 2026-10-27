@@ -4232,6 +4232,15 @@ function skillIsDisplaceable(unit: UnitObject, skill: SkillObject, incoming: boo
   return true;
 }
 
+/**
+ * Python AddSkill/RemoveSkill propagate or release an aura skill at once
+ * (aura_funcs.propagate_aura / release_aura); the web re-derives the board's
+ * aura coverage.
+ */
+function refreshAurasFor(skill: SkillObject): void {
+  if (skill.hasComponent('aura')) _getGame?.()?.refreshAuras?.();
+}
+
 /** Add an already-created skill object, avoiding duplicates, reversibly. */
 export class AddSkillAction extends Action {
   private unit: UnitObject;
@@ -4258,6 +4267,7 @@ export class AddSkillAction extends Action {
   execute(): void {
     this.equipBefore = captureEquipState(this.unit);
     this.addSkill();
+    refreshAurasFor(this.skill);
     this.unit.autoequip();
   }
 
@@ -4447,6 +4457,7 @@ export class AddSkillAction extends Action {
 
   reverse(): void {
     this.removeAddedSkill();
+    refreshAurasFor(this.skill);
     if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
   }
 
@@ -4510,6 +4521,7 @@ export class RemoveSkillAction extends Action {
   execute(): void {
     this.equipBefore = captureEquipState(this.unit);
     this.removeSkill();
+    refreshAurasFor(this.skill);
     this.unit.autoequip();
   }
 
@@ -4540,6 +4552,7 @@ export class RemoveSkillAction extends Action {
     for (const action of [...this.multiSkillActions].reverse()) action.reverse();
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
     this.refreshVariantSprite();
+    refreshAurasFor(this.skill);
     if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
   }
 

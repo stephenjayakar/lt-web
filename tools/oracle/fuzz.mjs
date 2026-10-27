@@ -178,7 +178,9 @@ function report(dir, { json }) {
   const pools = skillPools();
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
   const buckets = new Map();
-  const stats = { scenarios: 0, matched: 0, diffed: 0, errored: 0, missing: 0 };
+  // turnClean: no diff appears or changes during the turn cycles (setup and
+  // unit-loading diffs may persist). pyCrash: the fork itself raised.
+  const stats = { scenarios: 0, matched: 0, diffed: 0, errored: 0, missing: 0, turnClean: 0, pyCrash: 0 };
   const add = (key, entry) => {
     if (!buckets.has(key)) buckets.set(key, { count: 0, scenarios: new Set(), examples: [] });
     const b = buckets.get(key);
@@ -198,13 +200,16 @@ function report(dir, { json }) {
     const web = JSON.parse(fs.readFileSync(path.join(runDir, 'web.json'), 'utf8'));
     const result = diffRuns(py, web, scenario);
     const errors = [...result.errors, ...result.steps.flatMap((s) => s.errors)];
+    const pyCrash = (py.steps ?? []).some((s) => s.error) && !(web.steps ?? []).some((s) => s.error);
+    if (pyCrash) stats.pyCrash++;
     if (errors.length) {
       stats.errored++;
       add(`ERROR ${errors[0].split('\n')[0].slice(0, 90)}`, { scenario: scenario.name, detail: errors[0].slice(0, 300) });
     }
-    if (result.ok) { stats.matched++; continue; }
+    if (result.ok) { stats.matched++; stats.turnClean++; continue; }
     if (!errors.length) stats.diffed++;
     const seen = new Map();
+    let turnDiff = false;
     for (const step of result.steps) {
       const phase = step.index === 0 ? 'setup' : step.action?.do === 'event' ? 'load' : 'turn';
       const pySnap = py.steps?.[step.index]?.snapshot;
@@ -218,19 +223,22 @@ function report(dir, { json }) {
           const skill = pools.skills.get(s);
           return skill ? turnComponents(skill) : [];
         }))].sort();
+        if (phase === 'turn') turnDiff = true;
         add(`${phase} ${fieldOf(d.path)}`, {
           scenario: scenario.name, step: step.index, path: d.path, py: d.py, web: d.web,
           skills: unitSkills, components,
         });
       }
     }
+    if (!turnDiff && !errors.length) stats.turnClean++;
   }
   const sorted = [...buckets.entries()].sort((a, b) => b[1].scenarios.size - a[1].scenarios.size);
   if (json) {
     console.log(JSON.stringify({ stats, buckets: sorted.map(([k, v]) => ({ key: k, count: v.count, scenarios: [...v.scenarios], examples: v.examples })) }, null, 1));
     return;
   }
-  console.log(`scenarios ${stats.scenarios} (missing ${stats.missing}): matched ${stats.matched}, diffs ${stats.diffed}, errors ${stats.errored}`);
+  console.log(`scenarios ${stats.scenarios} (missing ${stats.missing}): matched ${stats.matched}, ` +
+    `turn-clean ${stats.turnClean}, diffs ${stats.diffed}, errors ${stats.errored} (fork crashed: ${stats.pyCrash})`);
   for (const [key, b] of sorted) {
     console.log(`\n[${b.scenarios.size} scen, ${b.count}x] ${key}`);
     for (const e of b.examples) {
