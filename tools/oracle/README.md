@@ -109,7 +109,9 @@ one released), and the state machine is updated exactly like `driver.run`.
   "run_state": "run-state/eotf-run.json", // captured run state loaded before the level (see Run states)
   "levels": ["0", "1"],               // level sweep instead of "level": one snapshot per level
   "through_prep": true,               // press Fight when a level settles in preparations
-  "level_actions": [{"do": "end_turn"}] // sweep: actions run on every turn-based level after it starts
+  "level_actions": [{"do": "end_turn"}], // sweep: actions run on every turn-based level after it starts
+  "roam_tour": true,                  // sweep: interact with every talk partner / event region in free roam
+  "roam_choices": {"Act_1:room1": ["first"]} // menu picks per LEVEL:target ('first', 'back' or a value)
 }
 ```
 
@@ -158,6 +160,7 @@ pending state change or moving unit, pressing SELECT to advance dialog.
 | `{"do": "trade", "unit": "Vanessa", "with": "Moulder", "give": ["Javelin"], "take": ["Vulnerary"]}` | trade screen; each give/take lands in the first free slot |
 | `{"do": "end_turn"}` | option menu `End`, runs the AI phases until player phase (or free roam, or a game over) |
 | `{"do": "attack_or_wait", "unit": "Player"}` | attack the nearest valid target with the first weapon if the menu offers Attack, else Wait |
+| `{"do": "roam_interact", "kind": "unit", "target": "room1", "choices": ["first"]}` | free roam: stand next to the unit (sprite 0.4 tiles away) or on the region (`"kind": "region"`), press SELECT, answer menus (default: first option), leave shops and other screens with BACK, finish text entry with its default text |
 | `{"do": "event", "script": ["give_money;100", "..."]}` | inline event (also `"nid"` for a DB event, `"trigger"` for a trigger class) |
 | `{"do": "choose", "option": "Fight"}` | pick an option in the top state's menu |
 | `{"do": "press", "button": "START"}`, `{"do": "frames", "n": 30}`, `{"do": "settle"}` | raw control |
@@ -187,6 +190,9 @@ several trade partners are a menu on the web instead of map targeting.
       "ai", "ai_group", "traveler", "generic" } },
   "game_vars", "level_vars", "regions": [{"nid", "region_type", "position", "size", "sub_nid", "time_left", "only_once"}],
   "objective": {"simple", "win", "loss"},
+  "talks",                                 // talk pairs, sorted (a pair may repeat)
+  "records",                               // persistent records
+  "parties": {"<nid>": {"money", "convoy"}},
   "music",                                 // song on top of the music stack
   "events",                                // queued/running event nids, in processing order
   "already_triggered",                     // only_once events used
@@ -284,6 +290,13 @@ counted in their own column, so level flow differences stand out.
 AI phases, next upkeep); `sweeps/eotf-first-turn-act.json` first lets the
 Player attack the nearest enemy in range (else wait). The table then shows
 each step's result and how many diffs are new since the previous step.
+
+`sweeps/eotf-free-roam.json` covers the free roam levels (hub and Act
+maps): for each talk partner of the roam unit and each event region it
+restarts the level from the run state, walks up, presses SELECT and takes
+the first option of each menu (so rooms are entered), then diffs the state.
+The table has one row per interaction. Each sweep level starts in silence on
+both sides.
 
 ## Writing a scenario
 

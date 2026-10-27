@@ -173,8 +173,33 @@ async function main() {
   let worst = 0;
   const tally = new Map();
   const allCats = new Map();
+  if (base.roam_tour) {
+    // Free roam tour: one row per interaction; each starts from a fresh level,
+    // so "new" diffs are those the level start did not already have.
+    lines.splice(lines.length - 2, 2, '| Level | Interaction | Result | Main differences |', '|---|---|---|---|');
+  }
   for (const level of levels) {
     const r = results.get(level);
+    if (base.roam_tour) {
+      const steps = r?.steps ?? [];
+      const startPaths = new Set((steps[0]?.diffs ?? []).map((d) => d.path));
+      steps.forEach((step, i) => {
+        const errs = [...(i === 0 ? r?.errors ?? [] : []), ...(step.errors ?? [])];
+        const setup = step.diffs.filter((d) => isUnitSetup(d, ...(r.snaps[i] ?? [])));
+        const diffs = step.diffs.filter((d) => !setup.includes(d) && (i === 0 || !startPaths.has(d.path)));
+        const result = errs.length ? 'ERROR' : diffs.length ? `DIFF ${diffs.length}` : setup.length ? 'SETUP' : 'MATCH';
+        const key = `${i === 0 ? 'start' : 'interaction'}:${result.split(' ')[0]}`;
+        tally.set(key, (tally.get(key) ?? 0) + 1);
+        worst = Math.max(worst, errs.length ? 2 : diffs.length ? 1 : 0);
+        const cats = categories(diffs);
+        for (const [k, c] of cats) allCats.set(k, (allCats.get(k) ?? 0) + c);
+        const main = errs.length ? errs.map((x) => x.split(String.fromCharCode(10))[0].slice(0, 120)).join('; ')
+          : cats.slice(0, 4).map(([k, c]) => `${k} (${c})`).join(', ');
+        lines.push(`| ${level} | ${i === 0 ? 'start' : `${step.action.kind ?? ''} ${step.action.target ?? ''}`} | ${result} | ${main.replace(/\|/g, '/')} |`);
+      });
+      if (!steps.length) lines.push(`| ${level} | start | ERROR | ${(r?.errors ?? []).join('; ').slice(0, 120)} |`);
+      continue;
+    }
     const cells = [];
     let main = '';
     let prevPaths = new Set();

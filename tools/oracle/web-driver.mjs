@@ -22,7 +22,8 @@ const BASE = `http://localhost:${PORT}`;
 
 async function reachable() {
   try {
-    const res = await fetch(BASE + '/', { signal: AbortSignal.timeout(2000) });
+    // A busy dev server can take seconds to answer; a refused connection fails at once.
+    const res = await fetch(BASE + '/', { signal: AbortSignal.timeout(30_000) });
     return res.ok;
   } catch {
     return false;

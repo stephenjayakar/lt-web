@@ -1,0 +1,19 @@
+{
+  "name": "eotf-free-roam",
+  "description": "EOtF free roam levels (hub and Act maps) from the captured run state: walk up to every talk partner and event region, press SELECT and take the first option of each menu (rooms are entered), each interaction from a fresh start of the level.",
+  "project": "eotf.ltproj",
+  "levels": ["X", "Act_1", "Act_1A", "Act_2", "Act_2A", "Act_3", "Act_3A", "Act_4", "Act_4A", "Act_Ophie", "Hallway"],
+  "events": true,
+  "through_prep": true,
+  "seed": 0,
+  "run_state": "run-state/eotf-run.json",
+  "roam_tour": true,
+  "roam_choices": {},
+  "ignore": [
+    "units.*.position"
+  ],
+  "known_diffs": [
+    "units.*.growth_points",
+    "units.*.party"
+  ]
+}

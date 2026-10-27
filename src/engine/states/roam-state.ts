@@ -646,7 +646,7 @@ export class FreeRoamState extends MapState {
       if (dist < closestDist) {
         if (mustHaveTalk) {
           // Check if there's a talk event between these units
-          if (game.eventManager?.hasTalkPair?.(this.roamUnit!.nid, unit.nid)) {
+          if (game.eventManager?.hasDirectedTalk?.(this.roamUnit!.nid, unit.nid)) {
             closest = unit;
             closestDist = dist;
           }
@@ -677,7 +677,7 @@ export class FreeRoamState extends MapState {
       const dist = this.getInteractionDistance(unit);
       if (dist >= talkRange()) continue;
 
-      if (mustHaveTalk && !game.eventManager?.hasTalkPair?.(this.roamUnit!.nid, unit.nid)) {
+      if (mustHaveTalk && !game.eventManager?.hasDirectedTalk?.(this.roamUnit!.nid, unit.nid)) {
         continue;
       }
       candidates.push({ unit, dist });

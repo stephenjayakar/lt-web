@@ -13,7 +13,7 @@ import { ItemObject, createItemTree, setNextItemUid } from '../../../src/objects
 import { SkillObject, setNextSkillUid } from '../../../src/objects/skill';
 import { UnitObject } from '../../../src/objects/unit';
 import { RECORDS } from '../../../src/engine/records';
-import { isCantoSkill } from '../../../src/combat/skill-system';
+import { isCantoSkill, movementType } from '../../../src/combat/skill-system';
 import {
   AddSkillAction, ArriveOnMapAction, ChangeTeamAction, GiveItemAction, LeaveMapAction,
   RegisterItemTreeAction, RemoveItemFromUnitAction, RemoveSkillAction, SetCurrentHpAction,
@@ -47,6 +47,10 @@ export interface Scenario {
   through_prep?: boolean;
   /** Sweep: actions run on every turn-based level after it starts. */
   level_actions?: Action[];
+  /** Sweep: interact with every talk partner and event region of free roam levels. */
+  roam_tour?: boolean;
+  /** Menu picks per "LEVEL:target" for the roam tour. */
+  roam_choices?: Record<string, string[]>;
   /** Captured run state (capture_run_state.py), inlined by web-driver.mjs. */
   run_state?: RunState;
 }
@@ -483,6 +487,113 @@ class Runner {
     }
   }
 
+  /** py_driver roam_targets: talk partners (sorted), then event regions. */
+  roamTargets(): [string, string][] {
+    const g = this.e.game;
+    const ruNid = g.roamInfo?.roamUnitNid;
+    if (!ruNid) return [];
+    const talks = [...new Set<string>((g.eventManager?.getTalkPairs?.() ?? [])
+      .filter(([a, b]: [string, string]) => a === ruNid && g.units.get(b)?.position)
+      .map(([, b]: [string, string]) => b))].sort();
+    const regions = (g.currentLevel?.regions ?? [])
+      .filter((r: any) => String(r.region_type).toLowerCase() === 'event' && r.position)
+      .map((r: any) => r.nid);
+    return [...talks.map((nid): [string, string] => ['unit', nid]), ...regions.map((nid: string): [string, string] => ['region', nid])];
+  }
+
+  /**
+   * py_driver do_roam_interact: put the roam unit next to the target unit
+   * (its roam position 0.4 tiles away, inside the talk range) or on the
+   * target region, press SELECT, and answer the menus that follow.
+   */
+  async do_roam_interact(a: Action): Promise<void> {
+    const e = this.e;
+    const g = e.game;
+    e.expect('free_roam');
+    const st: any = g.state.getCurrentState();
+    const ru = st.roamUnit;
+    let place: [number, number] | null = null;
+    let fpos: [number, number];
+    if (a.kind === 'unit') {
+      const t = e.unit(a.target);
+      const [tx, ty] = t.position;
+      const group = movementType(ru, g.db.classes.get(ru.klass)?.movement_group || 'Infantry');
+      for (const cand of [[tx - 1, ty], [tx + 1, ty], [tx, ty + 1], [tx, ty - 1]] as [number, number][]) {
+        const occupant = g.board.getUnit(cand[0], cand[1]);
+        const cost = g.board.getMovementCost?.(cand[0], cand[1], group, g.db) ?? 1;
+        if (g.board.checkBounds(cand[0], cand[1]) && (!occupant || occupant === ru) && cost < 99) {
+          place = cand;
+          break;
+        }
+      }
+      if (!place) throw new OracleError(`no tile to approach ${a.target} from`);
+      fpos = [place[0] + 0.6 * (tx - place[0]), place[1] + 0.6 * (ty - place[1])];
+    } else {
+      const region = (g.currentLevel?.regions ?? []).find((r: any) => r.nid === a.target);
+      place = [region.position[0], region.position[1]];
+      fpos = place;
+    }
+    if (ru.position[0] !== place[0] || ru.position[1] !== place[1]) {
+      g.actionLog.doAction(new WarpUnitAction(ru, place, g.board));
+    }
+    st.movementComponent.roamPosition = { x: fpos[0], y: fpos[1] };
+    e.press('SELECT');
+    await this.settleInteraction([...(a.choices ?? [])], a.max_frames ?? 20000);
+  }
+
+  /** py_driver settle_interaction. */
+  private async settleInteraction(choices: string[], maxFrames: number): Promise<void> {
+    const e = this.e;
+    const g = e.game;
+    let stable = 0;
+    let stuck = 0;
+    let last: string | undefined;
+    let picks = 0;
+    for (let i = 0; i < maxFrames; i++) {
+      if (i % 20 === 19) await new Promise<void>((r) => setTimeout(r, 0));
+      const top = e.top();
+      const st: any = g.state.getCurrentState();
+      // Rest: free roam or a turn-based level again, or the title screen
+      // after an event that ends the game (py_driver).
+      if (['free_roam', 'free', 'prep_main', 'title'].includes(top ?? '') && !e.busy()) {
+        stable++;
+        if (stable >= 3) return;
+        e.step(null);
+        continue;
+      }
+      stable = 0;
+      const key = `${top}|${st?.choiceMenu ? 'choice' : ''}`;
+      stuck = key === last ? stuck + 1 : 0;
+      last = key;
+      if (top === 'event' && st?.choiceMenu && stuck >= 2) {
+        const pick = choices.length ? choices.shift()! : 'first';
+        if (++picks > 40) throw new OracleError('more than 40 menu picks');
+        if (pick === 'back') {
+          e.press('BACK');
+        } else {
+          const values: string[] = (st.choiceMenu.cfg?.entries ?? []).map((entry: any) => String(entry.value));
+          const idx = pick === 'first' ? 0 : values.indexOf(pick);
+          st.choiceMenu.setCursor(idx);
+          e.press('SELECT');
+        }
+        stuck = 0;
+      } else if (top === 'text_entry' && stuck >= 2) {
+        // Finish the entry with its default text, then confirm Yes (the web
+        // keeps Python's text_confirm inside the text entry state).
+        e.press(st.confirmIndex === null || st.confirmIndex === undefined ? 'START' : 'SELECT');
+        stuck = 0;
+      } else if ((top === 'event' || top === 'dialog' || top === 'transition') && stuck >= 2 && stuck % 2 === 0) {
+        e.press('SELECT');
+      } else if (!['event', 'free_roam_rationalize', 'transition', 'turn_change', 'phase_change', 'status_upkeep']
+        .includes(top ?? '') && stuck >= 30 && stuck % 30 === 0) {
+        e.press('BACK');
+      } else {
+        e.step(null);
+      }
+    }
+    throw new OracleError(`interaction did not settle; stack=${JSON.stringify(e.stack())}`);
+  }
+
   /** Pick a named option in whatever menu the top state shows. */
   async do_choose(a: Action): Promise<void> {
     this.e.choose(a.option);
@@ -636,6 +747,11 @@ export function snapshot(e: WebEngine): Json {
     level_vars: jsonable(g.levelVars),
     regions,
     objective: g.currentLevel?.objective ? jsonable(g.currentLevel.objective) : null,
+    talks: (em?.getTalkPairs?.() ?? []).map((p: [string, string]) => [p[0], p[1]]).sort((x: string[], y: string[]) =>
+      x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0),
+    records: Object.fromEntries(RECORDS.save().map((r: any) => [r.nid, jsonable(r.value)])),
+    parties: Object.fromEntries([...(g.parties?.values?.() ?? [])].map((p: any) =>
+      [p.nid, { money: p.money, convoy: p.convoy.map((it: any) => it.nid) }])),
     music: currentMusic(g),
     events: (em?.eventQueue ?? []).map((ev: any) => ev.nid),
     already_triggered: [...(em?.getOnceTriggered?.() ?? [])].sort(),
@@ -651,6 +767,8 @@ export function snapshot(e: WebEngine): Json {
  * carries them into the level like a real level transition.
  */
 function applyRunState(g: any, state: RunState): void {
+  // Never share objects with the scenario's run state (py_driver copies too).
+  state = structuredClone(state);
   for (const [k, v] of Object.entries(state.game_vars ?? {})) {
     if (k !== '_random_seed') g.gameVars.set(k, v);
   }
@@ -765,6 +883,8 @@ function applyRunState(g: any, state: RunState): void {
 /** Start one level the way py_driver.start_level does, then settle. */
 async function startLevel(e: WebEngine, scn: Scenario, level: string): Promise<void> {
   const g = e.game;
+  // Every sweep level starts in silence, as py_driver clears its music.
+  if (scn.levels) g.audioManager?.calls && (g.audioManager.calls.length = 0);
   if (scn.run_state) {
     // Python build_new: a fresh game (registries, parties, spent events).
     g.buildNew();
@@ -835,11 +955,11 @@ export async function runScenario(scn: Scenario): Promise<Json> {
     }
     if (scn.levels) {
       // Level sweep: same run state for every level, failures per level.
-      const baseline = RECORDS.save();
+      const baseline = JSON.stringify(RECORDS.save());
       for (const level of scn.levels) {
         const step: any = { action: { do: 'level', level: String(level) } };
         try {
-          RECORDS.restore(baseline);
+          RECORDS.restore(JSON.parse(baseline));
           await startLevel(e, scn, String(level));
           new Runner(e).setup(scn.setup ?? []);
         } catch (err: any) {
@@ -852,6 +972,32 @@ export async function runScenario(scn: Scenario): Promise<Json> {
           step.error ??= `snapshot failed: ${err?.message ?? err}`;
         }
         out.steps.push(step);
+        // Free roam tour (py_driver): every walk-up interaction, each from a
+        // fresh start of the level, one snapshot after each.
+        if (scn.roam_tour && !step.error && e.top() === 'free_roam') {
+          const targets = new Runner(e).roamTargets();
+          step.snapshot.roam_targets = targets;
+          for (const [i, [kind, nid]] of targets.entries()) {
+            const a: Action = { do: 'roam_interact', kind, target: nid, choices: scn.roam_choices?.[`${level}:${nid}`] ?? [] };
+            const act: any = { action: { ...a, level: String(level) } };
+            try {
+              if (i) {
+                RECORDS.restore(JSON.parse(baseline));
+                await startLevel(e, scn, String(level));
+              }
+              await new Runner(e).run(a);
+            } catch (err: any) {
+              console.error(err);
+              act.error = `${err?.name ?? 'Error'}: ${err?.message ?? err}`;
+            }
+            try {
+              act.snapshot = snapshot(e);
+            } catch (err: any) {
+              act.error ??= `snapshot failed: ${err?.message ?? err}`;
+            }
+            out.steps.push(act);
+          }
+        }
         // The same actions on every level that settled into a turn-based
         // phase (free roam levels have no turns to end), as py_driver does.
         if (!step.error && e.top() !== 'free_roam') {

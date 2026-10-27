@@ -617,3 +617,37 @@ test.describe('First-turn differential fixes', () => {
     expect(counts).toEqual([1, 0]);
   });
 });
+
+test.describe('Free-roam differential fixes', () => {
+  test('talk pairs repeat, remove_talk drops one, and both undo', async ({ page }) => {
+    await bootEotf(page);
+    await runEvent(page, 'QaTalkList', [
+      'add_talk;Player;Gacha', 'add_talk;Player;Gacha', 'remove_talk;Player;Gacha', 'add_talk;Gacha;Player',
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const gacha = () => g.eventManager.getTalkPairs().filter((p: string[]) => p.includes('Gacha'));
+      const after = gacha();
+      g.actionLog.undo();
+      const undone = gacha();
+      return { after, undone, directed: [g.eventManager.hasDirectedTalk('Player', 'Gacha'), g.eventManager.hasDirectedTalk('Gacha', 'Player')] };
+    });
+    expect(result).toEqual({
+      after: [['Player', 'Gacha'], ['Gacha', 'Player']],
+      undone: [['Player', 'Gacha']],
+      directed: [true, false],
+    });
+  });
+
+  test('loading a level starts no music before its first phase change', async ({ page }) => {
+    await bootEotf(page);
+    const music = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      g.audioManager.calls.length = 0;
+      g.cleanUpLevel();
+      await g.loadLevel('SP_TLT');
+      return g.audioManager.calls.filter((c: any) => c.op === 'play' || c.op === 'fadeIn').map((c: any) => c.nid);
+    });
+    expect(music).toEqual([]);
+  });
+});

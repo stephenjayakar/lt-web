@@ -2469,7 +2469,8 @@ export class EventManager {
   eventQueue: GameEvent[];
   private onceTriggered: Set<NID>;
   /** Dynamic talk pairs added via event commands: Set of "unitA|unitB" keys. */
-  private talkPairs: Set<string>;
+  /** Python game.talk_options: an ordered list that may repeat a pair. */
+  private talkPairs: [string, string][];
   /**
    * Talk options hidden via hide_talk/unhide_talk event commands: Set of
    * "unitA|unitB" keys. Mirrors Python's `game_state.talk_hidden`
@@ -2499,7 +2500,7 @@ export class EventManager {
     this.allEvents = events;
     this.eventQueue = [];
     this.onceTriggered = new Set();
-    this.talkPairs = new Set();
+    this.talkPairs = [];
     this.talkHidden = new Set();
   }
 
@@ -2639,35 +2640,40 @@ export class EventManager {
     });
   }
 
-  /** Add a dynamic talk pair (used by add_talk event command). */
+  /**
+   * Python AddTalk: append the pair, even when it is already listed (EOtF's
+   * talk events re-add their own pair after each talk, so pairs repeat).
+   */
   addTalkPair(unit1Nid: string, unit2Nid: string): void {
-    this.talkPairs.add(`${unit1Nid}|${unit2Nid}`);
+    this.talkPairs.push([unit1Nid, unit2Nid]);
   }
 
-  /** Remove a dynamic talk pair (used by remove_talk event command). */
-  removeTalkPair(unit1Nid: string, unit2Nid: string): void {
-    this.talkPairs.delete(`${unit1Nid}|${unit2Nid}`);
+  /** Python RemoveTalk: remove one listed instance; true if one was there. */
+  removeTalkPair(unit1Nid: string, unit2Nid: string): boolean {
+    const index = this.talkPairs.findIndex(([a, b]) => a === unit1Nid && b === unit2Nid);
+    if (index < 0) return false;
+    this.talkPairs.splice(index, 1);
+    return true;
   }
 
-  /** Check if a talk pair exists. */
+  /** Check if a talk pair exists in either direction. */
   hasTalkPair(unit1Nid: string, unit2Nid: string): boolean {
-    return this.talkPairs.has(`${unit1Nid}|${unit2Nid}`) ||
-           this.talkPairs.has(`${unit2Nid}|${unit1Nid}`);
+    return this.hasDirectedTalk(unit1Nid, unit2Nid) || this.hasDirectedTalk(unit2Nid, unit1Nid);
+  }
+
+  /** Python `(unit1, unit2) in game.talk_options`: this direction only. */
+  hasDirectedTalk(unit1Nid: string, unit2Nid: string): boolean {
+    return this.talkPairs.some(([a, b]) => a === unit1Nid && b === unit2Nid);
   }
 
   /** Get dynamic talk pairs in the save format used by Python game state. */
   getTalkPairs(): [string, string][] {
-    return Array.from(this.talkPairs, pair => {
-      const separator = pair.indexOf('|');
-      return [pair.slice(0, separator), pair.slice(separator + 1)];
-    });
+    return this.talkPairs.map(([a, b]): [string, string] => [a, b]);
   }
 
   /** Restore dynamic talk pairs added by add_talk event commands. */
   restoreTalkPairs(pairs: [string, string][] | undefined): void {
-    this.talkPairs = new Set(
-      (pairs ?? []).map(([unit1Nid, unit2Nid]) => `${unit1Nid}|${unit2Nid}`),
-    );
+    this.talkPairs = (pairs ?? []).map(([unit1Nid, unit2Nid]): [string, string] => [unit1Nid, unit2Nid]);
   }
 
   /** Hide a talk option from map/menu display (hide_talk event command). */

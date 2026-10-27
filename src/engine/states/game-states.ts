@@ -108,6 +108,8 @@ import {
   DamageAction,
   WeaponUsesAction,
   SetCurrentHpAction,
+  AddTalkAction,
+  RemoveTalkAction,
   SetCurrentManaAction,
   GainExpAction,
   DeathAction,
@@ -12387,7 +12389,8 @@ export class EventState extends State {
    */
   private levelEnd(game: any): void {
     const currentLevelNid = game.currentLevel?.nid ?? '';
-    game.gameVars.set('_prev_level_nid', currentLevelNid);
+    // Python level_end keeps this in game.memory, not in the game vars.
+    game.memory.set('_prev_level_nid', currentLevelNid);
 
     // Find current level index in the ordered db.levels map
     const levelNids = Array.from(game.db.levels.keys()) as string[];
@@ -16880,7 +16883,7 @@ export class EventState extends State {
       case 'add_talk': {
         // add_talk;unit1_nid;unit2_nid
         if (game.eventManager && args.length >= 2) {
-          game.eventManager.addTalkPair(args[0], args[1]);
+          game.actionLog.doAction(new AddTalkAction(args[0], args[1]));
         }
         this.advancePointer();
         return false;
@@ -16888,7 +16891,7 @@ export class EventState extends State {
 
       case 'remove_talk': {
         if (game.eventManager && args.length >= 2) {
-          game.eventManager.removeTalkPair(args[0], args[1]);
+          game.actionLog.doAction(new RemoveTalkAction(args[0], args[1]));
         }
         this.advancePointer();
         return false;
