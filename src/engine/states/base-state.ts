@@ -37,6 +37,7 @@ import {
   type ChoiceEntry,
 } from '../../ui/prep-ui';
 import { Dialog } from '../../ui/dialog';
+import { ScrollArrow } from '../../ui/menu-chrome';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts / prep-state.ts)
@@ -838,6 +839,9 @@ export class BaseLoreState extends State {
   private loreNid: string | null = null;
   private pages: Dialog[] = [];
   pageNum = 0;
+  /** LoreDisplay's page arrows (gui.ScrollArrow), drawn when a lore has several pages. */
+  private readonly leftArrow = new ScrollArrow('left', 84 + 4, 8);
+  private readonly rightArrow = new ScrollArrow('right', 84 + (240 - 84) - 11, 8, 0.5);
 
   constructor(guideMode: boolean = false) {
     super();
@@ -929,12 +933,13 @@ export class BaseLoreState extends State {
       if (menu.moveUp(prepIsFirstPush(game, 'UP'))) sfx('Select 6');
       this.updateEntry();
     } else if (event === 'RIGHT') {
-      if (this.pageNum < this.pages.length - 1) { this.pageNum += 1; sfx('Status_Page_Change'); }
+      if (this.pageNum < this.pages.length - 1) { this.pageNum += 1; this.rightArrow.pulse(); sfx('Status_Page_Change'); }
     } else if (event === 'LEFT') {
-      if (this.pageNum > 0) { this.pageNum -= 1; sfx('Status_Page_Change'); }
+      if (this.pageNum > 0) { this.pageNum -= 1; this.leftArrow.pulse(); sfx('Status_Page_Change'); }
     } else if (event === 'SELECT') {
       if (this.pages.length > 1) {
         this.pageNum = (this.pageNum + 1) % this.pages.length;
+        this.rightArrow.pulse();
         sfx('Status_Page_Change');
       }
     } else if (event === 'BACK') {
@@ -979,6 +984,14 @@ export class BaseLoreState extends State {
     if (page) {
       page.update();
       page.draw(surf, true);
+    }
+    if (this.pages.length > 1) {
+      this.leftArrow.x = ox + 84 + 4;
+      this.leftArrow.y = oy + 8;
+      this.rightArrow.x = ox + 240 - 11;
+      this.rightArrow.y = oy + 8;
+      this.leftArrow.draw(surf);
+      this.rightArrow.draw(surf);
     }
     return surf;
   }
