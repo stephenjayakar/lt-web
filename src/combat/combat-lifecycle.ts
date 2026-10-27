@@ -1980,10 +1980,59 @@ export function applyOnHitForcedMovement(
 }
 
 /** Apply item end-combat resource hooks once per item that participated. */
+/** EOtF's shared-set after-combat statuses (see applyCombatItemEndHooks). */
+function applySharedAfterCombatStatuses(game: CombatLifecycleGame, strikes: CombatStrike[]): number {
+  const db = game.db!;
+  const initiatorStrike = strikes.find((strike) => !strike.isCounter);
+  const counterStrike = strikes.find((strike) => strike.isCounter);
+  const endOrder = [initiatorStrike, counterStrike]
+    .filter((strike): strike is CombatStrike => !!strike)
+    .map((strike) => ({ unit: strike.attacker, item: strike.item }));
+  let applied = 0;
+  const give = (target: UnitObject, statusNid: unknown, initiator: UnitObject): void => {
+    if (typeof statusNid !== 'string') return;
+    const prefab = db.skills.get(statusNid);
+    if (!prefab) return;
+    const status = new SkillObject(prefab);
+    status.initiatorNid = initiator.nid;
+    game.actionLog!.doAction(new AddSkillAction(target, status));
+    applied++;
+  };
+  for (const component of ['statuses_after_combat_on_hit', 'status_after_combat_on_hit_foe_only'] as const) {
+    const targets: UnitObject[] = [];
+    for (const strike of strikes) {
+      if (!strike.hit || !strike.item.hasComponent(component)) continue;
+      if (component === 'status_after_combat_on_hit_foe_only' &&
+          !checkEnemy(strike.attacker, strike.defender, db)) continue;
+      if (!targets.includes(strike.defender)) targets.push(strike.defender);
+    }
+    if (targets.length === 0) continue;
+    const source = endOrder.find(({ item }) => item.hasComponent(component));
+    if (!source) continue;
+    const value = source.item.getComponent<unknown>(component);
+    for (const target of targets) {
+      if (component === 'statuses_after_combat_on_hit') {
+        for (const statusNid of Array.isArray(value) ? value : []) give(target, statusNid, source.unit);
+      } else {
+        give(target, value, source.unit);
+      }
+    }
+  }
+  return applied;
+}
+
 export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: CombatStrike[]): number {
   if (!game.actionLog || !game.db) return 0;
   const processed = new Set<ItemObject>();
   let applied = 0;
+  // EOtF's engine: StatusesAfterCombatOnHit and StatusAfterCombatOnHitFoeOnly
+  // each keep their hit targets in one set shared by every instance; the
+  // first item to reach end_combat (initiator, then defender) applies its
+  // statuses to all of them and clears the set.
+  const sharedAfterCombat = isForkEngine()
+    ? applySharedAfterCombatStatuses(game, strikes)
+    : null;
+  if (sharedAfterCombat !== null) applied += sharedAfterCombat;
   for (const strike of strikes) {
     if (processed.has(strike.item)) continue;
     processed.add(strike.item);
@@ -2010,7 +2059,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
       }
     }
     const endStatuses = strike.item.getComponent<unknown>('statuses_after_combat_on_hit');
-    if (Array.isArray(endStatuses)) {
+    if (Array.isArray(endStatuses) && sharedAfterCombat === null) {
       for (const mark of hitMarks) {
         for (const statusNid of endStatuses) {
           if (typeof statusNid !== 'string') continue;
@@ -2026,7 +2075,7 @@ export function applyCombatItemEndHooks(game: CombatLifecycleGame, strikes: Comb
     const foeOnlyStatus = strike.item.getComponent<unknown>(
       'status_after_combat_on_hit_foe_only',
     );
-    if (typeof foeOnlyStatus === 'string') {
+    if (typeof foeOnlyStatus === 'string' && sharedAfterCombat === null) {
       const prefab = game.db.skills.get(foeOnlyStatus);
       if (prefab) {
         for (const mark of hitMarks) {

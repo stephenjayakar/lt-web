@@ -13,6 +13,7 @@ import {
   unitHasTag,
 } from './skill-system';
 import { effectiveItemComponents } from './item-system';
+import { isForkEngine } from '../engine/engine-flavor';
 
 export interface WeaponRankUp {
   rank: string;
@@ -46,7 +47,12 @@ function addStatus(
 }
 
 /** Apply item on-hit/end-combat status hooks after the strike sequence has resolved. */
-function applyStrikeStatuses(strikes: CombatStrike[], db: Database, game?: any): void {
+function applyStrikeStatuses(
+  strikes: CombatStrike[],
+  db: Database,
+  game?: any,
+  endCombatOrder?: Array<[UnitObject, ItemObject | null]>,
+): void {
   for (const strike of strikes) {
     if (!strike.hit) continue;
     for (const [componentNid, value] of effectiveItemComponents(
@@ -65,6 +71,32 @@ function applyStrikeStatuses(strikes: CombatStrike[], db: Database, game?: any):
         }
       }
     }
+  }
+  if (isForkEngine() && endCombatOrder) {
+    // EOtF's engine keeps StatusAfterCombatOnHit's hit targets in one set
+    // shared by every instance of the component. The first instance whose
+    // end_combat runs (the initiator's item, then the defender's) gives its
+    // status to every target any of them hit, and clears the set.
+    const statusValues = (unit: UnitObject, item: ItemObject): unknown[] =>
+      effectiveItemComponents(unit, item, db, game)
+        .filter(([nid]) => nid === 'status_after_combat_on_hit')
+        .map(([, value]) => value);
+    const hitTargets: UnitObject[] = [];
+    for (const strike of strikes) {
+      if (!strike.hit || statusValues(strike.attacker, strike.item).length === 0) continue;
+      if (!hitTargets.includes(strike.defender)) hitTargets.push(strike.defender);
+    }
+    if (hitTargets.length === 0) return;
+    for (const [unit, item] of endCombatOrder) {
+      if (!item) continue;
+      const [status] = statusValues(unit, item);
+      if (status === undefined) continue;
+      for (const target of hitTargets) {
+        addStatus(target, typeof status === 'string' ? status : undefined, db, unit, game);
+      }
+      return;
+    }
+    return;
   }
   for (const strike of strikes) {
     if (!strike.hit) continue;
@@ -378,7 +410,7 @@ export function applyGroupCombatComponents(
   db: Database,
   game?: any,
 ): CombatComponentResults {
-  applyStrikeStatuses(strikes, db, game);
+  applyStrikeStatuses(strikes, db, game, [[attacker, attackItem], ...(mainDefender ? [[mainDefender, defenseItem] as [UnitObject, ItemObject | null]] : [])]);
   const attackerWexp = grantGroupWexp(
     attacker, attackItem, mainDefender, strikes, attackerDead, deadDefenders, db,
   );
