@@ -300,7 +300,12 @@ export class QaDriver {
     if (levelNid === 'X') return undefined; // the hub is driven by jump()
     const talkable = (game.getAllUnits() as any[]).filter((u) =>
       u !== roamUnit && u.position && !u.isDead() && game.eventManager?.hasTalkPair?.(roamUnit.nid, u.nid));
-    const subroom = Number(game.gameVars.get('in_subroom') ?? 0) === 1;
+    const rooms = talkable
+      .filter((u) => /^room/.test(u.nid))
+      .map((u) => ({ nid: u.nid as string, kind: this.roomKind(u.nid) }));
+    // Shop/camp sub-rooms, and Act maps that are only a service stop (Act 4's
+    // first floors): visit the services, then take the exit.
+    const subroom = Number(game.gameVars.get('in_subroom') ?? 0) === 1 || rooms.length === 0;
     let target: any = null;
     if (subroom) {
       const scope = `${levelNid}|${game.gameVars.get('Floor')}|sub`;
@@ -309,9 +314,6 @@ export class QaDriver {
       else target = talkable.find((u) => u.nid === 'exit') ?? null;
       if (target) this.note(`talk ${target.nid}`);
     } else {
-      const rooms = talkable
-        .filter((u) => /^room/.test(u.nid))
-        .map((u) => ({ nid: u.nid as string, kind: this.roomKind(u.nid) }));
       if (this.currentFloor && this.currentFloor.roomsOffered.length === 0) {
         this.currentFloor.roomsOffered = rooms.map((r) => `${r.kind}${this.roomReward(r.nid)}`);
       }

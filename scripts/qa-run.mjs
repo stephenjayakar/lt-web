@@ -135,7 +135,7 @@ const timeoutMs = num(args.timeout, 1800) * 1000;
 const jumpSpec = {
   act: args.act !== undefined ? num(args.act) : undefined,
   floor: args.floor !== undefined ? num(args.floor) : undefined,
-  alter: !!args.alter,
+  alter: args.alter ? true : undefined,
   level: typeof args.level === 'string' ? args.level : undefined,
   reward: typeof args.reward === 'string' ? args.reward : undefined,
   party: parseParty(args.party),

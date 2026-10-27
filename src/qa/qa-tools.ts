@@ -126,6 +126,7 @@ class QaController {
   private channel = new MessageChannel();
   private scheduled = false;
   private scriptCounter = 0;
+  private loopErrors = 0;
 
   constructor(game: any, display: QaDisplay) {
     this.game = game;
@@ -177,8 +178,16 @@ class QaController {
         stepped += 1;
         if (this.phase === 'playing' && this.checkPlayDone()) break;
       }
+      this.loopErrors = 0;
     } catch (err) {
-      this.log.record('error', `QA frame loop: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+      const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
+      this.log.record('error', `QA frame loop: ${message}`);
+      // An exception every frame means the game cannot progress: stop the
+      // run instead of waiting for the stuck detector.
+      this.loopErrors += 1;
+      if (this.loopErrors >= 120 && this.phase === 'playing') {
+        this.finish('error', `engine exception every frame: ${message.split(/\r?\n/)[0]}`);
+      }
     }
     if (this.fast.speed > 0) this.credit -= stepped;
     const now = realNow();

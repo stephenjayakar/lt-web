@@ -107,6 +107,38 @@ export function gameLevelIncrement(gameSpeed: number, density: number): number {
   return 0.45;
 }
 
+/**
+ * The commands an Act's Talk_Room runs after "Begin ...? Yes" for a fixed
+ * level (trials, bosses, elites): from the `if;'{v:begin}' == 'Yes'` line to
+ * win_game. Levels picked at random (`set_next_chapter;{v:next}`) have none.
+ */
+export function talkRoomBlock(game: any, actNid: string, level: string): string[] | null {
+  const prefabs = [...game.db.events.values()].filter((e: any) => e.name === 'Talk_Room');
+  prefabs.sort((a: any, b: any) => (a.level_nid === actNid ? -1 : 0) - (b.level_nid === actNid ? -1 : 0));
+  for (const prefab of prefabs) {
+    const lines: string[] = (prefab._source ?? []).map((l: string) => l.trim());
+    const at = lines.findIndex((l) => l === `set_next_chapter;${level}`);
+    if (at < 0) continue;
+    let start = at;
+    while (start > 0 && !/^if;'\{v:begin\}' == 'Yes'/.test(lines[start])) start -= 1;
+    let end = at;
+    while (end < lines.length - 1 && lines[end] !== 'win_game') end += 1;
+    if (start === 0 || lines[end] !== 'win_game') continue;
+    return lines.slice(start + 1, end + 1);
+  }
+  return null;
+}
+
+/** The first trial's `subboss` value in an Act's Talk_Room (boss floors need one). */
+export function firstSubboss(game: any, actNid: string): string | null {
+  const prefab = [...game.db.events.values()].find((e: any) => e.name === 'Talk_Room' && e.level_nid === actNid);
+  for (const line of (prefab?._source ?? []) as string[]) {
+    const match = /^\s*game_var;subboss;'([^']+)'/.exec(line);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 function normaliseUnit(spec: string | UnitSpec): UnitSpec {
   return typeof spec === 'string' ? { nid: spec } : { ...spec };
 }
@@ -124,8 +156,26 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   const { game } = host;
   const gameSpeed = spec.gameSpeed ?? 1;
   const perAct = floorsPerAct(gameSpeed);
-  const act = spec.act ?? (spec.floor ? Math.min(4, Math.floor((spec.floor - 1) / perAct) + 1) : 1);
-  const floor = spec.floor ?? (act - 1) * perAct + 1;
+  // A trial/boss/elite level without an Act: the Act whose Talk_Room offers it.
+  let inferredAct: number | undefined;
+  let inferredAlter = false;
+  if (spec.level && spec.act === undefined && spec.floor === undefined) {
+    const owner = [...game.db.events.values()].find((e: any) => e.name === 'Talk_Room' &&
+      (e._source ?? []).some((l: string) => l.trim() === `set_next_chapter;${spec.level}`));
+    const match = /^Act_(\d)(A?)$/.exec(String(owner?.level_nid ?? ''));
+    if (match) {
+      inferredAct = Number(match[1]);
+      inferredAlter = match[2] === 'A';
+    }
+  }
+  if (spec.alter === undefined && inferredAlter) spec = { ...spec, alter: true };
+  const act = spec.act ?? inferredAct ?? (spec.floor ? Math.min(4, Math.floor((spec.floor - 1) / perAct) + 1) : 1);
+  // A trial or boss level defaults to the floor the run meets it on.
+  const levelTags: string[] = spec.level ? (game.db.levels.get(spec.level)?.tags ?? []) : [];
+  const trialFloor = act <= 3 ? act * perAct - 1 : 3 * perAct + 3;
+  const bossFloor = act <= 3 ? act * perAct : 3 * perAct + 5;
+  const floor = spec.floor ?? (levelTags.includes('Trial_Map') ? trialFloor
+    : levelTags.includes('Boss_Map') ? bossFloor : (act - 1) * perAct + 1);
   const density = spec.density ?? 0;
   const party = (spec.party && spec.party.length > 0 ? spec.party : DEFAULT_PARTY).map(normaliseUnit);
   const promoted = spec.promoted ?? floor > perAct;
@@ -204,6 +254,12 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   if (spec.alter) lines.push('game_var;Alter_Act;2');
   const actNid = `Act_${act}${spec.alter ? 'A' : ''}`;
   if (!game.db.levels.get(actNid)) throw new Error(`jump: no level ${actNid}`);
+  // The boss floor offers the boss matching the trial fought on the floor
+  // before (game var subboss); default to the Act's first trial.
+  if (act <= 3 && floor === act * perAct && !(spec.gameVars && 'subboss' in spec.gameVars)) {
+    const subboss = firstSubboss(game, actNid);
+    if (subboss) lines.push(`game_var;subboss;${literal(subboss)}`);
+  }
   lines.push(`set_next_chapter;${actNid}`);
   lines.push('trigger_script;X 8. Run_Start');
   host.setSortie(sortie);
@@ -216,17 +272,27 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   if (spec.level) {
     const target = game.db.levels.get(spec.level);
     if (!target) throw new Error(`jump: unknown level "${spec.level}"`);
-    const tags: string[] = target.tags ?? [];
-    const reward = spec.reward ?? (tags.includes('Boss_Map') ? 'Boss' : tags.includes('Trial_Map') ? 'Money' : 'Weapons+');
-    const script = ['game_var;in_combat;1', `game_var;next_reward;${literal(reward)}`];
-    if (tags.includes('Trial_Map')) script.push(`game_var;subboss;${literal(String(spec.level).toLowerCase())}`);
-    script.push(`game_var;seen_maps;v('seen_maps') + [${literal(spec.level)}]`);
-    script.push(`set_next_chapter;${arg(spec.level)}`, 'skip_save;t', 'win_game');
+    // Trials, bosses and elites: the Act's own Talk_Room commands. Other maps
+    // (picked at random by Talk_Room): its standard-combat commands.
+    const block = spec.reward ? null : talkRoomBlock(game, actNid, spec.level);
+    const reward = spec.reward ?? 'Weapons+';
+    const script = block ?? [
+      'game_var;in_combat;1',
+      `game_var;seen_maps;v('seen_maps') + [${literal(spec.level)}]`,
+      `game_var;next_reward;${literal(reward)}`,
+      `set_next_chapter;${arg(spec.level)}`,
+      'skip_save;t',
+      'win_game',
+    ];
+    host.note(`jump: entering ${spec.level}${block ? ' (Talk_Room block)' : ''}`);
     host.runScript(script, 'QA_Jump_Level');
+    // Ready at preparations (opened by the level's intro event, which stays
+    // paused beneath) or at the first player phase.
     await host.waitFor(() => {
       const top = game.state.getCurrentState()?.name;
-      return game.currentLevel?.nid === spec.level && !game.eventManager?.hasActiveEvents()
-        && (top === 'prep_main' || top === 'free');
+      if (game.currentLevel?.nid !== spec.level) return false;
+      if (top === 'prep_main') return true;
+      return top === 'free' && !game.eventManager?.hasActiveEvents() && game.phase?.getCurrent?.() === 'player';
     }, `level ${spec.level} ready`, 120_000);
   }
 
