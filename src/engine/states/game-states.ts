@@ -10851,7 +10851,12 @@ export class EventState extends State {
       this.chapterTitleTimer = 0;
       this.chapterTitleText = '';
       this.locationCard = null;
-      this.isHandlingLevelEnd = false;
+      // Python keeps is_handling_end_event on the EventState that triggered
+      // the level_end events; they run in EventStates of their own (as do
+      // the combat_end events an outro's interact_unit fires) and control
+      // returns to it for level_end. Here one EventState runs them all, so
+      // the flag must survive the outro's nested events.
+      if (!game.levelVars?.get?.('_level_end_triggered')) this.isHandlingLevelEnd = false;
       this.levelTransitionInProgress = false;
       const restoredBackground = this.restoreParkedPresentation(nextEvent);
       if (restoredBackground !== undefined) {
