@@ -936,6 +936,7 @@ async function main(): Promise<void> {
     // state so a fresh, fully-deterministic sequence starts from this seed.
     function applySeed(seed: number, source: string): void {
       gameState.gameVars.set('_random_seed', seed);
+      gameState.fixedRandomSeed = seed;
       gameState.gameVars.delete('_combat_random_seed');
       gameState.gameVars.delete('_growth_random_seed');
       console.info(`[Harness] Deterministic RNG seed set from ${source}: ${seed}`);

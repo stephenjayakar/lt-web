@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { ensureServer, runWebScenario } from './web-driver.mjs';
+import { ensureServer, loadScenario, runWebScenario } from './web-driver.mjs';
 import { diffRuns, formatReport } from './diff.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -98,7 +98,7 @@ async function main() {
   const summary = [];
   try {
     for (const file of files) {
-      const scenario = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const scenario = loadScenario(file);
       const backend = pickBackend(scenario, backendFlag);
       const name = (scenario.name ?? path.basename(file, '.json')) + (backendFlag ? `@${backend}` : '');
       const dir = path.join(OUT, name);

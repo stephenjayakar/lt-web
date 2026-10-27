@@ -11,6 +11,9 @@
  * - EventState.level_end keeps _prev_level_nid in game.memory and records
  *   _should_go_to_overworld in the game vars.
  * - The fork's prep command sets no _prep_options_info_descs (upstream does).
+ * - GameState.load re-seeds static_random and restores only the combat
+ *   stream, so growth and "other" streams restart after every load.
+ * - cf.SETTINGS['random_seed'] fixes the seed of every New Game.
  */
 
 import { test, expect } from '@playwright/test';
@@ -89,5 +92,40 @@ test.describe('Oracle run-start findings', () => {
     await boot(page, 'project=eotf.ltproj&level=1');
     await runScript(page, ['prep'], 300);
     expect(await page.evaluate(() => (window as any).__gameRef.gameVars.has('_prep_options_info_descs'))).toBe(false);
+  });
+
+  test('a load restarts the growth and other streams but keeps the combat stream', async ({ page }) => {
+    await boot(page, 'project=default.ltproj&level=DEBUG&seed=4');
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const rng = await import('/src/engine/static-random.ts');
+      const save = await import('/src/engine/save.ts');
+      rng.getCombatRandom(g);
+      rng.getGrowthRandom(g);
+      g.gameVars.set('_other_random_seed', 4);
+      g.gameVars.set('_other_random_state', 12345);
+      const combat = rng.getCombatRandomState(g);
+      await save.suspendGame(g);
+      const loaded = await save.loadSuspend(g);
+      return {
+        loaded,
+        combatKept: rng.getCombatRandomState(g) === combat && combat !== 4,
+        growth: rng.getGrowthRandomState(g),
+        other: g.gameVars.has('_other_random_state'),
+      };
+    });
+    expect(result).toEqual({ loaded: true, combatKept: true, growth: null, other: false });
+  });
+
+  test('a fixed random seed applies to every New Game', async ({ page }) => {
+    await boot(page, 'project=default.ltproj&level=DEBUG&seed=9');
+    const seeds = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.buildNew();
+      const first = g.gameVars.get('_random_seed');
+      g.buildNew();
+      return [first, g.gameVars.get('_random_seed')];
+    });
+    expect(seeds).toEqual([9, 9]);
   });
 });

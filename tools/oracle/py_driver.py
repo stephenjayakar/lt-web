@@ -770,7 +770,8 @@ class Runner:
         e.press('SELECT')
         e.settle(until=lambda en: en.top() == 'option_menu')
         e.choose('End')
-        e.settle(until=lambda en: en.top() == 'free' and en.game.phase.get_current() == 'player',
+        # Back in a player phase, or the level ended into free roam (a hub).
+        e.settle(until=lambda en: (en.top() == 'free' and en.game.phase.get_current() == 'player') or en.top() == 'free_roam',
                  max_frames=a.get('max_frames', 20000))
 
     def _empty_tile(self):
@@ -1009,13 +1010,28 @@ def run_scenario(scn: dict, backend: str = 'upstream') -> dict:
     return out
 
 
+def load_scenario(path: Path) -> dict:
+    """Read a scenario; ``"include": "<name>"`` starts from that scenario
+    (same folder): its fields are inherited, its setup and actions come first.
+    Keep in sync with loadScenario in run.mjs."""
+    scn = json.loads(path.read_text(encoding='utf-8'))
+    inc = scn.pop('include', None)
+    if not inc:
+        return scn
+    base = load_scenario(path.parent / (inc if inc.endswith('.json') else inc + '.json'))
+    merged = {**base, **scn}
+    merged['setup'] = base.get('setup', []) + scn.get('setup', [])
+    merged['actions'] = base.get('actions', []) + scn.get('actions', [])
+    return merged
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('scenario')
     ap.add_argument('-o', '--out')
     ap.add_argument('--backend', choices=['upstream', 'fork'])
     args = ap.parse_args(argv)
-    scn = json.loads(Path(args.scenario).read_text(encoding='utf-8'))
+    scn = load_scenario(Path(args.scenario))
     result = run_scenario(scn, pick_backend(scn, args.backend))
     text = json.dumps(result, indent=1, sort_keys=True)
     if args.out:

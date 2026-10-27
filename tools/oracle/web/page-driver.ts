@@ -416,7 +416,8 @@ class Runner {
     await e.settle({ until: (en) => en.top() === 'option_menu' });
     e.choose('End');
     await e.settle({
-      until: (en) => en.top() === 'free' && en.game.phase.getCurrent() === 'player',
+      // Back in a player phase, or the level ended into free roam (a hub).
+      until: (en) => (en.top() === 'free' && en.game.phase.getCurrent() === 'player') || en.top() === 'free_roam',
       maxFrames: a.max_frames ?? 20000,
     });
   }
@@ -676,6 +677,9 @@ export async function runScenario(scn: Scenario): Promise<Json> {
     // Python build_new: fresh game vars holding only the seed.
     g.gameVars.clear();
     g.gameVars.set('_random_seed', scn.seed ?? 0);
+    // Python's driver fixes cf.SETTINGS['random_seed'] too, so a later New Game
+    // (after a defeat, say) reuses the scenario seed.
+    g.fixedRandomSeed = scn.seed ?? 0;
     // Run state a real playthrough would have set before this level.
     for (const [k, v] of Object.entries(scn.start_game_vars ?? {})) g.gameVars.set(k, v);
     // Fresh difficulty mode with the scenario overrides, set before the level

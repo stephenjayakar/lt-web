@@ -1185,6 +1185,13 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   // 2. Restore game vars and level vars
   game.gameVars = new Map(s.gameVars);
   game.levelVars = new Map(s.levelVars);
+  // Python GameState.load re-seeds static_random from _random_seed and then
+  // restores only the combat stream (current_random_state): the growth and
+  // "other" streams restart from seed + 1 / seed + 2 after every load (the
+  // EOtF fork does the same).
+  for (const key of ['_growth_random_seed', '_growth_random_state', '_other_random_seed', '_other_random_state']) {
+    game.gameVars.delete(key);
+  }
 
   // 3. Restore difficulty mode
   if (s.currentMode) {

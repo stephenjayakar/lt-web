@@ -93,6 +93,24 @@ ${log.slice(-2000)}`);
   }
 }
 
+/**
+ * Read a scenario; `"include": "<name>"` starts from that scenario (same
+ * folder): its fields are inherited, its setup and actions come first.
+ * Keep in sync with load_scenario in py_driver.py.
+ */
+export function loadScenario(file) {
+  const scn = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const inc = scn.include;
+  delete scn.include;
+  if (!inc) return scn;
+  const base = loadScenario(path.join(path.dirname(file), inc.endsWith('.json') ? inc : `${inc}.json`));
+  return {
+    ...base, ...scn,
+    setup: [...(base.setup ?? []), ...(scn.setup ?? [])],
+    actions: [...(base.actions ?? []), ...(scn.actions ?? [])],
+  };
+}
+
 export async function runWebScenario(scenario, { browser, verbose = false } = {}) {
   const ownBrowser = !browser;
   browser ??= await chromium.launch({ args: ['--mute-audio'] });
@@ -134,7 +152,7 @@ async function main() {
     console.error('usage: node tools/oracle/web-driver.mjs <scenario.json> [-o out.json] [-v]');
     process.exit(2);
   }
-  const scenario = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const scenario = loadScenario(file);
   const stop = await ensureServer();
   let result;
   try {

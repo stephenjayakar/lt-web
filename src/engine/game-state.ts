@@ -346,6 +346,13 @@ export class GameState {
    * persistent combat/growth streams; leaving it unset made every new game
    * share seed 0.
    */
+  /**
+   * Python cf.SETTINGS['random_seed'] (a debug setting): when set (>= 0),
+   * every New Game uses this seed instead of a random one. The harness's
+   * ?seed= and the differential oracle set it.
+   */
+  fixedRandomSeed: number | null = null;
+
   buildNew(): void {
     this.playtime = 0;
     this.units.clear();
@@ -367,7 +374,7 @@ export class GameState {
     this.initiative = null;
     this.roamInfo = new RoamInfo();
     this.gameVars = new Map();
-    this.gameVars.set('_random_seed', Math.floor(Math.random() * 1024));
+    this.gameVars.set('_random_seed', this.fixedRandomSeed ?? Math.floor(Math.random() * 1024));
     this.teamPaletteOverrides.clear();
     this.initParties();
     this.overworldRegistry = new Map();
