@@ -44,6 +44,11 @@ export class StateMachine {
     this.tempState.push({ kind: 'change', name });
   }
 
+  /** Is a push of `name` queued but not yet applied? */
+  hasPendingChange(name: string): boolean {
+    return this.tempState.some((op) => op.kind === 'change' && op.name === name);
+  }
+
   /** Queue a pop: return to the previous state (deferred). */
   back(): void {
     this.tempState.push({ kind: 'back' });

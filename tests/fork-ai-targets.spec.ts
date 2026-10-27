@@ -15,6 +15,8 @@ import { expect, test, type Page } from '@playwright/test';
  * - a blast whose damage is 0 adds no splash lethality (Python tests the
  *   damage hook's truthiness), so the Observer fires Ocular Ray, not Eye of
  *   Judgment;
+ * - the AI state waits for a combat queued by a walk's callback, so the
+ *   attacker still takes its canto step;
  * - asking for a unit's weapon never equips one on the fork.
  *
  * Scenes use EOtF's hub map (level X): the open box x 21..28, y 11..15.
@@ -223,6 +225,29 @@ test.describe('EOtF engine fork: AI targets and bounds', () => {
     expect(after.hp).toBe(40);
     expect(after.at).toEqual([24, 13]);
     expect(after.attacked).toBe(false);
+  });
+
+  test('a unit that walks up to attack still takes its canto step afterwards', async ({ page }) => {
+    await page.evaluate(async () => {
+      const { g, keeper, player, place, give, item, ai } = (window as any).__tgt;
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      place(keeper, 'enemy', [22, 13]);
+      give(keeper, [item('_TgtCantoLance', [['weapon', null], ['target_enemy', null], ['damage', 1],
+        ['hit', 100], ['min_range', 1], ['max_range', 1], ['uses', 40]])]);
+      keeper.equip(keeper.items[0]);
+      keeper.skills = [new SkillObject(g.db.skills.get('Canter'))];
+      keeper.ai = ai('_TgtCanter', [{ action: 'Attack', target: 'Enemy', view_range: -4 }]);
+      place(player, 'player', [25, 13]);
+    });
+    await runEnemyPhase(page);
+    const after = await page.evaluate(() => {
+      const { keeper, player } = (window as any).__tgt;
+      return { at: keeper.position, hp: player.currentHp };
+    });
+    // It struck from (24,13), then Canter's one tile took it away again.
+    expect(after.hp).toBe(39);
+    expect(after.at).not.toEqual([24, 13]);
+    expect(Math.abs(after.at[0] - 24) + Math.abs(after.at[1] - 13)).toBe(1);
   });
 
   test('asking for a weapon never equips one on the fork', async ({ page }) => {

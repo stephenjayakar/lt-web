@@ -9183,6 +9183,12 @@ export class AIState extends MapState {
     // Wait for combat animation (CombatState) to finish.
     // CombatState pops itself via back(), which returns control here.
     if (this.waitingForCombat) {
+      // A walk that ends outside this update (the movement system's
+      // callback) queues the combat after this state's turn in the frame:
+      // until the combat has been pushed, there is nothing to check yet.
+      // Advancing now skipped the unit's canto step (Python act() runs it
+      // once the combat returns).
+      if (game.state.hasPendingChange?.('combat')) return;
       // CombatState is transparent and sits on top of us. If it has
       // popped, we are now the top state and can advance.
       // We detect this by checking if we're still waiting — CombatState
