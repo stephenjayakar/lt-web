@@ -64,7 +64,9 @@ Run `npm run qa:run -- --help` for every option. The main ones:
 | `--party LIST` | `Nid[:level][:P][:Class][:+Item+Item]`, comma separated. `P` promotes; a number after `P` or a class is the post-promotion level. |
 | `--party-level N`, `--promoted` / `--no-promote` | Defaults: level `1 + 0.8 * floor`, promoted from Act 2 on. |
 | `--money`, `--records k=v,...`, `--vars k=v,...`, `--game-speed`, `--density`, `--seed` | State and the game RNG seed. Values are parsed as JSON where possible. |
-| `--boost N` | QA stat boost: `change_stats` +N to every stat (+2N HP) and a full heal. Off by default. |
+| `--boost N` | QA stat boost: `change_stats` +N to every stat (+2N HP) and a full heal. Off by default. Stats stop at class caps. |
+| `--passive-enemies` | Every enemy gets the `None` AI at each player phase, so a boss's turn events (signals, reinforcements, phase changes) can be walked to the turn limit. |
+| `--miracle` | Give the party EOtF's hidden `True_Miracle` (lethal damage leaves 1 HP), to reach a hard boss's late turns and events. |
 | `--floors N` / `--to-floor N` / `--one-level` / `--no-play` | What to play. |
 | `--max-turns N` (40), `--force-win` | Turn limit per battle map; `--force-win` runs `win_game` at the limit instead of stopping. |
 | `--rooms random\|combat,event,shop,respite,elite` | Room policy. Boss and trial rooms are always taken. |

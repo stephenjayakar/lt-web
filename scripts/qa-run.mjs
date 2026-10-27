@@ -42,6 +42,8 @@ Where to start (jump):
   --tutorials          keep EOtF tutorial popups
   --boost N            QA stat boost: +N to every stat (+2N HP) for the party
   --hub                stop in the hub (X) after the party setup (no Run_Start)
+  --passive-enemies    enemies get the 'None' AI each player phase (walk a boss's event script)
+  --miracle            give the party True_Miracle (lethal damage leaves 1 HP) to reach late boss turns
 
 What to play:
   --floors N           play N floors (default 1); --to-floor N; --one-level
@@ -156,6 +158,7 @@ const jumpSpec = {
   tutorials: !!args.tutorials,
   boost: args.boost !== undefined ? num(args.boost) : undefined,
   hub: args.hub || args.hubTour !== undefined ? true : undefined,
+  miracle: args.miracle ? true : undefined,
 };
 // --texts password=HETJASQUEST|ILLUSION,other=...
 const parseTexts = (text) => {
@@ -184,6 +187,7 @@ const playOptions = {
   forceWin: !!args.forceWin,
   maxRealMs: timeoutMs,
   autoplay: !args.noAutoplay,
+  passiveEnemies: !!args.passiveEnemies,
   hubTour: args.hubTour !== undefined
     ? { passes: num(args.hubTour, 1), skip: csv(args.hubSkip), only: csv(args.hubOnly) }
     : undefined,

@@ -73,6 +73,8 @@ export interface PlayOptions {
   policy?: Partial<PolicyOptions>;
   /** Run the player phase with the QA AI (default true). */
   autoplay?: boolean;
+  /** QA: enemies get the 'None' AI each player phase (walk a boss's event script). */
+  passiveEnemies?: boolean;
   /** In the hub (X): visit every NPC and event region, then stop. */
   hubTour?: Partial<HubTourOptions>;
 }
@@ -350,6 +352,7 @@ class QaController {
       maxTurns: options.maxTurns ?? 40,
       forceWin: options.forceWin ?? false,
       autoplay: options.autoplay ?? true,
+      passiveEnemies: options.passiveEnemies ?? false,
     };
     this.result = null;
     this.reason = null;

@@ -61,6 +61,12 @@ export interface JumpSpec {
   boost?: number;
   /** Stop in the hub (X) after the party setup, before Run_Start. */
   hub?: boolean;
+  /**
+   * QA survival: give every party unit EOtF's hidden True_Miracle skill
+   * (lethal damage leaves 1 HP), so a run can reach a hard boss's late
+   * turns and events. Stat boosts stop at class caps; this does not.
+   */
+  miracle?: boolean;
 }
 
 export interface JumpHost {
@@ -252,6 +258,7 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
       lines.push(`heal;${arg(unit.nid)};999`);
     }
     for (const item of unit.items ?? []) lines.push(`give_item;${arg(unit.nid)};${arg(item)};no_banner`);
+    if (spec.miracle && game.db.skills.get('True_Miracle')) lines.push(`give_skill;${arg(unit.nid)};True_Miracle;no_banner`);
   }
   if (spec.money) lines.push(`give_money;${Math.floor(spec.money)};Player;no_banner`);
   for (const [nid, value] of Object.entries(spec.gameVars ?? {})) lines.push(`game_var;${arg(nid)};${literal(value)}`);
@@ -263,6 +270,12 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
         && !game.eventManager?.hasActiveEvents(), 'hub (X) free roam after setup', 60_000);
     }
     return jumpResult(game);
+  }
+  // Global_Give_Exp(receiver=all) tracks the party EXP of the run in
+  // accumulated_exp; recruits and recalled reserves are given that much, so
+  // match it to the party level (EOtF keeps levels through promotion).
+  if (!(spec.gameVars && 'accumulated_exp' in spec.gameVars)) {
+    lines.push(`game_var;accumulated_exp;${100 * (defaultLevel - 1)}`);
   }
   // Global_Level_End (fired by Run_Start's win_game) adds one floor and one
   // Game_Level step, so preset the values the previous floor would have had.

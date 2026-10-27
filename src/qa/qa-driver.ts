@@ -110,6 +110,7 @@ const BACK_OUT = new Set([
   'prep_manage_select', 'base_manage', 'party_transfer', 'optimize_all_choice', 'prep_formation',
   'prep_formation_select', 'prep_market', 'prep_restock', 'base_codex', 'base_records', 'base_supports',
   'base_sound_room', 'base_achievement', 'base_convos', 'base_bexp_select', 'base_bexp_allocate',
+  'base_library', 'base_guide',
   'base_market_select', 'turnwheel', 'menu', 'item', 'targeting', 'weapon_choice', 'move',
   // Between-chapter save prompt: BACK continues to the next level unsaved.
   'title_save', 'save_menu',
@@ -124,6 +125,8 @@ export interface DriverOptions {
   maxTurns: number;
   forceWin: boolean;
   autoplay: boolean;
+  /** QA: every enemy/enemy2 unit gets the 'None' AI (stands still), to walk a boss's event script. */
+  passiveEnemies?: boolean;
 }
 
 /**
@@ -140,9 +143,12 @@ export interface HubTourOptions {
 }
 
 interface HubTarget {
-  kind: 'talk' | 'region';
+  kind: 'talk' | 'region' | 'menu';
   nid: string;
 }
+
+/** Inputs a hub tour sends to a leaf screen (codex, dex, records) before BACK. */
+const BROWSE_INPUTS: GameButton[] = ['DOWN', 'DOWN', 'RIGHT', 'DOWN', 'LEFT', 'UP'];
 
 export class QaDriver {
   mode: DriverMode = 'off';
@@ -154,6 +160,9 @@ export class QaDriver {
   hubDone = false;
   private hubQueue: HubTarget[] | null = null;
   private hubVisits: string[] = [];
+  /** A map-menu option (set_custom_options label) the hub tour will pick. */
+  private pendingMenu: string | null = null;
+  private browsed = new WeakMap<object, number>();
   private textsUsed = new Map<string, number>();
   /** Set by the controller to queue an ad-hoc script. */
   runScript: (lines: string[], nid?: string) => void = () => {};
@@ -246,7 +255,18 @@ export class QaDriver {
     if (!top) return undefined;
     if (name === 'event') return this.handleEvent(top);
     if (name === 'shop') return this.handleShop(top);
-    if (BACK_OUT.has(name)) return 'BACK';
+    if (name === 'option_menu' && this.pendingMenu) return this.selectMenuOption(top);
+    if (BACK_OUT.has(name)) {
+      // A hub tour looks around a leaf screen before leaving it.
+      if (this.hubTour && !this.hubDone && name !== 'option_menu' && name !== 'title_save' && name !== 'save_menu') {
+        const presses = this.browsed.get(top) ?? 0;
+        if (presses < BROWSE_INPUTS.length) {
+          this.browsed.set(top, presses + 1);
+          return BROWSE_INPUTS[presses];
+        }
+      }
+      return 'BACK';
+    }
     if (PRESS_SELECT.has(name)) return 'SELECT';
     if (name === 'text_entry') return this.handleTextEntry(top);
     if (this.mode !== 'play') return undefined;
@@ -343,8 +363,10 @@ export class QaDriver {
    * passwords) and confirm it (START, then Yes); with none, leave the entry
    * (AUX, Python's exit when the entry is not forced).
    */
-  private handleTextEntry(state: any): GameButton | null {
+  private handleTextEntry(state: any): GameButton | null | undefined {
     const nid = String(state.varNid ?? '');
+    // Not begun yet (the event pushes the state; begin() reads its args).
+    if (!nid) return undefined;
     const texts = this.policy.options.texts[nid] ?? [];
     if (state.confirmIndex === 0) return 'SELECT';
     if (texts.length > 0) {
@@ -357,7 +379,7 @@ export class QaDriver {
       }
       return 'START';
     }
-    this.note('text_entry: left');
+    this.note(`text_entry ${nid}: left`);
     return state.forceEntry ? 'START' : 'AUX';
   }
 
@@ -457,6 +479,10 @@ export class QaDriver {
           targets.push({ kind: 'region', nid: region.nid });
         }
       }
+      // The map menu's custom options (EOtF hub: Codex, Gallery).
+      for (const label of (game.gameVars.get('_custom_additional_options') ?? []) as string[]) {
+        if (wanted(label)) targets.push({ kind: 'menu', nid: label });
+      }
       this.hubQueue = [];
       for (let pass = 0; pass < Math.max(1, tour.passes); pass += 1) this.hubQueue.push(...targets);
       this.note(`hub tour: ${targets.map((t) => t.nid).join(', ')} x${Math.max(1, tour.passes)}`);
@@ -470,6 +496,13 @@ export class QaDriver {
       }
       // Menus repeat on every visit; let each visit answer them afresh.
       this.choiceRepeats.clear();
+      if (target.kind === 'menu') {
+        this.pendingMenu = target.nid;
+        this.hubVisits.push(target.nid);
+        this.note(`hub: menu ${target.nid}`);
+        game.state.change('option_menu');
+        return null;
+      }
       if (target.kind === 'talk') {
         const unit = game.getUnit(target.nid);
         if (!unit?.position || !game.eventManager?.hasTalkPair?.(roamUnit.nid, unit.nid)) continue;
@@ -487,6 +520,23 @@ export class QaDriver {
       this.note(`hub: ${target.kind} ${target.nid}`);
       return 'SELECT';
     }
+  }
+
+  /** OptionMenuState: move to the pending custom option and select it. */
+  private selectMenuOption(menuState: any): GameButton | null | undefined {
+    const menu = menuState.menu;
+    if (!menu) return undefined;
+    const label = this.pendingMenu;
+    this.pendingMenu = null;
+    const options: any[] = menu.options ?? [];
+    const index = options.findIndex((o) => o?.label === label && o.enabled !== false);
+    if (index < 0) {
+      this.note(`hub: menu option ${label} unavailable`);
+      return 'BACK';
+    }
+    if (menu.setCursor) menu.setCursor(index);
+    else menu.selectedIndex = index;
+    return 'SELECT';
   }
 
   /** Put the roam unit on a free tile of `region`. */
@@ -564,6 +614,11 @@ export class QaDriver {
       }
       if (!this.stopReason) this.stopReason = `turn limit (${this.options.maxTurns}) on level ${game.currentLevel?.nid}`;
       return undefined;
+    }
+    if (this.options.passiveEnemies) {
+      for (const unit of game.getAllUnits() as any[]) {
+        if ((unit.team === 'enemy' || unit.team === 'enemy2') && unit.ai !== 'None') unit.ai = 'None';
+      }
     }
     const units = (game.getAllUnits() as any[]).filter((u) =>
       u.team === 'player' && u.position && !u.isDead() && !u.finished);
