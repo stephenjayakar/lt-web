@@ -111,7 +111,23 @@ export function loadScenario(file) {
   };
 }
 
-export async function runWebScenario(scenario, { browser, verbose = false } = {}) {
+const HOME = process.env.LT_ORACLE_HOME ?? 'E:/BigData/lt-oracle';
+
+/**
+ * A scenario's run state as an object: inline, or a path that is absolute,
+ * relative to the scenario file (`base`), or relative to $LT_ORACLE_HOME.
+ */
+export function loadRunState(scenario, base) {
+  const rs = scenario.run_state;
+  if (rs === undefined || rs === null || typeof rs === 'object') return rs;
+  for (const cand of [rs, base ? path.join(base, rs) : null, path.join(HOME, rs)]) {
+    if (cand && fs.existsSync(cand)) return JSON.parse(fs.readFileSync(cand, 'utf8'));
+  }
+  throw new Error(`run state not found: ${rs}`);
+}
+
+export async function runWebScenario(scenario, { browser, verbose = false, base = null } = {}) {
+  scenario = { ...scenario, run_state: loadRunState(scenario, base) };
   const ownBrowser = !browser;
   browser ??= await chromium.launch({ args: ['--mute-audio'] });
   const page = await browser.newPage({ viewport: { width: 480, height: 320 } });
@@ -124,7 +140,7 @@ export async function runWebScenario(scenario, { browser, verbose = false } = {}
   try {
     const project = scenario.project ?? 'default.ltproj';
     const q = new URLSearchParams({
-      harness: 'true', project, level: String(scenario.level), clean: 'true', bundle: 'false',
+      harness: 'true', project, level: String(scenario.level ?? scenario.levels?.[0]), clean: 'true', bundle: 'false',
       seed: String(scenario.seed ?? 0),
     });
     // A cold Vite server transforms the whole engine on first load.
@@ -156,7 +172,7 @@ async function main() {
   const stop = await ensureServer();
   let result;
   try {
-    result = await runWebScenario(scenario, { verbose });
+    result = await runWebScenario(scenario, { verbose, base: path.dirname(path.resolve(file)) });
   } finally {
     await stop();
   }

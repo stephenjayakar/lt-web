@@ -17,23 +17,25 @@
     "units.*.skill_data.*.sourceNid": "Web-only, see sourceType.",
     "units.*.skill_data.*.ability_item_uid": "Python stores the uid of a skill's ability item (engine-specific uid counter).",
     "units.*.skill_data.*.abilityItemKey:ability": "Web-only registry key of a skill's ability item (see ability_item_uid).",
-    "units.*.skill_data.*.itemSource": "Web-only: item-granted skills remember their item in skill.data (Python: the unit's skill source list).",
+    "units.*.skill_data.*.itemSource": "Web-only link from an item-granted skill to its item (Python keeps the source in the unit's skill source list).",
     "units.*.skill_data.*.itemSourceNid": "Web-only, see itemSource.",
-    "units.*.skill_data.*.itemSourceType": "Web-only, see itemSource."
+    "units.*.skill_data.*.itemSourceType": "Web-only, see itemSource.",
+    "units.*.skill_data.*.auraOwnerNid": "Web-only bookkeeping on aura child skills (Python tracks auras in the boundary manager).",
+    "units.*.skill_data.*.auraParentSkillUid": "Web-only, see auraOwnerNid.",
+    "units.*.skill_data.*.auraSourceType": "Web-only, see auraOwnerNid.",
+    "units.*.skill_data.*.rescueSource": "Web-only link from a traveler skill to its rescuer (Python keeps it in the unit's skill source list).",
+    "units.*.skill_data.*.rescueSourceType": "Web-only, see rescueSource."
   },
   "zero_equals_missing": {
     "units.*.stats.*": "Python keeps one entry per DB stat; the web may add class-only stats (e.g. LEAD) at 0.",
     "units.*.wexp.*": "Both sides drop zero wexp; a type missing on one side equals 0.",
     "units.*.growth_points.*": "Both sides drop zero growth points."
   },
-  "false_equals_missing": {
-    "units.*.skill_data.*.active": "Python's combat-art components initialise data['active'] = False; the web sets it only when the art is toggled."
-  },
   "null_equals_empty": {
-    "units.*.ai_group": "Python uses None for no AI group, the web an empty string."
+    "units.*.ai_group": "Python uses None for no AI group, the web an empty string.",
+    "regions.*.sub_nid": "add_region without a sub nid: Python stores None, the web an empty string (RegionData.sub_nid is a string)."
   },
   "unordered": {
-    "events": "Compared as a multiset: Python lists all_events in trigger order while running events nest LIFO; the web queue puts the running event first.",
     "units.*.skills": "Compared as a multiset: the web applies terrain statuses before class skills at level load (see README, Known diffs)."
   },
   "state_aliases": {}
