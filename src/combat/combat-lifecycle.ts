@@ -57,7 +57,7 @@ import {
   movementType,
   skillConditionActive,
 } from './skill-system';
-import { evaluateEquation } from './combat-calcs';
+import { evaluateEquation, resolveWeapon } from './combat-calcs';
 
 interface CombatLifecycleGame {
   eventManager: EventManager | null;
@@ -265,7 +265,7 @@ function triggerSkillEvent(
 }
 
 function equippedWeapon(unit: UnitObject): ItemObject | null {
-  return unit.items.find((candidate) => candidate.isWeapon()) ?? null;
+  return resolveWeapon(unit);
 }
 
 /**
@@ -1674,7 +1674,7 @@ function triggerForStrike(strike: CombatStrike, _attackIndex: number): EventTrig
   const targetPosition = strike.defender.position
     ? [...strike.defender.position] as [number, number]
     : null;
-  const item2 = strike.defender.items.find((item) => item.isWeapon()) ?? null;
+  const item2 = resolveWeapon(strike.defender);
   return {
     type: 'item_combat_event',
     unit1: strike.attacker,

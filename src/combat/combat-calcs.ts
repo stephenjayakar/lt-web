@@ -407,7 +407,7 @@ export function avoid(
   // Substituting attack speed for SPD instead only matches that when SPD's
   // coefficient happens to be 2, so formulas like EotF's AVOID_SHACKLED
   // (SPD + LCK//2) diverged.
-  const equippedWeapon = unit.items.find((i) => i.isWeapon()) ?? null;
+  const equippedWeapon = resolveWeapon(unit);
   const avoidExpr = db.getEquation(eqName) ?? 'SPD * 2 + LCK // 2';
   const baseAvoid = evaluateEquation(avoidExpr, unit, { db });
 
@@ -710,7 +710,7 @@ export function computeHit(
   // always hit") has accuracy None and returns 10000, which every forecast and
   // AI caller clamps to 100. The solver still draws the hit roll for it.
   if (itemSystem.hit(attacker, attackItem, game) === null) return 100;
-  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
+  const defWeapon = resolveWeapon(defender);
   const acc = accuracy(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
@@ -822,7 +822,7 @@ function computeDamageCore(
   defenseItem: ItemObject | null | undefined,
 ): number {
   game ??= _eqGameRef?.();
-  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
+  const defWeapon = resolveWeapon(defender);
   const atk = damage(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
@@ -899,7 +899,7 @@ export function computeDamage(
   crit: boolean = false,
   defenseItem?: ItemObject | null,
 ): number {
-  const defWeapon = defender.items.find((candidate) => candidate.isWeapon()) ?? null;
+  const defWeapon = resolveWeapon(defender);
   const attackerHasDynamicStats = attacker.skills.some((skill) =>
     skill.hasComponent('dynamic_stat_change'));
   const defenderHasDynamicStats = defender.skills.some((skill) =>
@@ -1008,7 +1008,7 @@ export function canDouble(
 
   return computeTrueSpeed(
     attacker, attackItem, defender,
-    defenseItem ?? defender.items.find((i) => i.isWeapon()) ?? null,
+    defenseItem ?? resolveWeapon(defender),
     db, game, mode, attackInfo,
   ) >= threshold;
 }
@@ -1397,6 +1397,18 @@ export function getSupportBonusForCombat(unit: UnitObject, game?: any): SupportE
 // ------------------------------------------------------------------
 
 /** Get the first usable weapon from a unit's inventory. */
+/**
+ * Python resolve_weapon(unit) / unit.get_weapon(): the unit's equipped
+ * weapon, None when it holds no usable one. On EOtF's engine a unit whose
+ * weapons it cannot use has no weapon (no counter, no weight modifiers);
+ * upstream's web port still falls back to the first weapon item.
+ */
+export function resolveWeapon(unit: UnitObject | null | undefined): ItemObject | null {
+  if (!unit) return null;
+  if (isForkEngine()) return unit.equippedWeapon ?? null;
+  return resolveWeapon(unit);
+}
+
 export function getEquippedWeapon(
   unit: UnitObject,
   db?: Database,

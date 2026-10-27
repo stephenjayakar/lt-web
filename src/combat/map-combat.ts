@@ -628,7 +628,8 @@ export class MapCombat implements StrikeEventCombat {
     };
     let atkHp = walk.atkHp;
     const defenderHps = walk.defenderHps;
-    const attackerMaxHp = this.attacker.stats['HP'] ?? 0;
+    // Python set_hp clamps to get_max_hp(), which includes stat bonuses.
+    const attackerMaxHp = this.attacker.maxHp;
 
     for (; this.walked < upTo; this.walked++) {
       const strike = this.strikes[this.walked];

@@ -846,7 +846,7 @@ export class CombatPhaseSolver {
     if (!hit || guarded || glancing ||
         target.tags.includes('IgnoringDamage') ||
         skillSystem.additionalTags(target, this.game).has('IgnoringDamage')) return { extraDamage: 0 };
-    const defenseItem = target.items.find((candidate) => candidate.isWeapon()) ?? null;
+    const defenseItem = calcs.resolveWeapon(target);
     if (isForkEngine()) {
       // As EOtF's engine does: only the item's eval_extra_damage component
       // deals extra damage, once per such component (the item's own plus an
@@ -1451,7 +1451,7 @@ export class CombatPhaseSolver {
       if (limitAttackStance && partnerUsed.has(leader)) return;
       const partnerItem = partner.items.find((candidate) => candidate.isWeapon());
       if (!partnerItem) return;
-      const targetItem = target.items.find((candidate) => candidate.isWeapon()) ?? null;
+      const targetItem = calcs.resolveWeapon(target);
       const count = calcs.computeStrikeCount(
         partner,
         partnerItem,
@@ -1958,7 +1958,7 @@ export class CombatPhaseSolver {
       if (limitAttackStance && partnerUsed.has(leader)) return;
       const partnerWeapon = partner.items.find((candidate) => candidate.isWeapon());
       if (!partnerWeapon) return;
-      const targetWeapon = target.items.find((candidate) => candidate.isWeapon()) ?? null;
+      const targetWeapon = calcs.resolveWeapon(target);
       const count = calcs.computeStrikeCount(
         partner, partnerWeapon, target, targetWeapon, isCounter ? 'defense' : 'attack',
         [phase, 0], solver.game,
