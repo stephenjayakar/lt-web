@@ -381,10 +381,10 @@ test.describe('EOtF engine fork combat hooks', () => {
       user.equippedWeapon = thee;
       user.wexp = { ...game.units.get('Player').wexp };
       game.selectedUnit = user;
-      game.state.change('targeting');
+      game.state.change('combat_targeting');
       h.stepFrames(2, null);
       const targeting = game.state.getCurrentState();
-      if (targeting?.name !== 'targeting') {
+      if (targeting?.name !== 'combat_targeting') {
         arena.cleanup();
         return { stack: game.state.getStackNames() };
       }
@@ -405,7 +405,7 @@ test.describe('EOtF engine fork combat hooks', () => {
       };
     }, ARENA);
     expect(result).toEqual({
-      stillTargeting: 'targeting',
+      stillTargeting: 'combat_targeting',
       picked: ['_ForkMarkA', '_ForkMarkB'],
       primary: null,
       defenders: ['_ForkMarkA', '_ForkMarkB'],

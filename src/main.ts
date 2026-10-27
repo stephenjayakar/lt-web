@@ -69,6 +69,7 @@ import {
   WeaponChoiceState,
   UnlockSelectState,
   TargetingState,
+  AbilityTargetingState,
   CombatState,
   AIState,
   TurnChangeState,
@@ -321,6 +322,8 @@ function setupAudioInit(audioManager: AudioManager): void {
 
 /** Compile-time constant injected by Vite — list of .ltproj directory names. */
 declare const __AVAILABLE_PROJECTS__: string[];
+/** True on the dev server and LT_QA=1 builds only (vite.config.ts). */
+declare const __LT_QA__: boolean;
 
 /**
  * Show a project selection screen. The list is baked in at build time via
@@ -542,7 +545,11 @@ async function main(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   // ?gpu=0 rasterizes the screen/map surfaces on the CPU (comparison aid).
   if (params.get('gpu') === '0') setFrameSurfacesOnGpu(false);
-  const harnessMode = params.get('harness') === 'true';
+  // ?qa: the QA tools (src/qa/, docs/qa-tools.md) — dev server and LT_QA=1
+  // builds only. QA runs are frame-stepped like the harness, so they share
+  // its setup, but drive the campaign themselves instead of loading a level.
+  const qaMode = __LT_QA__ && params.has('qa');
+  const harnessMode = params.get('harness') === 'true' || qaMode;
   const controlTelemetry = params.get('control') === 'true';
   const harnessLevel = params.get('level') ?? 'DEBUG';
   const harnessClean = params.get('clean') !== 'false'; // default: skip events
@@ -774,6 +781,7 @@ async function main(): Promise<void> {
     new WeaponChoiceState(),
     new UnlockSelectState(),
     new TargetingState(),
+    new AbilityTargetingState(),
     new CombatState(),
     new AIState(),
     new TurnChangeState(),
@@ -961,6 +969,11 @@ async function main(): Promise<void> {
       } catch {
         // No soak-seed.json present (normal test/dev run) -- ignore.
       }
+    }
+    if (__LT_QA__ && qaMode) {
+      const { installQa } = await import('./qa/qa-tools');
+      installQa(gameState, params, { surface: () => gameSurface, canvas: display.canvas, ctx: display.ctx });
+      return;
     }
     // Load the requested level directly
     try {

@@ -191,9 +191,12 @@ The release gate is green: build, all four audits, the full serial suite,
 - [x] EOtF engine UI: weather window, forecast digits 100-998, four window
   skins (startup/New Game baked parts), forced skin on Choice/Table, red
   sold-out stock, item help grid offsets, Gallery dex entries.
-- [ ] Map ability targeting (Trade/Rescue/Take/Give/Steal) uses list menus;
-  Python's TargetingState moves the cursor with a pennant and draws the
-  trade_window / rescue_window / give_window previews.
+- [x] Map ability targeting (Trade/Rescue/Take/Give/Drop/Talk/Support...)
+  is Python's TargetingState: SelectionHelper cursor (CPython set order),
+  pennant, trade/rescue/give previews; combat and spell targeting move by
+  direction too and steal shows the trade preview.
+- [ ] Targeting highlights: Python draws light spell/attack highlight sprites
+  over the whole range plus the cursor tile; the web fills target tiles.
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in

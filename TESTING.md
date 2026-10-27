@@ -56,6 +56,12 @@ game loop is **replaced** with a programmatic API exposed on `window.__harness`:
 | `settle(maxFrames)` | Auto-advance through events/menus until reaching `free` state |
 | `giveItem(unitNid, itemNid)` | Give a DB item to a unit (returns `true` on success). Item is inserted at front of inventory so it becomes equipped. |
 
+### EOtF QA tools (jump, fast mode, auto-play)
+
+For playtesting Embrace of the Fog, `npm run qa:run` jumps straight to any
+Act, floor or boss and auto-plays it many times faster than real time,
+writing a per-floor report. See [docs/qa-tools.md](docs/qa-tools.md).
+
 ### Sacred Stones Reliability Soak
 
 `npm run test:ss:soak` runs a repeated Playwright pass over Sacred Stones-heavy

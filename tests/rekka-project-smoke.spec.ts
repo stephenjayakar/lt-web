@@ -1517,6 +1517,9 @@ test.describe('Rekka all-level compatibility', () => {
     });
     expect(talkReady).toBe(true);
     await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+    // Python TargetingState: SELECT confirms the talk partner under the cursor.
+    await page.evaluate(() => (window as any).__harness.stepFrames(2, null));
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
     await page.evaluate(() => (window as any).__harness.settle(200));
 
     const recruited = await page.evaluate(() => {
@@ -1534,6 +1537,14 @@ test.describe('Rekka all-level compatibility', () => {
       talkPair: false,
     });
 
+    // Talking only marks HasTraded (Python TalkAbility): Eliwood's menu is
+    // still open, so leave it before driving Legault.
+    await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      game.state.clear();
+      game.state.change('free');
+      (window as any).__harness.stepFrames(2, null);
+    });
     const chestReady = await page.evaluate(() => {
       const game = (window as any).__gameRef;
       const legault = game.units.get('Legault');

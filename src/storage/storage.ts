@@ -67,7 +67,7 @@ export function resolveStorageMode(params: URLSearchParams): StorageMode {
   if (forced === 'local') return 'local';
   if (!convexUrl()) return 'local';
   if (forced === 'convex') return 'convex';
-  if (params.get('harness') === 'true' || params.get('control') === 'true') return 'local';
+  if (params.get('harness') === 'true' || params.get('control') === 'true' || params.has('qa')) return 'local';
   if (typeof navigator !== 'undefined' && navigator.webdriver) return 'local';
   return 'convex';
 }

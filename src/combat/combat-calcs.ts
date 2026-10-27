@@ -389,6 +389,11 @@ export function avoid(
   target?: UnitObject | null,
   mode: 'attack' | 'defense' | 'splash' = 'defense',
   attackInfo: [number, number] = [0, 0],
+  /**
+   * The defender's own item, when the caller knows it (Python's def_item:
+   * None for a splash strike, so no weapon avoid modifiers apply).
+   */
+  ownItem?: ItemObject | null,
 ): number {
   game ??= _eqGameRef?.();
   // Defensive item formulas come from the attacking item in LT.
@@ -407,7 +412,7 @@ export function avoid(
   // Substituting attack speed for SPD instead only matches that when SPD's
   // coefficient happens to be 2, so formulas like EotF's AVOID_SHACKLED
   // (SPD + LCK//2) diverged.
-  const equippedWeapon = unit.items.find((i) => i.isWeapon()) ?? null;
+  const equippedWeapon = isForkEngine() && ownItem !== undefined ? ownItem : resolveWeapon(unit);
   const avoidExpr = db.getEquation(eqName) ?? 'SPD * 2 + LCK // 2';
   const baseAvoid = evaluateEquation(avoidExpr, unit, { db });
 
@@ -710,12 +715,15 @@ export function computeHit(
   // always hit") has accuracy None and returns 10000, which every forecast and
   // AI caller clamps to 100. The solver still draws the hit roll for it.
   if (itemSystem.hit(attacker, attackItem, game) === null) return 100;
-  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
+  const defWeapon = resolveWeapon(defender);
   const acc = accuracy(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
+  // EOtF's engine: avoid(target, def_item, item) uses the strike's def_item
+  // (None for splash) for the defender's weapon modifiers.
   const avo = avoid(
     defender, db, board, attackItem, game, attacker, mode, attackInfo,
+    isForkEngine() ? defenseItem : undefined,
   );
 
   // Dynamic modifiers from items and skills (combat context)
@@ -822,13 +830,16 @@ function computeDamageCore(
   defenseItem: ItemObject | null | undefined,
 ): number {
   game ??= _eqGameRef?.();
-  const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
+  const defWeapon = resolveWeapon(defender);
+  // EOtF's engine passes the strike's def_item (None for splash) to
+  // defense() (the defender's weapon resist modifiers) and dynamic_damage.
+  const strikeDefItem = isForkEngine() && defenseItem !== undefined ? defenseItem : defWeapon;
   const atk = damage(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
   const defenseMode = mode === 'attack' ? 'defense' : 'attack';
   const def = defense(
-    defender, attackItem, db, board, game, attacker, defWeapon,
+    defender, attackItem, db, board, game, attacker, strikeDefItem,
     defenseMode, attackInfo,
   );
   const triangle = triangleFor(attackItem, defender, db, game, attacker, defenseItem);
@@ -838,11 +849,11 @@ function computeDamageCore(
   // `weapon_effectiveness_multiplied` (Python `compute_advantage_attr`).
   let might = atk;
   might += itemSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, might, db, game,
+    attacker, attackItem, defender, strikeDefItem, mode, attackInfo, might, db, game,
     triangle.attackerDamageAdvantage,
   );
   might += skillSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, might,
+    attacker, attackItem, defender, strikeDefItem, mode, attackInfo, might,
     game,
   );
   might += triangle.damageBonus;
@@ -899,7 +910,7 @@ export function computeDamage(
   crit: boolean = false,
   defenseItem?: ItemObject | null,
 ): number {
-  const defWeapon = defender.items.find((candidate) => candidate.isWeapon()) ?? null;
+  const defWeapon = resolveWeapon(defender);
   const attackerHasDynamicStats = attacker.skills.some((skill) =>
     skill.hasComponent('dynamic_stat_change'));
   const defenderHasDynamicStats = defender.skills.some((skill) =>
@@ -1008,7 +1019,7 @@ export function canDouble(
 
   return computeTrueSpeed(
     attacker, attackItem, defender,
-    defenseItem ?? defender.items.find((i) => i.isWeapon()) ?? null,
+    defenseItem ?? resolveWeapon(defender),
     db, game, mode, attackInfo,
   ) >= threshold;
 }
@@ -1397,6 +1408,18 @@ export function getSupportBonusForCombat(unit: UnitObject, game?: any): SupportE
 // ------------------------------------------------------------------
 
 /** Get the first usable weapon from a unit's inventory. */
+/**
+ * Python resolve_weapon(unit) / unit.get_weapon(): the unit's equipped
+ * weapon, None when it holds no usable one. On EOtF's engine a unit whose
+ * weapons it cannot use has no weapon (no counter, no weight modifiers);
+ * upstream's web port still falls back to the first weapon item.
+ */
+export function resolveWeapon(unit: UnitObject | null | undefined): ItemObject | null {
+  if (!unit) return null;
+  if (isForkEngine()) return unit.equippedWeapon ?? null;
+  return resolveWeapon(unit);
+}
+
 export function getEquippedWeapon(
   unit: UnitObject,
   db?: Database,

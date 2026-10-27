@@ -636,7 +636,8 @@ test.describe('Event command flag matching: camera flags', () => {
       return { position: camera.getPosition(), target: camera.getTarget() };
     });
     expect(snappedCamera.position).toEqual(snappedCamera.target);
-    expect(snappedCamera.target).toEqual([160, 168]);
+    // Python Camera._center_y: row 15 - TILEY // 2 = 10 tiles = 160 px.
+    expect(snappedCamera.target).toEqual([160, 160]);
   });
 
   test('cursor speed controls the full blocking pan duration', async ({ page }) => {
