@@ -195,6 +195,7 @@ export class QaDriver {
   private lastProgressReal = 0;
   private stuckAttempts = 0;
   private forcedWinTurn = -1;
+  private forcedWins = 0;
 
   constructor(game: any, log: QaLog, policy: Policy) {
     this.game = game;
@@ -605,6 +606,13 @@ export class QaDriver {
     if (turn > this.options.maxTurns) {
       if (this.options.forceWin) {
         if (this.forcedWinTurn !== turn) {
+          // win_game that never ends the level (a lost level-end flag) keeps
+          // the map cycling turns: report it instead of forcing forever.
+          if (this.forcedWins >= 3) {
+            if (!this.stopReason) this.stopReason = `stuck: win_game did not end level ${game.currentLevel?.nid}`;
+            return undefined;
+          }
+          this.forcedWins += 1;
           this.forcedWinTurn = turn;
           this.note(`turn limit ${this.options.maxTurns}: forced win`);
           if (this.currentLevel) this.currentLevel.result = 'forced win';
@@ -753,6 +761,7 @@ export class QaDriver {
     this.deadSeen = new Set((game.getAllUnits() as any[]).filter((u) => u.isDead?.()));
     this.choiceRepeats.clear();
     this.forcedWinTurn = -1;
+    this.forcedWins = 0;
     this.currentLevel = {
       nid,
       name: String(prefab?.name ?? nid),

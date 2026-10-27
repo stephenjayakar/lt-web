@@ -226,6 +226,9 @@ normal inputs and engine paths:
   noted as unavailable.
 - Text entry: the next `texts` entry for the variable is typed and confirmed;
   without one the entry is left (AUX), or confirmed empty when forced.
+- A level that `--force-win` has already won three times without ending
+  (a lost level-end flag keeps the map cycling turns) stops the run as
+  `stuck`.
 - Stuck detection: if the state stack, event pointer, turn and unit
   positions and HP stay unchanged for 3600 frames and 10 s, the driver presses
   BACK, then SELECT, then START, and then stops the run as `stuck`.
