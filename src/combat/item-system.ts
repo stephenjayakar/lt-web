@@ -11,6 +11,7 @@
 
 import { drawCacheGeneration } from '../engine/draw-cache';
 import { isForkEngine } from '../engine/engine-flavor';
+import { PyPairSet, pySetOrder } from '../engine/py-set-order';
 import type { UnitObject } from '../objects/unit';
 import { SkillObject } from '../objects/skill';
 import {
@@ -809,6 +810,20 @@ function positionsInRadius(
   radius: number,
   board: GameBoard,
 ): TargetPosition[] {
+  if (isForkEngine()) {
+    // EOtF's engine iterates Python sets here (the cached Manhattan sphere,
+    // shifted to the centre, then the in-bounds filter), so splash targets
+    // are struck in CPython's set order.
+    const sphere = new PyPairSet();
+    for (let r = 0; r <= radius; r++) {
+      for (let i = -r; i <= r; i++) {
+        sphere.add([i, r - Math.abs(i)]);
+        sphere.add([i, -(r - Math.abs(i))]);
+      }
+    }
+    const shifted = pySetOrder(sphere.values().map(([dx, dy]) => [center[0] + dx, center[1] + dy] as [number, number]));
+    return pySetOrder(shifted.filter(([x, y]) => board.inBounds(x, y)));
+  }
   const positions: TargetPosition[] = [];
   for (let x = center[0] - radius; x <= center[0] + radius; x++) {
     for (let y = center[1] - radius; y <= center[1] + radius; y++) {
@@ -818,6 +833,17 @@ function positionsInRadius(
     }
   }
   return positions;
+}
+
+/**
+ * Units for an all-allies/all-enemies splash. EOtF's engine lists them in
+ * game.units order (registration order); upstream's web port scans the board.
+ */
+function unitsInEngineOrder(board: GameBoard, context: SplashContext): UnitObject[] {
+  const units = context.game?.units;
+  if (!isForkEngine() || !units?.values) return board.getAllUnits();
+  return [...units.values()].filter((unit: UnitObject) =>
+    !!unit.position && board.getUnit(unit.position[0], unit.position[1]) === unit);
 }
 
 function samePosition(left: TargetPosition, right: TargetPosition): boolean {
@@ -1074,7 +1100,10 @@ export function splash(
   }
 
   if ((item.hasComponent('line_aoe') || item.hasComponent('enemy_line_aoe')) && unit.position) {
-    const line = raytrace(unit.position, position).filter((candidate) => !samePosition(candidate, unit.position!));
+    // EOtF's engine walks set(raytrace) minus the user's tile: CPython set order.
+    const traced = raytrace(unit.position, position);
+    const line = (isForkEngine() ? pySetOrder(traced) : traced)
+      .filter((candidate) => !samePosition(candidate, unit.position!));
     const target = item.hasComponent('enemy_line_aoe') ? 'enemy' : 'all';
     const affected = affectedUnits(line, unit, context, target);
     // EOtF's engine fork: LineAOE/EnemyLineAOE always return no main target
@@ -1090,14 +1119,14 @@ export function splash(
     const excludeSelf = item.hasComponent('all_allies_except_self_aoe');
     return resultOrAlternate({
       mainTarget: null,
-      splash: board.getAllUnits()
+      splash: unitsInEngineOrder(board, context)
         .filter((target) => target.position && checkAlly(unit, target, context.db) && (!excludeSelf || target !== unit))
         .map((target) => [target.position![0], target.position![1]] as TargetPosition),
     }, unit, item, position, context);
   }
 
   if (item.hasComponent('all_enemies_aoe')) {
-    const affected = board.getAllUnits()
+    const affected = unitsInEngineOrder(board, context)
       .filter((target) => target.position && checkEnemy(unit, target, context.db))
       .map((target) => [target.position![0], target.position![1]] as TargetPosition);
     // EOtF's engine fork: AllEnemiesAOE never has a main target.
@@ -2846,11 +2875,23 @@ export function lifelinkHealForStrike(
   item: ItemObject,
   strike: CombatStrike,
   defenderRemainingHp: number,
+  /**
+   * EOtF: the phase's damage dealt by the striker, already clamped to the
+   * target's HP. Python's Lifelink.after_strike heals int(that * X) on every
+   * strike, misses included.
+   */
+  phaseDamageDealt?: number,
 ): number {
+  if (phaseDamageDealt === undefined && strike.itemLifelinkHeal !== undefined) {
+    // The solver settled this strike's heal against the phase's damage.
+    return strike.attacker === striker ? strike.itemLifelinkHeal : 0;
+  }
   const value = lifelinkValue(item);
   if (value === null) return 0;
-  if (strike.attacker !== striker || !strike.hit) return 0;
+  if (strike.attacker !== striker) return 0;
   if (strike.item !== item && !isSubitemOf(strike.item, item)) return 0;
+  if (phaseDamageDealt !== undefined) return Math.trunc(phaseDamageDealt * value);
+  if (!strike.hit) return 0;
   const remaining = Math.max(0, defenderRemainingHp);
   const clamped = Math.max(0, Math.min(strike.damage, remaining));
   return Math.floor(clamped * value);
