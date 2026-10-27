@@ -98,6 +98,17 @@ export async function runWebScenario(scenario, { browser, verbose = false, base 
       return mod.runScenario(scn);
     }, scenario);
     if (result.error && consoleErrors.length) result.console_errors = consoleErrors.slice(-20);
+    if (result.shots) {
+      // do_shot captures: $LT_ORACLE_OUT/shots/<scenario>/web-<name>.png
+      // (the display canvas, 2x the 240x160 scene at this viewport).
+      const home = process.env.LT_ORACLE_HOME ?? 'E:/BigData/lt-oracle';
+      const dir = path.join(process.env.LT_ORACLE_OUT ?? path.join(home, 'out'), 'shots', String(scenario.name ?? 'scenario'));
+      fs.mkdirSync(dir, { recursive: true });
+      for (const [name, url] of Object.entries(result.shots)) {
+        fs.writeFileSync(path.join(dir, `web-${name}.png`), Buffer.from(String(url).split(',')[1], 'base64'));
+      }
+      result.shots = Object.keys(result.shots);
+    }
     return result;
   } finally {
     await page.close();

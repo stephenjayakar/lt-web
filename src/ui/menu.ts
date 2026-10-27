@@ -3,6 +3,7 @@ import type { InputEvent } from '../engine/input';
 import { getMenuBackgroundSync, getMenuHand, getMenuHighlight } from './base-surf';
 import { drawStyledText, measureStyledText } from './styled-text';
 import { drawIcon16 } from './icons';
+import { getSprite } from './sprites';
 
 /** Optional audio manager reference set by game state for menu sounds. */
 let _menuAudioManager: { playSfx(name: string): void } | null = null;
@@ -112,9 +113,16 @@ export class ChoiceMenu {
 
     const totalHeight = this.options.length * ROW_HEIGHT + PADDING_Y * 2;
 
-    // 9-slice menu background (falls back to dark surface if sprite not loaded yet)
+    // Python Choice.create_bg_surf: the window 2 px right of and 4 px below
+    // the small gem, the whole made translucent by .1, drawn at
+    // topleft - (2, 4).
     const bgSurf = getMenuBackgroundSync(this.width, totalHeight);
-    surf.blit(bgSurf, this.x, this.y);
+    const framed = new Surface(this.width + 2, totalHeight + 4);
+    framed.blit(bgSurf, 2, 4);
+    const gem = getSprite('menu_gem_small');
+    if (gem) framed.blit(gem, 0, 0);
+    framed.setAlpha(0.9);
+    surf.blit(framed, this.x - 2, this.y - 4);
 
     const highlight = getMenuHighlight();
     for (let i = 0; i < this.options.length; i++) {

@@ -109,7 +109,8 @@ test.describe('fork reset, rescue and drop', () => {
       const [x, y] = rescuer.position;
       game.board.moveUnit(traveler, x + 1, y);
       game.selectedUnit = rescuer;
-      game.state.change('rescue');
+      game.memory.set('ability', 'rescue');
+      game.state.change('targeting');
       return { team: traveler.team };
     });
     expect(setup.team).toBe('other');
@@ -132,17 +133,18 @@ test.describe('fork reset, rescue and drop', () => {
       unit.hasRescued = false;
       unit.hasTraded = false;
       game.selectedUnit = unit;
-      game.state.change('drop');
+      game.memory.set('ability', 'drop');
+      game.state.change('targeting');
     });
     await page.evaluate(() => (window as any).__harness.stepFrames(4));
     const target = await page.evaluate(() => {
       const game = (window as any).__gameRef;
       const state = game.state.getCurrentState();
-      const tile = state?.dropTiles?.[0] ?? null;
+      const tile = state?.selection?.posList?.[0] ?? null;
       if (tile) game.cursor.setPos(tile[0], tile[1]);
       return { state: state?.name, tile };
     });
-    expect(target.state).toBe('drop');
+    expect(target.state).toBe('targeting');
     expect(target.tile).not.toBeNull();
     await page.evaluate(() => (window as any).__harness.stepFrames(4, 'SELECT'));
     const dropped = await page.evaluate(() => {

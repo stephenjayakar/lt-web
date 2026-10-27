@@ -195,8 +195,14 @@ The release gate is green: build, all four audits, the full serial suite,
   is Python's TargetingState: SelectionHelper cursor (CPython set order),
   pennant, trade/rescue/give previews; combat and spell targeting move by
   direction too and steal shows the trade preview.
-- [ ] Targeting highlights: Python draws light spell/attack highlight sprites
-  over the whole range plus the cursor tile; the web fills target tiles.
+- [x] Map highlights are Python's HighlightController sprites (grow-in,
+  hover light ranges, move/menu/targeting ranges); camera centring, menu gem
+  and translucency, item panel, unit sprite poses and base Records follow the
+  fork oracle's screens.
+- [ ] Option menu 'Unit' (unit_menu chart) is not ported.
+- [ ] Event `give_exp` (non-silent) skips Python's EXP bar and level screen.
+- [ ] Enemy phase and map combat run on different frame timings than the
+  fork (oracle screenshots at equal frames diverge).
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in

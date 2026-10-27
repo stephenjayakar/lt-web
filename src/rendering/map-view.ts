@@ -11,6 +11,7 @@ import type { Database } from '../data/database';
 import type { UnitObject } from '../objects/unit';
 import type { UnitMarkerIcons } from './unit-markers';
 import type { MapSpriteFx } from './map-sprite';
+import type { HighlightLayer } from './highlight';
 
 export interface MapViewUnit {
   x: number;
@@ -32,7 +33,7 @@ export interface MapViewUnit {
   /** Combat/death sprite effects (flicker tints, fade, stationary frame). */
   fx?: MapSpriteFx | null;
   /** Facing override (combat image states, pose_unit). */
-  poseOverride?: { state: 'standing' | 'moving'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
+  poseOverride?: { state: 'standing' | 'moving' | 'active'; direction?: 'up' | 'down' | 'left' | 'right' } | null;
   /** Drawn after the sprite at its tile top-left (transition animations, warp flowers). */
   overlay?: ((surf: Surface, left: number, top: number, cameraX: number, cameraY: number) => void) | null;
 }
@@ -135,7 +136,7 @@ export class MapView {
     tilemap: TileMapObject,
     cullRect: { x: number; y: number; w: number; h: number },
     units: MapViewUnit[],
-    highlights: Map<string, string> | null,
+    highlights: Map<string, string> | HighlightSource | null,
     cursor: {
       x: number;
       y: number;
@@ -179,8 +180,10 @@ export class MapView {
     this.mapSurface.blit(bg, -TILEWIDTH, -TILEHEIGHT);
 
     // 2. Tile highlights
-    if (highlights && highlights.size > 0) {
-      this.drawHighlights(this.mapSurface, highlights, offsetX, offsetY);
+    if (highlights instanceof Map) {
+      if (highlights.size > 0) this.drawHighlights(this.mapSurface, highlights, offsetX, offsetY);
+    } else if (highlights) {
+      this.drawHighlightLayers(this.mapSurface, highlights, offsetX, offsetY);
     }
 
     // 3. Grid lines and level bounds (Python MapView.draw_grid)
@@ -271,6 +274,58 @@ export class MapView {
       const centerY = (region.position[1] + h / 2) * TILEHEIGHT - offsetY;
       font.blit(surf, text, centerX - Math.floor(width / 2) - 1, centerY - 12 + bob);
     }
+  }
+
+  /**
+   * Python HighlightController.draw: the formation highlight, the yellow
+   * Escape/Arrive region tiles, then each highlight sprite layer, all
+   * animated frame update_idx // 4 (update_idx cycles 0..63 per frame). A
+   * fresh layer grows in: its frame is cut `cutoff` px from the top-left and
+   * drawn at the tile's corner.
+   */
+  private drawHighlightLayers(surf: Surface, source: HighlightSource, offsetX: number, offsetY: number): void {
+    const frame = Math.floor((source.updateIdx ?? getFrameCount() % 64) / 4);
+    const onScreen = (px: number, py: number): boolean =>
+      px + TILEWIDTH > 0 && py + TILEHEIGHT > 0 && px < viewport.width && py < viewport.height;
+    const blitAt = (sprite: Surface, key: string, cut: number): void => {
+      const [tx, ty] = key.split(',').map(Number);
+      const px = tx * TILEWIDTH - offsetX;
+      const py = ty * TILEHEIGHT - offsetY;
+      if (!onScreen(px, py)) return;
+      surf.blitFrom(sprite, frame * TILEWIDTH + cut, cut, TILEWIDTH - cut, TILEHEIGHT - cut, px, py);
+    };
+    const merged = source.getHighlights();
+    const formation = getSprite('highlight_blue');
+    const fills = new Map<string, string>();
+    for (const [key, type] of merged) {
+      if (type === 'formation') {
+        if (formation) blitAt(formation, key, 0);
+        else fills.set(key, type);
+      } else if (type === 'selected' || type === 'threat') {
+        fills.set(key, type);
+      }
+    }
+    const escape = getSprite('highlight_yellow');
+    if (escape) {
+      for (const region of this.regionSource?.() ?? []) {
+        const subNid = String(region.sub_nid ?? '');
+        if (String(region.region_type ?? '').toLowerCase() !== 'event' || !['Escape', 'Arrive'].includes(subNid)) continue;
+        if (!region.position) continue;
+        const [w, h] = region.size ?? [1, 1];
+        for (let x = 0; x < w; x++) {
+          for (let y = 0; y < h; y++) blitAt(escape, `${region.position[0] + x},${region.position[1] + y}`, 0);
+        }
+      }
+    }
+    for (const layer of source.spriteLayers()) {
+      const sprite = getSprite(layer.sprite);
+      if (!sprite) {
+        for (const key of layer.keys) fills.set(key, layer.type);
+        continue;
+      }
+      for (const key of layer.keys) blitAt(sprite, key, layer.cutoff);
+    }
+    if (fills.size) this.drawHighlights(surf, fills, offsetX, offsetY);
   }
 
   private drawHighlights(
@@ -552,6 +607,13 @@ function getFormationHighlightSprite(): HTMLImageElement | null {
     img.src = '/game-data/sprites/highlights/highlight_blue.png';
   }
   return formationHighlight;
+}
+
+/** What MapView.draw needs from the HighlightManager for sprite highlights. */
+export interface HighlightSource {
+  updateIdx?: number;
+  getHighlights(): Map<string, string>;
+  spriteLayers(): HighlightLayer[];
 }
 
 /**

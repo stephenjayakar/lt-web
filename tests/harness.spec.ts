@@ -926,7 +926,7 @@ test.describe('Event command parity', () => {
       const game = (window as any).__gameRef;
       const { UnitObject } = await import('/src/objects/unit.ts');
       const { SkillObject } = await import('/src/objects/skill.ts');
-      const { MenuState, RescueState, DropState } = await import('/src/engine/states/game-states.ts');
+      const { MenuState, AbilityTargetingState } = await import('/src/engine/states/game-states.ts');
       const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
       const template = game.db.units.get('Eirika');
       const klass = template ? game.db.classes.get(template.klass) : null;
@@ -1017,8 +1017,10 @@ test.describe('Event command parity', () => {
       const beforeMenu = menuLabels(follower);
       const beforeActionIndex = game.actionLog.actionIndex;
       game.selectedUnit = follower;
-      const rescueState = new RescueState();
-      rescueState.begin();
+      // Pair Up goes through Python's TargetingState (cursor on the closest leader).
+      game.memory.set('ability', 'pair_up');
+      const rescueState = new AbilityTargetingState();
+      rescueState.start();
       rescueState.takeInput('SELECT');
       const afterActionIndex = game.actionLog.actionIndex;
       const paired = snapshot(follower, leader);
@@ -1035,8 +1037,9 @@ test.describe('Event command parity', () => {
       const loaded = snapshot(loadedFollower, loadedLeader);
       const loadedMenu = menuLabels(loadedLeader);
       game.selectedUnit = loadedLeader;
-      const dropState = new DropState();
-      dropState.begin();
+      game.memory.set('ability', 'separate');
+      const dropState = new AbilityTargetingState();
+      dropState.start();
       const hover = game.cursor.getHover();
       const dropPos: [number, number] = [hover.x, hover.y];
       const beforeSeparateIndex = game.actionLog.actionIndex;
@@ -1107,7 +1110,7 @@ test.describe('Event command parity', () => {
         PairUpAction,
         SwitchPairUpAction,
       } = await import('/src/engine/action.ts');
-      const { MenuState, TransferState } = await import('/src/engine/states/game-states.ts');
+      const { MenuState, AbilityTargetingState } = await import('/src/engine/states/game-states.ts');
       const { saveGame, loadGame, deleteSave } = await import('/src/engine/save.ts');
       const template = game.db.units.get('Eirika');
       const klass = template ? game.db.classes.get(template.klass) : null;
@@ -1215,8 +1218,9 @@ test.describe('Event command parity', () => {
       while (game.actionLog.actionIndex > pairedIndex) game.actionLog.runActionBackward();
       game.actionLog.finalize();
       game.selectedUnit = leaderA;
-      const transfer = new TransferState();
-      transfer.begin();
+      game.memory.set('ability', 'transfer');
+      const transfer = new AbilityTargetingState();
+      transfer.start();
       transfer.takeInput('SELECT');
       const transferredIndex = game.actionLog.actionIndex;
       const transferred = snapshot();
