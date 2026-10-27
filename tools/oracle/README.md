@@ -267,6 +267,20 @@ the map without terrain statuses, as after a level end, and the uid counters
 continue after the captured items and skills. The file is generated from the
 project's data, so it stays outside the repo.
 
+## AI-phase fuzz
+
+Every snapshot carries `ai_trace`: one entry per AI decision (the unit, its
+tile, whether it did something, its move, target tile and item, and the
+board's HP at that moment), per canto retreat and per AI group ping, in
+order. `node tools/oracle/fuzz-ai.mjs gen --count N --seed S --dir D` writes
+randomized EOtF scenarios (a real battle level with its own enemies and AI
+presets, events off, 3-5 random playable units loaded next to enemies or on
+formation tiles, two player turns ended); run them with
+`npm run oracle -- D`, then `node tools/oracle/fuzz-ai.mjs report --dir D`
+buckets the first trace divergence per scenario by AI preset and field. A
+decision taken on a board whose HP already differs is reported as
+`combat-downstream`.
+
 ## Level sweeps
 
 `node tools/oracle/level-sweep.mjs [sweep.json] [--levels=a,b] [--chunk=8]

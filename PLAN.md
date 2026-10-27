@@ -227,6 +227,12 @@ The release gate is green: build, all four audits, the full serial suite,
   cancel undoes item-menu storage; the AI re-equips
   items[0], tries skill abilities (never combat arts) and no longer brings its
   weapon to the top.
+- [x] AI-phase differential fuzz (`tools/oracle/fuzz-ai.mjs`, `tests/fork-ai-phase.spec.ts`):
+  End runs the player team's AI; the AI state keeps has_run_ai/group across
+  states above it; predictions apply the triangle once; PrimaryAI has no
+  view-range filter; ties break in CPython set order (strike tiles, Event
+  targets) and AStar uses Python's heap; test moves pull auras and terrain
+  statuses; tilemap layers start hidden except base.
 - [x] Strike timing (`tests/fork-followups.spec.ts` "Python strike timing"):
   on-hit shove/swap/pivot/draw_back destinations are fixed when their phase is
   solved; each phase is solved against the HP earlier phases left (HP
