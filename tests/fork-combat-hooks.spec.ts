@@ -332,7 +332,8 @@ test.describe('EOtF engine fork combat hooks', () => {
       foe.wexp = { ...game.units.get('Player').wexp };
       const ai = game.state.allStates.get('ai');
       (ai as any).beginAICombat(caster, foe, sear);
-      h.stepFrames(2, null);
+      // MoveCameraState holds the combat until the camera centres on it.
+      for (let i = 0; i < 120 && !game.state.allStates.get('combat')?.combat; i++) h.stepFrames(1, null);
       const combat = game.state.allStates.get('combat')?.combat;
       if (!combat) return { combat: null, stack: game.state.getStackNames() };
       let guard = 0;

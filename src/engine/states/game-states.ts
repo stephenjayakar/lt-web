@@ -4414,6 +4414,23 @@ export class AlertState extends State {
  * waits through unit.wait() (unit_wait, actively_chosen False). Combat pushes
  * it under its end-of-combat events, so it runs after them.
  */
+/**
+ * Python MoveCameraState: holds the states under it until the camera has
+ * come to rest, then pops (with 'repeat', so they run in that frame).
+ */
+export class MoveCameraState extends State {
+  readonly name = 'move_camera';
+  override readonly transparent = true;
+
+  override update(): StateResult {
+    const game = getGame();
+    if (game.camera?.isAtTarget?.() ?? true) {
+      game.state.back();
+      return 'repeat';
+    }
+  }
+}
+
 export class WaitState extends State {
   readonly name = 'wait';
   override readonly transparent = true;
@@ -8203,13 +8220,19 @@ export class CombatState extends State {
           } else {
             this.startRankUpOrCleanup();
           }
+          // Python's map CombatState returns 'repeat' once the combat is
+          // done: the states its clean_up pushed (exp, dying, wait) start
+          // in the same frame.
+          if (!this.isAnimationCombat) return 'repeat';
         }
         break;
       }
 
       case 'post_exp_events':
-        // Resumed after the clean_up1/clean_up2 events pushed over combat.
+        // Resumed after the clean_up1/clean_up2 events pushed over combat
+        // (they pop with 'repeat', so what follows runs this frame).
         this.startRankUpOrCleanup();
+        if (!this.isAnimationCombat) return 'repeat';
         break;
 
       case 'anim_exit': {
@@ -8233,9 +8256,12 @@ export class CombatState extends State {
         } else {
           this.phaseTimer += realDelta;
         }
-        if (this.phaseTimer >= DEFAULT_TRANSITION_TIME - 50) {
+        // Python's integer ms clock: 24 frames are exactly 400 ms.
+        if (Math.floor(this.phaseTimer + 1e-6) >= DEFAULT_TRANSITION_TIME - 50) {
           this.finishDeathsNow();
           this.startRankUpOrCleanup();
+          // DyingState pops with 'repeat': what follows runs this frame.
+          if (!this.isAnimationCombat) return 'repeat';
         }
         break;
       }
@@ -8597,7 +8623,9 @@ export class CombatState extends State {
           // EventStates pushed above it run first.
           runEventsBeforeWaiting(game, cleanupEvents, false);
         }
-        break;
+        // Python's clean_up runs under the CombatState's 'repeat': the state
+        // it leaves on top (wait, menu, the AI...) runs this frame.
+        return 'repeat';
       }
     }
   }
@@ -9066,6 +9094,37 @@ export class AIState extends MapState {
   private curGroup: string | null = null;
   /** A unit that acted and waits (unit.wait()) once its events finish. */
   private pendingWaitUnit: UnitObject | null = null;
+  /**
+   * Python AIState.update runs one AIController.act step a frame (think and
+   * move, then attack, then canto, then the unit is done). The web decides
+   * in one frame and plays the remaining steps out as held frames.
+   */
+  private holdFrames = 0;
+  private afterHold: (() => void) | null = null;
+
+  /** Run `next` after `frames` more AI frames (now when 0). */
+  private hold(frames: number, next: () => void): void {
+    if (frames <= 0) {
+      next();
+      return;
+    }
+    this.holdFrames = frames;
+    this.afterHold = next;
+  }
+
+  /**
+   * AIState after a step that changed something: the cursor goes to the
+   * unit and the camera centres between it and its goal (set_center2), or
+   * on the unit (set_center).
+   */
+  private centerOnAction(game: any, from: [number, number], goal: [number, number] | null): void {
+    game.cursor?.setPos?.(from[0], from[1]);
+    if (goal) {
+      game.camera.focusTile(Math.floor((from[0] + goal[0]) / 2), Math.floor((from[1] + goal[1]) / 2));
+    } else {
+      game.camera.focusTile(from[0], from[1]);
+    }
+  }
 
   /**
    * Python AIState.get_next_unit: an unfinished unit of the phase's team on
@@ -9116,6 +9175,7 @@ export class AIState extends MapState {
     unit: UnitObject,
     target: [number, number],
     path?: [number, number][] | null,
+    cameraGoal: [number, number] | null = target,
   ): boolean {
     if (!unit.position) return false;
     const origin: [number, number] = [unit.position[0], unit.position[1]];
@@ -9126,7 +9186,7 @@ export class AIState extends MapState {
       const warp = new WarpUnitAction(unit, target, game.board);
       warp.turnwheelMove = true;
       game.actionLog.doAction(warp);
-      game.camera.focusTile(target[0], target[1]);
+      this.centerOnAction(game, origin, cameraGoal);
       return true;
     }
     const movementCost = path
@@ -9135,7 +9195,7 @@ export class AIState extends MapState {
     game.actionLog.doAction(
       new MoveAction(unit, origin, [target[0], target[1]], game.board, movementCost),
     );
-    game.camera.focusTile(target[0], target[1]);
+    this.centerOnAction(game, origin, cameraGoal);
     return true;
   }
 
@@ -9178,6 +9238,8 @@ export class AIState extends MapState {
     this.pendingCombatWeapon = null;
     this.pendingCombatTile = null;
     this.pendingWaitUnit = null;
+    this.holdFrames = 0;
+    this.afterHold = null;
 
     game.cursor.visible = false;
   }
@@ -9288,26 +9350,28 @@ export class AIState extends MapState {
       return;
     }
 
+    if (this.afterHold) {
+      this.holdFrames--;
+      if (this.holdFrames > 0) return;
+      const next = this.afterHold;
+      this.afterHold = null;
+      next();
+      return;
+    }
+
     if (this.currentAiIndex >= this.aiUnits.length) {
       const next = game.initiative ? null : this.pickNextUnit(game);
       if (!next) {
         // AI phase complete: clear every AI group's triggered set.
         game.clearAiGroupTriggers?.();
         game.state.change('turn_change');
-        return;
+        // Python AIState returns 'repeat': the turn change runs this frame.
+        return 'repeat';
       }
       this.ranAi.add(next);
       this.curGroup = next.aiGroup || null;
       this.aiUnits.push(next);
     }
-
-    // Process one AI unit with a short delay between each.
-    // SELECT (Enter/Z) fast-forwards by reducing the delay to 1 frame.
-    const fastForward = game.input?.isPressed('SELECT') ?? false;
-    const aiDelay = fastForward ? 1 : 6; // ~100ms normal, ~16ms when holding SELECT
-    this.frameCounter++;
-    if (this.frameCounter < aiDelay) return;
-    this.frameCounter = 0;
 
     const unit = this.aiUnits[this.currentAiIndex];
     if (!unit || unit.isDead() || !unit.canStillAct()) {
@@ -9352,7 +9416,8 @@ export class AIState extends MapState {
           }
         }
       } else {
-        this.advanceToNextUnit();
+        // The unit cleans up and does nothing: attack and canto steps follow.
+        this.hold(2, () => this.advanceToNextUnit());
         return;
       }
     }
@@ -9407,6 +9472,10 @@ export class AIState extends MapState {
             ? [unit.position[0], unit.position[1]]
             : null;
 
+          // Python goal_target: the tile it attacks (set_center2 goal).
+          const goalTarget: [number, number] = action.targetUnit?.position
+            ? [action.targetUnit.position[0], action.targetUnit.position[1]]
+            : action.targetTile ?? action.targetPosition;
           if (
             action.movePath &&
             action.movePath.length > 1 &&
@@ -9415,7 +9484,7 @@ export class AIState extends MapState {
               action.targetPosition[1] !== prevPos[1])
           ) {
             // Animate movement
-            this.moveWithAction(game, unit, action.targetPosition, action.movePath);
+            this.moveWithAction(game, unit, action.targetPosition, action.movePath, goalTarget);
 
             this.waitingForMovement = true;
             this.pendingCombatTarget = action.targetUnit ?? null;
@@ -9433,18 +9502,19 @@ export class AIState extends MapState {
               },
             );
           } else {
-            // Already at position, attack directly
-            this.moveWithAction(game, unit, action.targetPosition, action.movePath);
-            this.beginAICombat(
+            // Already at position: a warp (one-tile path) moves now; the
+            // attack is the next frame's step either way.
+            this.moveWithAction(game, unit, action.targetPosition, action.movePath, goalTarget);
+            this.hold(1, () => this.beginAICombat(
               unit,
               action.targetUnit ?? null,
               action.item!,
               action.targetTile ?? null,
-            );
+            ));
           }
         } else {
           // No goal target: did_something stays False, no wait.
-          this.advanceToNextUnit();
+          this.hold(2, () => this.advanceToNextUnit());
         }
         break;
       }
@@ -9461,16 +9531,17 @@ export class AIState extends MapState {
             this.waitingForMovement = true;
             game.movementSystem.beginMove(unit, action.movePath, undefined, () => {
               this.waitingForMovement = false;
-              this.waitAfterAct(game, unit);
+              // The attack step ran as the walk ended; canto is next frame.
+              this.hold(1, () => this.waitAfterAct(game, unit));
             });
           } else if (moved) {
-            this.waitAfterAct(game, unit);
+            this.hold(2, () => this.waitAfterAct(game, unit));
           } else {
             // A Secondary goal on its own tile: did_something stays False.
-            this.advanceToNextUnit();
+            this.hold(2, () => this.advanceToNextUnit());
           }
         } else {
-          this.advanceToNextUnit();
+          this.hold(2, () => this.advanceToNextUnit());
         }
         break;
       }
@@ -9509,10 +9580,10 @@ export class AIState extends MapState {
             });
           } else {
             this.moveWithAction(game, unit, action.targetPosition, action.movePath);
-            applyItem();
+            this.hold(1, applyItem);
           }
         } else {
-          this.advanceToNextUnit();
+          this.hold(2, () => this.advanceToNextUnit());
         }
         break;
       }
@@ -9643,10 +9714,10 @@ export class AIState extends MapState {
             });
           } else {
             this.moveWithAction(game, unit, action.targetPosition, action.movePath);
-            triggerInteract();
+            this.hold(1, triggerInteract);
           }
         } else {
-          this.advanceToNextUnit();
+          this.hold(2, () => this.advanceToNextUnit());
         }
         break;
       }
@@ -9654,8 +9725,9 @@ export class AIState extends MapState {
       case 'wait':
       default: {
         // Python AIState: no behaviour found anything, so did_something is
-        // False and the unit does not wait (it stays unfinished).
-        this.advanceToNextUnit();
+        // False and the unit does not wait (it stays unfinished). Its
+        // attack and canto steps still take a frame each.
+        this.hold(2, () => this.advanceToNextUnit());
         break;
       }
     }
@@ -9683,7 +9755,7 @@ export class AIState extends MapState {
     // having moved, waits.
     if (!itemAvailable(attacker, weapon, game.db, game)) {
       this.waitingForMovement = false;
-      this.waitAfterAct(game, attacker);
+      this.hold(1, () => this.waitAfterAct(game, attacker));
       return;
     }
 
@@ -9700,7 +9772,7 @@ export class AIState extends MapState {
     }
     if (!defender) {
       this.waitingForMovement = false;
-      this.waitAfterAct(game, attacker);
+      this.hold(1, () => this.waitAfterAct(game, attacker));
       return;
     }
 
@@ -9736,9 +9808,16 @@ export class AIState extends MapState {
     this.waitingForCombat = true;
     this.waitingForMovement = false;
 
+    // Python AIState after the attack step: the camera centres between the
+    // unit and its goal and MoveCameraState holds the combat until it rests.
+    if (attacker.position) {
+      const goal: [number, number] | null = tile ?? (defender.position ? [defender.position[0], defender.position[1]] : null);
+      this.centerOnAction(game, [attacker.position[0], attacker.position[1]], goal);
+    }
     // Push CombatState on top of AIState (CombatState is transparent,
     // so AIState.draw() still runs underneath).
     game.state.change('combat');
+    game.state.change('move_camera');
   }
 
   private advanceToNextUnit(): void {
@@ -9751,24 +9830,8 @@ export class AIState extends MapState {
   }
 
   override draw(surf: Surface): Surface {
-    surf = drawMap(surf, false);
-
-    // Show current AI unit indicator — but NOT when combat is in progress
-    // (CombatState is transparent and draws on top, so the red rect would
-    // bleed through the viewbox iris during animation combat)
-    if (!this.waitingForCombat) {
-      const game = getGame();
-      if (this.currentAiIndex < this.aiUnits.length) {
-        const unit = this.aiUnits[this.currentAiIndex];
-        if (unit && unit.position) {
-          const cameraOffset = game.camera.getOffset();
-          const ux = unit.position[0] * TILEWIDTH - cameraOffset[0];
-          const uy = unit.position[1] * TILEHEIGHT - cameraOffset[1];
-          surf.drawRect(ux, uy, TILEWIDTH, TILEHEIGHT, 'rgba(255,80,80,0.8)', 2);
-        }
-      }
-    }
-    return surf;
+    // Python AIState draws just the map (no marker on the acting unit).
+    return drawMap(surf, false);
   }
 }
 
@@ -10911,7 +10974,8 @@ type EventTextbox = {
 };
 
 /** Maximum instant commands processed per frame to prevent infinite loops. */
-const MAX_BURST = 100;
+// Python's Event.process runs every instant command in one frame.
+const MAX_BURST = 10000;
 
 export class EventState extends State {
   readonly name = 'event';
@@ -11483,7 +11547,22 @@ export class EventState extends State {
   // Update — burst-processes instant commands each frame
   // -----------------------------------------------------------------------
 
+  /**
+   * Python EventState.update returns 'repeat' once its event pauses for a
+   * state it pushed (exp, combat, a choice...) or ends and pops: that state,
+   * or the one below, runs in the same frame.
+   */
   override update(): StateResult {
+    this.nextEventThisFrame = false;
+    const result = this.updateEvent();
+    if (result) return result;
+    if (this.nextEventThisFrame || getGame().state.hasPendingTransitions?.()) return 'repeat';
+  }
+
+  /** The finished event's successor runs this frame (see continuesWithNextEvent). */
+  private nextEventThisFrame = false;
+
+  private updateEvent(): StateResult {
     if (this.gameOver) return;
     const game = getGame();
     this.updateNonBlockingTransition();
@@ -11780,6 +11859,7 @@ export class EventState extends State {
       // Check if event is complete
       if (ev.isDone()) {
         this.finishAndDequeue();
+        if (this.continuesWithNextEvent(ev, game)) this.nextEventThisFrame = true;
         return;
       }
 
@@ -11798,6 +11878,7 @@ export class EventState extends State {
         // (getNextCommand() already flips ev.state to 'done' in that case).
         // Either way there's nothing left to execute.
         this.finishAndDequeue();
+        if (this.continuesWithNextEvent(ev, game)) this.nextEventThisFrame = true;
         return;
       }
 
@@ -12132,6 +12213,17 @@ export class EventState extends State {
    * Matches Python EventState.end_event(): after dequeuing, checks _win_game
    * and _lose_game level variables to trigger level transitions.
    */
+  /**
+   * Python runs each queued event in its own EventState and pops a finished
+   * one with 'repeat', so the next event (or the one it interrupted) goes on
+   * in the same frame. True when finishAndDequeue loaded another event here
+   * and nothing else is pending; update() then repeats.
+   */
+  private continuesWithNextEvent(finished: GameEvent, game: any): boolean {
+    return !!this.currentEvent && this.currentEvent !== finished &&
+      !game.state.hasPendingTransitions?.() && !this.gameOver;
+  }
+
   private finishAndDequeue(): void {
     const game = getGame();
     const finishedEvent = this.currentEvent;

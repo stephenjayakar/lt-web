@@ -8,11 +8,11 @@
  * Uses dynamic viewport dimensions from the viewport singleton.
  */
 
-import { TILEWIDTH, TILEHEIGHT } from './constants';
+import { TILEWIDTH, TILEHEIGHT, getFrameCount } from './constants';
 import { viewport } from './viewport';
 
-/** Number of frames for the lerp to (roughly) converge. */
-const SMOOTH_FACTOR = 0.15;
+/** Python Camera.speed: the pan speed is distance / 8 tiles per frame. */
+const CAMERA_SPEED = 8.0;
 
 /** Snap threshold: stop interpolating below this pixel distance. */
 const SNAP_THRESHOLD = 0.5;
@@ -57,6 +57,7 @@ export class Camera {
   private targetX: number = 0;
   private targetY: number = 0;
   /** One-shot duration override used by event-command slow pans. */
+  private lastUpdateFrame: number = -1;
   private pendingPanFrames: number = 0;
   private panFramesRemaining: number = 0;
   private panTotalFrames: number = 0;
@@ -169,6 +170,11 @@ export class Camera {
   }
 
   update(): void {
+    // Python updates the camera in MapState.draw, once per drawn frame; the
+    // web may draw again on a state's 'repeat' within the same frame.
+    const frame = getFrameCount();
+    if (frame === this.lastUpdateFrame) return;
+    this.lastUpdateFrame = frame;
     if (this.panFramesRemaining > 0) {
       const elapsed = this.panTotalFrames - this.panFramesRemaining + 1;
       const progress = Math.min(1, elapsed / this.panTotalFrames);
@@ -182,16 +188,20 @@ export class Camera {
         this.y = this.targetY;
       }
     } else {
-      const dx = this.targetX - this.x;
-      const dy = this.targetY - this.y;
-
-      if (Math.abs(dx) < SNAP_THRESHOLD && Math.abs(dy) < SNAP_THRESHOLD) {
-        this.x = this.targetX;
-        this.y = this.targetY;
-      } else {
-        this.x += dx * SMOOTH_FACTOR;
-        this.y += dy * SMOOTH_FACTOR;
+      // Python Camera.get_next_position (in tiles): move dist / 8 tiles a
+      // frame, at least min(dist, 0.25) and at most one, then snap once
+      // within 1/8 tile of the target.
+      const dx = (this.targetX - this.x) / TILEWIDTH;
+      const dy = (this.targetY - this.y) / TILEHEIGHT;
+      if (dx || dy) {
+        const dist = Math.hypot(dx, dy);
+        const speed = Math.max(Math.min(dist, 0.25), Math.min(1.0, dist / CAMERA_SPEED));
+        const angle = Math.atan2(Math.abs(dy), Math.abs(dx));
+        this.x += speed * Math.cos(angle) * Math.sign(dx) * TILEWIDTH;
+        this.y += speed * Math.sin(angle) * Math.sign(dy) * TILEHEIGHT;
       }
+      if (Math.abs(this.targetX - this.x) <= TILEWIDTH * 0.125) this.x = this.targetX;
+      if (Math.abs(this.targetY - this.y) <= TILEHEIGHT * 0.125) this.y = this.targetY;
     }
 
     // Advance shake frame

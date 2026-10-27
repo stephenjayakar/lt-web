@@ -126,6 +126,22 @@ async function runHookCombat(page: Page, fork: boolean, extras = false, loseGame
       if (frame % 20 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
       const names = game.state.getStackNames();
       const inCombat = names.includes('combat');
+      // Events that ran this frame come before a phase this frame entered.
+      const order = String(game.levelVars.get('_fork_order') ?? '');
+      if (order !== last) {
+        // Events that finish in the same frame (Python pops each EventState
+        // with 'repeat') arrive together; record each in order.
+        for (const label of order.slice(last.length).replace(/^>/, '').split('>')) {
+          seen.push({
+            label,
+            combat: inCombat,
+            phase: inCombat ? combatState.phase : null,
+            onMap: !!defender.position,
+            ...probe(),
+          });
+        }
+        last = order;
+      }
       if (!sawExp && inCombat && game.state.getCurrentState()?.name === 'combat' &&
           String(combatState.phase).startsWith('exp')) {
         sawExp = true;
@@ -137,17 +153,6 @@ async function runHookCombat(page: Page, fork: boolean, extras = false, loseGame
           label: `broken:${combatState.brokenBanner?.text}`, combat: true, phase: 'broken_item',
           onMap: !!defender.position, ...probe(),
         });
-      }
-      const order = String(game.levelVars.get('_fork_order') ?? '');
-      if (order !== last) {
-        seen.push({
-          label: order.slice(last.length).replace(/^>/, ''),
-          combat: inCombat,
-          phase: inCombat ? combatState.phase : null,
-          onMap: !!defender.position,
-          ...probe(),
-        });
-        last = order;
       }
       if (game.state.getCurrentState()?.name === 'free' &&
           last.includes(extras ? 'unit_wait' : 'combat_end')) break;
@@ -250,7 +255,7 @@ test.describe('EOtF engine fork combat cleanup order', () => {
     const timeline = await runHookCombat(page, false);
     // clean_up0 combat_death, clean_up1's exp screen, then clean_up2.
     expect(timeline.map((entry) => entry.label)).toEqual([
-      'on_hit', 'exp', 'combat_death', 'unit_death', 'item_after_combat', 'skill_after_combat', 'combat_end',
+      'on_hit', 'combat_death', 'exp', 'unit_death', 'item_after_combat', 'skill_after_combat', 'combat_end',
     ]);
     expect(timeline[3]).toMatchObject({ onMap: true });
   });

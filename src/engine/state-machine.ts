@@ -49,6 +49,11 @@ export class StateMachine {
     return this.tempState.some((op) => op.kind === 'change' && op.name === name);
   }
 
+  /** Is any transition (push, pop, clear) queued for the end of the frame? */
+  hasPendingTransitions(): boolean {
+    return this.tempState.length > 0;
+  }
+
   /** Queue a pop: return to the previous state (deferred). */
   back(): void {
     this.tempState.push({ kind: 'back' });

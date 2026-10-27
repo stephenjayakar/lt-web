@@ -24,7 +24,6 @@ const MERGED = {
   init: 'combat',
   item: 'menu',
   item_child: 'menu',
-  move_camera: 'movement',
   optimize_all_choice: 'prep_pick',
   option_child: 'option_menu',
   overworld_on_node: 'overworld',

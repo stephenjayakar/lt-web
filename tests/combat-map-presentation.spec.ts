@@ -88,19 +88,24 @@ test.describe('map combat presentation (EOtF)', () => {
     const frames = await sampleFrames(page, 400);
     const states = frames.map((frame) => frame.mapState).filter((s): s is string => !!s);
     const order = states.filter((state, index) => state !== states[index - 1]);
+    // The fork's map_combat.py (lt-maker 5078af9f): one end_phase, and the
+    // begin_phase that finds no phase left ends the combat in that frame.
     expect(order).toEqual([
       'init_pause', 'begin_phase', 'proc_animations', 'start_anim', 'sound',
-      'anim', 'hp_bar_wait', 'end_phase_anim', 'end_phase', 'begin_phase', 'exp_wait', 'post_combat',
-      'done',
+      'anim', 'hp_bar_wait', 'end_phase_anim', 'begin_phase',
     ]);
-    // init_pause 200 ms, start_anim 200 ms, sound 250 ms, anim 83 ms (5
-    // frames), end_phase_anim 550 ms: > N ms means N/16.7 + 1 frames.
+    // Python's integer millisecond clock: `> N ms` over whole frames, so
+    // init_pause 200 ms is 13 frames, the fork's start_anim 400 ms 25, sound
+    // 250 ms 16, anim 83 ms 5 (or 6, by clock phase), end_phase 550 ms 34.
+    // The first begin_phase takes an extra frame (the solver's InitState
+    // yields nothing), as the oracle shows.
     const count = (state: string) => states.filter((s) => s === state).length;
     expect(count('init_pause')).toBe(13);
-    expect(count('start_anim')).toBe(13);
+    expect(count('begin_phase')).toBe(3);
+    expect(count('start_anim')).toBe(25);
     expect(count('sound')).toBe(16);
     expect(count('anim')).toBe(5);
-    expect(count('end_phase_anim')).toBe(33);
+    expect(count('end_phase_anim')).toBe(34);
 
     // unit_tint_add: a 333 ms add-white flicker on the sprite, no overlay box.
     const tinted = frames.filter((frame) => frame.defenderTints > 0);

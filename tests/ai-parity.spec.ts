@@ -386,16 +386,19 @@ test.describe('AI parity', () => {
       const done = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name !== 'ai');
       if (done) break;
     }
-    const result = await page.evaluate(({ a, b }) => {
+    const result = await page.evaluate(({ a, b, aStart, bStart }) => {
       const g = (window as any).__gameRef;
       const ua = g.units.get(a);
       const ub = g.units.get(b);
+      // The phase ends in the frame the last unit finishes (AIState returns
+      // 'repeat' into turn_change), and ResetAll clears the action flags.
+      const moved = (u: any, from: number[]) => !!u.position && (u.position[0] !== from[0] || u.position[1] !== from[1]);
       return {
         order: (window as any).__groupOrder,
         active: g.isAiGroupActive('_G'),
         triggered: g.aiGroupTriggered.size,
-        aMoved: ua.hasMoved || ua.finished,
-        bMoved: ub.hasMoved || ub.finished,
+        aMoved: moved(ua, aStart),
+        bMoved: moved(ub, bStart),
       };
     }, setup!);
     // The first member asked while idle and held; the second's trigger

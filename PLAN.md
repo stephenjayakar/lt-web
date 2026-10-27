@@ -204,8 +204,16 @@ The release gate is green: build, all four audits, the full serial suite,
   (`src/engine/states/exp-state.ts`): bar fill and sound, LevelUpMap logo,
   level screen, level-down, auto-promotion, new skills, triggers
   (`tests/event-give-exp.spec.ts`; oracle shots match frame for frame).
-- [ ] Enemy phase and map combat run on different frame timings than the
-  fork (oracle screenshots at equal frames diverge).
+- [x] Enemy phase and map combat follow the fork's frame timing
+  (`tests/fork-phase-timing.spec.ts`; per-frame oracle state timelines
+  match within Python's integer-clock jitter): AIState runs one act step a
+  frame (3 frames per idle unit, was 7), centres the camera like
+  set_center2 and holds combats under MoveCameraState; the fork's map combat
+  waits 400 ms in start_anim and has one end_phase; the solver's InitState
+  frame; Python's camera pan speed; walks at unit_speed ms per tile before
+  the frame's states update; same-frame 'repeat' hand-offs (event pauses
+  and ends, combat clean-up, dying, AI phase end); PhaseIn timed from its
+  begin frame.
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in

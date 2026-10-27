@@ -178,11 +178,21 @@ export class MapCombat implements StrikeEventCombat {
   state: MapCombatState;
   currentStrikeIndex: number;
   /** ms since the current state began (Python current_time). */
-  private stateTime = 0;
+  /** Milliseconds since the combat started (Python engine.get_time()). */
+  private clock = 0;
+  /** `clock` when the current state began (Python last_update). */
+  private stateStart = 0;
   /** START toggles Python's _skip: every timed wait passes immediately. */
   skipMode = false;
   private firstPhase = true;
   private castPose = false;
+  /** Python MoveCameraState after begin_phase: wait for the camera pan. */
+  private cameraHold = false;
+  /**
+   * The solver's InitState: Python's first begin_phase gets no actions or
+   * playback from it and tries again next frame.
+   */
+  private solverInitStep = true;
   private hpBarTime = 0;
   /** Python's cursor tile for this phase (what combat_attacker faces). */
   private cursorTarget: [number, number] | null = null;
@@ -452,7 +462,7 @@ export class MapCombat implements StrikeEventCombat {
     for (const cue of this.activeProcCues) cue.elapsed += deltaMs;
     this.activeProcCues = this.activeProcCues.filter((cue) => cue.elapsed < cue.duration);
     if (this.state === 'done') return true;
-    this.stateTime += deltaMs;
+    this.clock += deltaMs;
     const skip = this.skipMode;
 
     switch (this.state) {
@@ -460,25 +470,39 @@ export class MapCombat implements StrikeEventCombat {
         this.setState('init_pause');
         break;
       case 'init_pause':
-        if (skip || this.stateTime > 200) this.setState('begin_phase');
+        if (skip || this.over(200)) this.setState('begin_phase');
         break;
       case 'begin_phase':
+        if (this.solverInitStep) {
+          this.solverInitStep = false;
+          break;
+        }
         this.beginPhase();
+        // Python begin_phase with no phase left calls clean_up and the
+        // combat is over in that same update.
+        if ((this.state as MapCombatState) === 'exp_wait') {
+          this.endCombat();
+          return true;
+        }
         break;
       case 'strike_events':
         // CombatState runs pendingStrikeEvents, then resumeAfterStrikeEvents.
         break;
       case 'proc_animations':
+        // Python red_cursor runs once MoveCameraState has popped.
+        if (this.cameraHold && !skip && this.game?.camera?.isAtTarget && !this.game.camera.isAtTarget()) break;
+        this.cameraHold = false;
         this.setState('start_anim');
         break;
       case 'start_anim':
-        if (skip || this.stateTime > 200) {
+        // EOtF's fork (lt-maker 5078af9f) waits 400 ms here; upstream 200.
+        if (skip || this.over(isForkEngine() ? 400 : 200)) {
           this.playCastAnimations();
           this.setState('sound');
         }
         break;
       case 'sound':
-        if (skip || this.stateTime > 250) {
+        if (skip || this.over(250)) {
           const strike = this.currentStrike();
           if (strike && !this.castPose) this.startLunge(strike.attacker);
           const castSfx = strike?.item.getComponent<string>('map_cast_sfx');
@@ -487,7 +511,7 @@ export class MapCombat implements StrikeEventCombat {
         }
         break;
       case 'anim':
-        if (skip || this.stateTime > 83) {
+        if (skip || this.over(83)) {
           this.handlePlayback();
           for (const info of this.infos.values()) info.update(0, true);
           this.hpBarTime = this.infos.size > 0
@@ -497,31 +521,32 @@ export class MapCombat implements StrikeEventCombat {
         }
         break;
       case 'hp_bar_wait':
-        if (skip || this.stateTime > this.hpBarTime) this.setState('end_phase_anim');
+        if (skip || this.over(this.hpBarTime)) this.setState('end_phase_anim');
         break;
       case 'end_phase_anim':
-        if (skip || (this.castPose && this.stateTime > 250) || this.stateTime > 550) {
+        if (skip || (this.castPose && this.over(250)) || this.over(550)) {
           const strike = this.currentStrike();
           if (strike) this.faceCombatant(strike.attacker);
-          this.setState('end_phase');
+          if (isForkEngine() && !this.castPose) {
+            // The fork's single end_phase (no map_cast_pose) goes straight
+            // on to the next phase.
+            this.currentStrikeIndex++;
+            this.setState('begin_phase');
+          } else {
+            this.setState('end_phase');
+          }
         }
         break;
       case 'end_phase':
-        if (skip || !this.castPose || this.stateTime > 550) {
+        if (skip || !this.castPose || this.over(550)) {
           this.castPose = false;
           this.currentStrikeIndex++;
           this.setState('begin_phase');
         }
         break;
       case 'exp_wait':
-        // clean_up1: survivors return to their normal map sprite.
-        for (const unit of this.participants) {
-          if (!this.isPresentedDying(unit)) setCombatPose(unit, null);
-        }
-        this.setState('post_combat');
-        break;
       case 'post_combat':
-        this.state = 'done';
+        this.endCombat();
         return true;
     }
 
@@ -994,9 +1019,40 @@ export class MapCombat implements StrikeEventCombat {
   // Presentation (Python MapCombat states)
   // ------------------------------------------------------------------
 
+  /** clean_up1: survivors return to their normal map sprite; done. */
+  private endCombat(): void {
+    for (const unit of this.participants) {
+      if (!this.isPresentedDying(unit)) setCombatPose(unit, null);
+    }
+    this.state = 'done';
+  }
+
   private setState(state: MapCombatState): void {
     this.state = state;
-    this.stateTime = 0;
+    this.stateStart = this.clock;
+  }
+
+  /**
+   * Python `engine.get_time() - last_update > ms` on its integer millisecond
+   * clock: a whole number of frames that adds up to exactly `ms` is not
+   * over it yet (24 frames are 400 ms, so a 400 ms wait takes 25), and an
+   * 83 ms wait takes five or six frames depending on the clock's phase.
+   */
+  private over(ms: number): boolean {
+    return Math.trunc(this.clock + 1e-6) - Math.trunc(this.stateStart + 1e-6) > ms;
+  }
+
+  /**
+   * begin_phase's cursor.set_pos: the camera's set_xy keeps the cursor three
+   * tiles inside the screen, and MoveCameraState holds the combat until the
+   * camera rests. Returns whether it has to pan.
+   */
+  private moveCursorTo(target: [number, number]): boolean {
+    const camera = this.game?.camera;
+    if (!camera?.trackTile) return false;
+    this.game.cursor?.setPos?.(target[0], target[1]);
+    camera.trackTile(target[0], target[1]);
+    return !camera.isAtTarget();
   }
 
   private currentStrike(): CombatStrike | null {
@@ -1034,6 +1090,7 @@ export class MapCombat implements StrikeEventCombat {
     this.cursorTarget = counter
       ? this.attacker.position
       : main?.position ?? strike.defender.position ?? null;
+    this.cameraHold = !this.skipMode && !!this.cursorTarget && this.moveCursorTo(this.cursorTarget);
     this.faceCombatant(strike.attacker);
     if (counter) this.faceToward(this.attacker, strike.attacker);
     else if (main) this.faceToward(main, this.attacker);

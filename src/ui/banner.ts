@@ -185,6 +185,7 @@ export class PhaseIn {
   static readonly tDisplay = PhaseIn.tBegin + PhaseIn.tMain + PhaseIn.tEnd;
 
   private elapsed = 0;
+  private updated = false;
   private spriteName: string;
   private fallbackName: string;
 
@@ -201,10 +202,15 @@ export class PhaseIn {
     getSprite('phase_transition');
   }
 
-  /** Advance one frame; true once the display time has passed. */
+  /**
+   * Advance one frame; true once the display time has passed. Python times
+   * the banner from begin(), whose frame's update sees 0 ms, on its integer
+   * millisecond clock.
+   */
   update(deltaMs: number = FRAMETIME): boolean {
-    this.elapsed += deltaMs;
-    return this.elapsed >= PhaseIn.tDisplay;
+    if (this.updated) this.elapsed += deltaMs;
+    this.updated = true;
+    return Math.floor(this.elapsed + 1e-6) >= PhaseIn.tDisplay;
   }
 
   draw(surf: Surface): Surface {

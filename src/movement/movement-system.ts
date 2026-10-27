@@ -22,6 +22,8 @@ interface MovementComponent {
   path: [number, number][];
   currentIndex: number;
   progress: number;   // 0..1 interpolation between current and next tile
+  /** Milliseconds since the last tile was reached (Python dt). */
+  elapsed: number;
   speed: number;       // tiles per second
   done: boolean;
   onComplete?: () => void;
@@ -93,6 +95,7 @@ export class MovementSystem {
       path,
       currentIndex: 0,
       progress: 0,
+      elapsed: 0,
       speed,
       done: false,
       onComplete,
@@ -105,18 +108,20 @@ export class MovementSystem {
    * @returns `true` if at least one movement is still active after the update.
    */
   update(deltaMs: number): boolean {
-    const dt = deltaMs / 1000; // convert to seconds
-
     for (const comp of this.components) {
       if (comp.done) continue;
 
-      // How many tiles worth of distance we travel this frame
-      const tileStep = comp.speed * dt;
-      comp.progress += tileStep;
+      // Python UnitPathMovementComponent.update: progress is the time since
+      // the last tile over unit_speed ms, on its integer ms clock; reaching
+      // a tile restarts the clock (the overshoot is dropped), one tile per
+      // update at most.
+      comp.elapsed += deltaMs;
+      const msPerTile = Math.max(1000 / comp.speed, 1);
+      comp.progress = Math.min(1, Math.floor(comp.elapsed + 1e-6) / msPerTile);
 
-      // Consume full tile steps
-      while (comp.progress >= 1 && comp.currentIndex < comp.path.length - 1) {
-        comp.progress -= 1;
+      if (comp.progress >= 1 && comp.currentIndex < comp.path.length - 1) {
+        comp.progress = 0;
+        comp.elapsed = 0;
         comp.currentIndex++;
 
         // Snap the unit to the tile we just arrived at
@@ -145,7 +150,6 @@ export class MovementSystem {
             (spr as { state: string }).state = 'standing';
           }
           comp.onComplete?.();
-          break;
         }
       }
     }

@@ -7,7 +7,7 @@
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import { Surface } from '../engine/surface';
-import { TILEWIDTH, TILEHEIGHT, TILEX, TILEY, WINWIDTH, WINHEIGHT, FRAMETIME, getFrameCount } from '../engine/constants';
+import { TILEWIDTH, TILEHEIGHT, TILEX, TILEY, WINWIDTH, WINHEIGHT, getFrameCount } from '../engine/constants';
 import { FONT } from '../rendering/bmp-font';
 import { drawItemIcon } from '../ui/icons';
 import { getCombatSprite } from './combat-sprites';
@@ -17,7 +17,8 @@ export type MapCombatStats = [number | null, number | null, number | null, numbe
 
 /** health_bar.HealthBar timing for MapCombatHealthBar (1 frame per HP). */
 const HP_TIME_FOR_CHANGE_MIN = 200;
-const HP_SPEED = FRAMETIME;
+/** MapHealthBar.speed: utils.frames2ms(1) = int(16.67) ms per HP point. */
+const HP_SPEED = Math.trunc(16.67);
 /** MapCombatInfo.blind_speed: 8 frames to open. */
 const BLIND_SPEED = 1 / 8;
 

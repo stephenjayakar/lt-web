@@ -208,7 +208,10 @@ export class ExpBar {
 
     // Iris transition: subsurface to show only the visible strip
     if (this.offset > 0) {
-      const visibleH = Math.max(1, this.height - this.offset * 2);
+      // Fully closed (offset = height / 2) shows nothing, as Python's empty
+      // subsurface.
+      const visibleH = this.height - this.offset * 2;
+      if (visibleH <= 0) return;
       const clippedSurf = barSurf.subsurface(0, this.offset, this.width, visibleH);
       surf.blit(clippedSurf, this.pos[0], this.pos[1] + this.offset);
     } else {

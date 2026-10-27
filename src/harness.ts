@@ -233,6 +233,10 @@ export function installHarness(
     game.frameDeltaMs = FRAMETIME;
     gameSurface.clear();
 
+    // Python's MovementState moves units inside the state update, before the
+    // frame's draw: walks advance (and finish, queueing what follows) first.
+    game.movementSystem.update(FRAMETIME);
+
     let repeat = true;
     let iterations = 0;
     const maxIterations = 10;
@@ -245,7 +249,6 @@ export function installHarness(
     }
 
     updateAnimationCounters();
-    game.movementSystem.update(FRAMETIME);
     updateUnitSounds(game.units.values(), !!game.roamInfo?.roam, game.camera?.getCullRect?.() ?? null);
 
     // Blit to display canvas

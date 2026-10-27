@@ -234,6 +234,9 @@ class QaController {
     if (input === null) input = manual;
     if (draw) surface.clear();
     qaDraw.skip = !draw;
+    // Python's MovementState moves units inside the state update, before the
+    // frame's draw: walks advance (and finish, queueing what follows) first.
+    game.movementSystem.update(FRAMETIME);
     try {
       let repeat = true;
       let iterations = 0;
@@ -249,7 +252,6 @@ class QaController {
     }
     game.input?.endFrame?.();
     updateAnimationCounters();
-    game.movementSystem.update(FRAMETIME);
     updateUnitSounds(game.units.values(), !!game.roamInfo?.roam, game.camera?.getCullRect?.() ?? null);
     if (draw) {
       const { canvas, ctx } = this.display;

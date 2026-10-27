@@ -79,6 +79,7 @@ import {
   StatusUpkeepState,
   DyingState,
   WaitState,
+  MoveCameraState,
   AlertState,
   StatusEndstepState,
 } from './engine/states/game-states';
@@ -784,6 +785,7 @@ async function main(): Promise<void> {
     new StatusUpkeepState(),
     new DyingState(),
     new WaitState(),
+    new MoveCameraState(),
     new AlertState(),
     new StatusEndstepState(),
     new PhaseChangeState(),
@@ -1104,6 +1106,11 @@ async function main(): Promise<void> {
     // --- Clear ---
     gameSurface.clear();
 
+    // --- Movement ---
+    // Python's MovementState moves units inside the state update, before the
+    // frame's draw: walks advance (and finish, queueing what follows) first.
+    game.movementSystem.update(deltaMs);
+
     // --- State machine update ---
     PerfMonitor.beginUpdate();
     let repeat = true;
@@ -1127,8 +1134,6 @@ async function main(): Promise<void> {
     // --- Animations ---
     updateAnimationCounters();
 
-    // --- Movement ---
-    game.movementSystem.update(deltaMs);
     // Python MapView.draw_units ticks every unit's footsteps once per frame.
     updateUnitSounds(game.units.values(), !!game.roamInfo?.roam, game.camera?.getCullRect?.() ?? null);
 
