@@ -1769,16 +1769,50 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       const x = num.left
         ? WINWIDTH / 2 - 26 + leftRange - totalShakeX + this.panOffset
         : WINWIDTH / 2 + 26 + rightRange - totalShakeX + this.panOffset;
-      const digit = new OffscreenCanvas(16, 16);
-      digit.getContext('2d')!.drawImage(sheet.canvas, num.digit * 16, 0, 16, 16, 0, 0, 16, 16);
+      const digit = this.digitCanvas(sheet, num.digit);
       drawCanvas(surf, digit, x - 7 * num.length + 14 * num.idx, WINHEIGHT - 120 - top, 16, 16, 'normal', alpha);
     }
+  }
+
+  /** Damage-number digit cells, cut once per sheet (drawn every frame). */
+  private digitCells = new WeakMap<Surface, OffscreenCanvas[]>();
+
+  private digitCanvas(sheet: Surface, digit: number): OffscreenCanvas {
+    let cells = this.digitCells.get(sheet);
+    if (!cells) this.digitCells.set(sheet, cells = []);
+    let cell = cells[digit];
+    if (!cell) {
+      cell = new OffscreenCanvas(16, 16);
+      cell.getContext('2d')!.drawImage(sheet.canvas, digit * 16, 0, 16, 16, 0, 0, 16, 16);
+      cells[digit] = cell;
+    }
+    return cell;
+  }
+
+  /**
+   * Scratch surfaces reused every frame. Allocating a full-screen canvas and
+   * four sprite copies per frame (each a fresh 2D context) dominated the
+   * combat frame time on CPU-rasterized canvases (headless Chromium).
+   */
+  private scratchSurfaces = new Map<unknown, Surface>();
+
+  private scratch(key: unknown, width: number, height: number, base: Surface | null = null): Surface {
+    let s = this.scratchSurfaces.get(key);
+    if (!s || s.width !== width || s.height !== height) {
+      s = new Surface(width, height);
+      this.scratchSurfaces.set(key, s);
+    } else {
+      s.clear();
+    }
+    s.setAlpha(1);
+    if (base) s.blit(base, 0, 0);
+    return s;
   }
 
   /** Name tags and HP/stat bars (initial_paint_setup + the draw tail). */
   private drawCombatUi(surf: Surface): void {
     const crit = this.db?.getConstant?.('crit', true) !== false;
-    const ui = new Surface(WINWIDTH, WINHEIGHT);
+    const ui = this.scratch('ui', WINWIDTH, WINHEIGHT);
     const leftColor = this.teamColor(this.leftUnit);
     const rightColor = this.teamColor(this.rightUnit);
     const leftItem = this.leftIsAttacker ? this.attackItem : this.defenseItem;
@@ -1802,7 +1836,7 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       stats: [number | null, number | null, number | null],
     ): Surface | null => {
       if (!sprite) return null;
-      const surfBar = sprite.copy();
+      const surfBar = this.scratch(sprite, sprite.width, sprite.height, sprite);
       if (item) {
         const font = textFont(item.name, 56);
         font?.blitCenter(surfBar, item.name, nameX, 5 + (crit ? 8 : 0), 'brown');
@@ -1850,13 +1884,13 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
     const top = -60 + this.nameOffset * 60 + shake[1];
     const leftName = pick('combat_name_left', leftColor);
     if (leftName) {
-      const tag = leftName.copy();
+      const tag = this.scratch(leftName, leftName.width, leftName.height, leftName);
       textFont(this.leftUnit.name, 52)?.blitCenter(tag, this.leftUnit.name, 30, 8, 'brown');
       ui.blit(tag, leftX, top);
     }
     const rightName = pick('combat_name_right', rightColor);
     if (rightName) {
-      const tag = rightName.copy();
+      const tag = this.scratch(rightName, rightName.width, rightName.height, rightName);
       textFont(this.rightUnit.name, 52)?.blitCenter(tag, this.rightUnit.name, 36, 8, 'brown');
       ui.blit(tag, WINWIDTH + 3 - tag.width + shake[0], top);
     }
