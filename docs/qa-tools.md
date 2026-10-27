@@ -50,6 +50,11 @@ one server), or start several `qa:run` processes. Give each process its own
 Each page keeps one CPU core busy, so on this machine 3-4 runs at a time is a
 reasonable limit.
 
+A dev server that keeps running while source files change (merges, edits)
+can end up serving two copies of a module. QA pages reload cleanly, but
+Playwright specs that `import('/src/...')` then fail with "Game reference not
+set". Restart a long-lived server before running specs against it.
+
 Run `npm run qa:run -- --help` for every option. The main ones:
 
 | Option | Meaning |
