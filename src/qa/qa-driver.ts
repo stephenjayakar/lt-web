@@ -589,16 +589,22 @@ export class QaDriver {
 
   /**
    * --forgive: called when the game queues Global_Loss. In a battle level with
-   * budget left, the loss is recorded and the caller runs win_game instead,
-   * so a weak policy still reaches the content after it.
+   * budget left, the loss is recorded and the player units that died in this
+   * level are returned; the caller resurrects them and runs win_game, so a
+   * weak policy still reaches the content after it (a story unit such as
+   * Loreia_T is needed again on the next floor). Null: do not forgive.
    */
-  forgiveLoss(): boolean {
-    if (this.mode !== 'play' || this.forgiven >= this.options.forgive) return false;
-    if (!this.currentLevel || this.currentLevel.kind !== 'battle') return false;
+  forgiveLoss(): string[] | null {
+    if (this.mode !== 'play' || this.forgiven >= this.options.forgive) return null;
+    if (!this.currentLevel || this.currentLevel.kind !== 'battle') return null;
+    this.observe();
+    const level = this.currentLevel;
+    if (!level) return null;
     this.forgiven += 1;
-    this.currentLevel.result = 'lost (forgiven)';
-    this.note(`loss forgiven (${this.forgiven}/${this.options.forgive}): win_game`);
-    return true;
+    level.result = 'lost (forgiven)';
+    const fallen = [...new Set(level.playerDeaths.map((entry) => entry.split('@')[0]))];
+    this.note(`loss forgiven (${this.forgiven}/${this.options.forgive}): win_game${fallen.length ? `, resurrect ${fallen.join(',')}` : ''}`);
+    return fallen;
   }
 
   /** Mark the open battle as lost (game over). */

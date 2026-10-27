@@ -67,7 +67,7 @@ Run `npm run qa:run -- --help` for every option. The main ones:
 | `--boost N` | QA stat boost: `change_stats` +N to every stat (+2N HP) and a full heal. Off by default. |
 | `--floors N` / `--to-floor N` / `--one-level` / `--no-play` | What to play. |
 | `--max-turns N` (40), `--force-win` | Turn limit per battle map; `--force-win` runs `win_game` at the limit instead of stopping. |
-| `--forgive N` | Forgive up to N battle losses: when the game queues `Global Global_Loss` (EOtF's only `lose_game` path) in a battle, the driver clears `game_over` and runs `win_game` instead. The level is reported as `lost (forgiven)`. Use it to reach later content past maps the policy cannot defend (Defend, Capture the Flag, escorts). |
+| `--forgive N` | Forgive up to N battle losses: when the game queues `Global Global_Loss` (EOtF's only `lose_game` path) in a battle, the driver clears `game_over`, resurrects the player units that fell in that level (story units such as Loreia_T are needed again later) and runs `win_game` instead. The level is reported as `lost (forgiven)`. Use it to reach later content past maps the policy cannot defend (Defend, Capture the Flag, escorts). |
 | `--rooms random\|combat,event,shop,respite,elite` | Room policy. Boss and trial rooms are always taken. |
 | `--choices random\|first`, `--services all\|none\|a,b`, `--shop buy\|leave`, `--policy-seed N` | Policy for event choices, sub-room NPCs and shop screens (default: buy one random item per shop). |
 | `--fast N` (0) | Frames per real frame. 0 = as fast as possible, 1 = normal speed. |

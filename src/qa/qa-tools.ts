@@ -307,8 +307,9 @@ class QaController {
   /**
    * --forgive: EOtF routes every defeat through `trigger_script;Global
    * Global_Loss` (the only event with lose_game). While the driver has
-   * forgiveness left, that event is replaced by clearing game_over and
-   * win_game, so the run continues past the battle.
+   * forgiveness left, that event is replaced by clearing game_over,
+   * resurrecting the units that fell in the level, and win_game, so the run
+   * continues past the battle.
    */
   private installForgive(): void {
     const proto = EventManager.prototype as any;
@@ -316,9 +317,14 @@ class QaController {
     const original = proto.triggerSpecific;
     const controller = this;
     proto.triggerSpecific = function (this: any, nid: string, trigger: unknown, force?: boolean): boolean {
-      if (nid === 'Global Global_Loss' && controller.driver.forgiveLoss()) {
+      const fallen = nid === 'Global Global_Loss' ? controller.driver.forgiveLoss() : null;
+      if (fallen) {
         controller.log.print('[QA] loss forgiven: win_game instead of Global_Loss');
-        controller.runScript(['game_var;game_over;0', 'win_game'], 'QA_Forgive_Loss');
+        controller.runScript([
+          'game_var;game_over;0',
+          ...fallen.map((unit) => `resurrect;${unit}`),
+          'win_game',
+        ], 'QA_Forgive_Loss');
         return true;
       }
       return original.call(this, nid, trigger, force);
