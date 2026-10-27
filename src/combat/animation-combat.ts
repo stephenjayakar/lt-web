@@ -965,7 +965,9 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
     this.transition('combat_hit');
 
     // handle_damage_numbers
-    const damage = strike.damage;
+    // EOtF: digits show the damage brush even when a survival hook changed
+    // the HP the strike applies.
+    const damage = strike.shownDamage ?? strike.damage;
     if (damage < 0) this.addDamageNumbers(-damage, defenderIsLeft, 'cyan');
     else if (damage > 0) this.addDamageNumbers(damage, defenderIsLeft, strike.crit ? 'yellow' : 'red');
     // The EOtF fork's AnimationCombat.handle_damage_numbers has no
@@ -1266,8 +1268,9 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
     for (; this.walked < upTo; this.walked++) {
       const strike = this.strikes[this.walked];
       if (!strike.hit && !hasDamageOnMiss(strike.item)) {
-        // Skill lifelink / live_to_serve can heal on a miss (EOtF fork).
-        const missHeal = strike.selfSkillHpChange ?? 0;
+        // Skill lifelink / live_to_serve and item lifelink can heal on a
+        // miss (EOtF fork).
+        const missHeal = (strike.selfSkillHpChange ?? 0) + (strike.itemLifelinkHeal ?? 0);
         if (missHeal !== 0) {
           if (strike.attacker === this.attacker) {
             atkHp = Math.max(0, Math.min(attackerMaxHp, atkHp + missHeal));

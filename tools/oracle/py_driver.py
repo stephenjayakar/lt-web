@@ -905,7 +905,7 @@ def snapshot(e: Engine) -> dict:
             'exp': u.exp,
             'klass': u.klass,
             'stats': {k: int(v) for k, v in u.stats.items()},
-            'growth_points': {k: int(v) for k, v in u.growth_points.items() if v},
+            'growth_points': {k: _jsonable(v) for k, v in u.growth_points.items() if v},
             'wexp': {k: _jsonable(v) for k, v in u.wexp.items() if v},
             'items': items,
             'equipped_weapon': u.equipped_weapon.nid if u.equipped_weapon else None,

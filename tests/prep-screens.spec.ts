@@ -582,9 +582,17 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
         header: { kind: menu.options[0].entry.kind, header: menu.options[0].entry.header, ignore: menu.options[0].ignore },
         current: menu.currentIndex,
         pages: state.pages.length,
+        gem: menu.gem,
+        shimmer: menu.shimmer,
+        arrows: [state.leftArrow.x, state.rightArrow.x, state.rightArrow.y],
       };
     });
     expect(lib.topleft).toEqual([4, 4]);
+    // EOtF's engine drops the list's brown gem and shimmer (window skin).
+    expect(lib.gem).toBe(true);
+    expect(lib.shimmer).toBe(0);
+    // LoreDisplay page arrows at (88, 8) and (229, 8) once a lore has pages.
+    if (lib.pages > 1) expect(lib.arrows).toEqual([88, 229, 8]);
     expect(lib.width).toBe(80);
     expect(lib.rows).toBe(9); // hard limit pads to 9
     expect(lib.header).toEqual({ kind: 'lore', header: true, ignore: true });

@@ -7,6 +7,7 @@
  * units, tilemap, mapView, etc.) without creating circular imports.
  */
 
+import { drawItemUseRolls } from '../../combat/item-use-rolls';
 import type { SongObject } from '../../audio/music-controller';
 import { State, MapState, type StateResult } from '../state';
 import { isForkEngine } from '../engine-flavor';
@@ -196,7 +197,7 @@ import { DifficultyModeObject, rngOptionDisplay } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
-import { getSprite, preloadSprites } from '../../ui/sprites';
+import { currentWindowSkin, getSprite, preloadSprites, skinnedSpriteNameFor, startupSkinnedSpriteName } from '../../ui/sprites';
 import { roamVisualOffset } from '../../movement/roam-movement';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
@@ -1003,14 +1004,16 @@ function getTradePartners(unit: UnitObject): UnitObject[] {
  * mark the unit finished.
  */
 function waitUnit(game: any, unit: UnitObject, activelyChosen: boolean): void {
-  if (unit.position && game.eventManager) {
+  // A unit that died in combat still waits (Python WaitState skips no dead
+  // unit); its unit_wait has no position and no region.
+  if (game.eventManager) {
     const levelNid = game.currentLevel?.nid ?? '';
-    const region = getRegionUnderPos(unit.position[0], unit.position[1]);
+    const region = unit.position ? getRegionUnderPos(unit.position[0], unit.position[1]) : null;
     const ctx = { game, unit1: unit, region, gameVars: game.gameVars, levelVars: game.levelVars };
     game.eventManager.trigger(
       {
         type: 'unit_wait', levelNid, unitNid: unit.nid, unit1: unit,
-        position: [unit.position[0], unit.position[1]],
+        position: unit.position ? [unit.position[0], unit.position[1]] : undefined,
         region: region ?? undefined,
         localArgs: new Map<string, any>([['actively_chosen', activelyChosen]]),
       },
@@ -1833,7 +1836,8 @@ export class TitleModeState extends State {
     const s = this.modeScene.begin();
     // Label: base surf 96x88 with menu_shimmer2, translucent .1, at (142, 36).
     const label = new Surface(96, 88);
-    label.blit(getMenuBackgroundSync(96, 88), 0, 0);
+    // A bare create_base_surf: EOtF keeps the startup skin (the shimmer is live).
+    label.blit(getMenuBackgroundSync(96, 88, startupSkinnedSpriteName('menu_bg_base')), 0, 0);
     const shimmer = getMenuSprite('menus/menu_shimmer2');
     if (shimmer) label.blitImage(shimmer, 0, 0, shimmer.width, shimmer.height, 95 - shimmer.width, 83 - shimmer.height);
     label.setAlpha(0.9);
@@ -4307,7 +4311,9 @@ export class WaitState extends State {
     const game = getGame();
     game.state.back();
     for (const unit of game.getAllUnits() as UnitObject[]) {
-      if (unit.hasAttacked && !unit.finished && !unit.isDead()) waitUnit(game, unit, false);
+      // Python iterates game.units, dead ones included: a unit killed in
+      // combat after attacking is waited (finished) too.
+      if (unit.hasAttacked && !unit.finished) waitUnit(game, unit, false);
     }
     if (game.eventManager?.hasActiveEvents()) game.state.change('event');
     return 'repeat';
@@ -4354,6 +4360,7 @@ export function applyCoreTargetedItem(
   const game = getGame();
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, [{ item, positions: [position] }]);
   const targets = effectUnits(unit, item, position);
   const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
   const canto = classChangeCanto(game, unit, item, targets[0] ?? null);
@@ -4388,6 +4395,7 @@ export function applyCoreMultiTargetedItem(
   const game = getGame();
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, [{ item, positions }]);
   let applied = false;
   const targets = new Map<string, UnitObject>();
   const hpBefore = new Map<UnitObject, number>();
@@ -4423,6 +4431,10 @@ export function applyCoreSequenceItem(
   if (!item.hasComponent('sequence_item') || item.subitems.length === 0) return false;
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, item.subitems.map((child, childIndex) => ({
+    item: child,
+    positions: targetsByItem[childIndex] ?? [],
+  })));
   let storedUnit: UnitObject | null = null;
   let applied = false;
   const targets = new Map<string, UnitObject>();
@@ -8257,7 +8269,9 @@ export class CombatState extends State {
         if (!wasEventCombat && !hasCanto) {
           if (aiCombat) {
             game.state.change('wait');
-          } else if (!attacker.isDead() && !returnsToMenu) {
+          } else if (attacker.isDead() || !returnsToMenu) {
+            // Python checks attacker.is_dying before the menu/Canto routing:
+            // a player attacker that died also clears to free + wait.
             game.selectedUnit = null;
             game._moveOrigin = null;
             game._moveAction = null;
@@ -10445,6 +10459,21 @@ const BUILTIN_SPEAK_STYLES: Record<string, SpeakStyleDef> = {
   overworld_narration: { background: 'None', position: [4, 110], width: 232, fontColor: 'white',
     numLines: 2, speed: 2 },
 };
+
+/** Built-in styles whose window EOtF's engine skins (`'menu_bg_base' + skin`). */
+const SKINNED_SPEAK_STYLES = new Set(['__default_text', 'narration', 'narration_top']);
+
+/**
+ * BUILTIN_SPEAK_STYLES[nid]. On the EOtF fork the text-box styles carry the
+ * window skin the game was started with (the engine's speak-style library is
+ * built at New Game and saved), not the live setting.
+ */
+function builtinSpeakStyle(game: any, nid: string): SpeakStyleDef | undefined {
+  const style = BUILTIN_SPEAK_STYLES[nid];
+  if (!style || !isForkEngine() || !SKINNED_SPEAK_STYLES.has(nid)) return style;
+  const bg = skinnedSpriteNameFor('menu_bg_base', game?.speakStyleSkin ?? currentWindowSkin());
+  return { ...style, background: bg, ...(style.nameTagBg === 'menu_bg_base' ? { nameTagBg: bg } : {}) };
+}
 
 /** Python SpeakStyle.update: later non-null fields win; flags union. */
 function mergeSpeakStyle(base: SpeakStyleDef, other: SpeakStyleDef): SpeakStyleDef {
@@ -12737,6 +12766,10 @@ export class EventState extends State {
         // action.Reset, so the walker is fully refreshed (a unit that had
         // already acted can act again; EOtF's engine also runs on_refresh).
         game.actionLog.doAction(new ResetAction(unit));
+        // Python arrives the unit when its move finishes (terrain and region
+        // statuses). A refresh from another unit moving meanwhile (move_group)
+        // saw this one mid-path and dropped them; re-derive now it's arrived.
+        game.refreshPositionSkills?.();
         onComplete();
       },
       // Python MovementSystem.update: a following event move puts the
@@ -12996,7 +13029,7 @@ export class EventState extends State {
     const lookup = (nid: string | null): SpeakStyleDef | undefined => {
       if (!nid) return undefined;
       const project = game.speakStyles instanceof Map ? game.speakStyles.get(nid) : undefined;
-      return project && !Array.isArray(project) ? project : BUILTIN_SPEAK_STYLES[nid];
+      return project && !Array.isArray(project) ? project : builtinSpeakStyle(game, nid);
     };
     let current: SpeakStyleDef = mergeSpeakStyle({}, BUILTIN_SPEAK_STYLES.__default);
     const styles: SpeakStyleDef[] = [];
@@ -14035,7 +14068,9 @@ export class EventState extends State {
         const baseItems: [string, boolean][] = templateUnit
           ? templateUnit.items.map((it: ItemObject) => [it.nid, !!it.droppable] as [string, boolean])
           : (templatePrefab.starting_items ?? []);
-        const learnedSkills = templateUnit ? [] : (templatePrefab.learned_skills ?? []);
+        // Python create_unit builds GenericUnit(..., starting_skills=[]): class
+        // skills only, whether the template is a unit or a prefab.
+        const learnedSkills: [number, string][] = [];
 
         const baseKlassDef = game.db?.classes?.get(baseKlass);
         if (!baseKlassDef) {
@@ -14068,7 +14103,7 @@ export class EventState extends State {
           affinity: '',
         };
 
-        const newUnit = game.buildUnit(syntheticPrefab, baseTeam, baseAi);
+        const newUnit = game.buildUnit(syntheticPrefab, baseTeam, baseAi, { generic: true });
         newUnit.generic = true;
         newUnit.faction = baseFaction || null;
         if (copyStats && templateUnit) {
@@ -14231,7 +14266,7 @@ export class EventState extends State {
             flags: styleFlags,
           };
           if (!(game.speakStyles instanceof Map)) game.speakStyles = new Map();
-          const existing: SpeakStyleDef | undefined = game.speakStyles.get(styleNid) ?? BUILTIN_SPEAK_STYLES[styleNid];
+          const existing: SpeakStyleDef | undefined = game.speakStyles.get(styleNid) ?? builtinSpeakStyle(game, styleNid);
           game.speakStyles.set(styleNid, existing ? mergeSpeakStyle(existing, def) : def);
         }
         this.advancePointer();
@@ -18202,7 +18237,11 @@ export class EventState extends State {
         for (const itemNid of shopItemNids) {
           const prefab = game.db?.items?.get(itemNid);
           if (prefab) {
-            shopItems.push(new ItemObjectClass(prefab));
+            // Python item_funcs.create_items(unit, ...): the shopper owns the
+            // stock items, so ones they cannot use are listed in grey.
+            const shopItem = new ItemObjectClass(prefab);
+            shopItem.owner = shopUnit;
+            shopItems.push(shopItem);
           } else {
             console.warn(`shop: item "${itemNid}" not found in db`);
           }

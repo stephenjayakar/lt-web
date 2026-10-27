@@ -3,6 +3,7 @@ import {
   AddSkillAction,
   ChangeManaAction,
   DeathAction,
+  RecordCombatRandomStateAction,
   RemoveSkillAction,
   SetCurrentHpAction,
   SetSkillDataAction,
@@ -22,6 +23,7 @@ import {
 } from '../combat/skill-system';
 import { evaluateInt } from '../events/event-manager';
 import { isForkEngine } from './engine-flavor';
+import { getCombatRandom, getCombatRandomState } from './static-random';
 
 /**
  * Python UnitObject.remove_skill: an expiring status calls RemoveSkill with
@@ -346,6 +348,21 @@ export function applySkillTurnHooks(
             applyHpChange(game, unit, -amount);
             triggerCharge(game, skill);
             effects.push({ unit, skill, component, value: -amount });
+          }
+        } else if (phase === 'upkeep' && component === 'gba_poison' && conditional) {
+          // Python GBAPoison.on_upkeep (upstream and the fork): lose
+          // static_random.get_randint(1, value) HP, drawn from the combat
+          // stream and recorded with RecordRandomState.
+          const maximum = Math.trunc(Number(rawValue ?? 5));
+          if (game.gameVars && maximum >= 1) {
+            const randomGame = game as SkillTurnGame & { gameVars: Map<string, any> };
+            const before = getCombatRandomState(randomGame);
+            const loss = getCombatRandom(randomGame, 1, maximum);
+            game.actionLog.doAction(new RecordCombatRandomStateAction(
+              randomGame, before, getCombatRandomState(randomGame),
+            ));
+            applyHpChange(game, unit, -loss);
+            effects.push({ unit, skill, component, value: -loss });
           }
         } else if (
           phase === 'upkeep' &&

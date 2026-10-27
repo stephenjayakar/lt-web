@@ -1,6 +1,7 @@
 import type { UnitObject } from '../objects/unit';
 import { growthChange, unitHasTag } from '../combat/skill-system';
 import { Lcg } from './static-random';
+import { isForkEngine } from './engine-flavor';
 
 export type GrowthMethod = 'Fixed' | 'Random' | 'Dynamic' | 'Lucky' | 'Bexp';
 
@@ -63,12 +64,15 @@ export function cappedExpGain(unit: UnitObject, exp: number, game: LevelCapGame)
  * then level up (one growth roll per level, with the unit's leveling method
  * unless `customMethod` is given) until the exp is below 100 or the cap is
  * reached. Returns the exp actually granted and each level's stat changes.
+ * `bonusExp` marks Python's `bonus_exp` ExpState, the only one whose level-ups
+ * raise current HP (see levelUpUnit).
  */
 export function applyExpGain(
   unit: UnitObject,
   amount: number,
   customMethod: string | undefined,
   game: any,
+  bonusExp: boolean = false,
 ): { applied: number; levelUps: Record<string, number>[] } {
   const applied = game ? cappedExpGain(unit, amount, game) : amount;
   const levelUps: Record<string, number>[] = [];
@@ -77,7 +81,7 @@ export function applyExpGain(
   while (unit.exp >= 100 && unit.level < levelCap) {
     unit.exp -= 100;
     levelUps.push(game
-      ? levelUpUnit(unit, customMethod, game)
+      ? levelUpUnit(unit, customMethod, game, bonusExp)
       : unit.levelUp(customMethod ?? 'random'));
   }
   if (unit.level >= levelCap && unit.exp >= 100) unit.exp = 0;
@@ -187,7 +191,12 @@ function pythonModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
 }
 
-function getGrowthMethod(unit: UnitObject, customMethod: string | undefined, game: any): GrowthMethod {
+/**
+ * Python unit_funcs.get_leveling_method: a custom method wins; player units
+ * use the difficulty's growths; everyone else the `enemy_leveling` constant
+ * ('Match' = the difficulty's growths).
+ */
+export function getGrowthMethod(unit: UnitObject, customMethod: string | undefined, game: any): GrowthMethod {
   let raw = customMethod?.trim();
   if (!raw) {
     if (unit.team === 'player') {
@@ -292,6 +301,13 @@ function calculateLevel(
         if (growth !== 0 && (growth > 0 || negativeGrowths)) {
           const direction = growth < 0 ? -1 : 1;
           growth = Math.abs(growth);
+          // The EOtF fork banks growth/5 (no roll) while the growth plus the
+          // unit's growth points is not positive.
+          if (isForkEngine() && growth + (growthPoints[nid] ?? 0) <= 0) {
+            growthPoints[nid] = (growthPoints[nid] ?? 0) + growth / 5;
+            changes[nid] = 0;
+            continue;
+          }
           change += direction * Math.floor(growth / 100);
           const remainder = growth % 100;
           const adjusted = remainder + (growthPoints[nid] ?? 0);
@@ -356,15 +372,29 @@ export function autoLevelUnit(
   customMethod: string | undefined,
   game: any,
 ): AutoLevelResult {
+  // Python AutoLevel/ExpState feed the growth formulas (and the random
+  // seed) the internal level, not the displayed one.
+  return autoLevelFrom(unit, getInternalLevel(unit, game.db), levelDifference, customMethod, game);
+}
+
+/**
+ * Python unit_funcs.auto_level(unit, base_level, num_levels, custom_method):
+ * the stat changes (clamped to the caps) and resulting growth points of
+ * `levelDifference` level-ups starting at `baseLevel`. Nothing is applied.
+ */
+export function autoLevelFrom(
+  unit: UnitObject,
+  baseLevel: number,
+  levelDifference: number,
+  customMethod: string | undefined,
+  game: any,
+): AutoLevelResult {
   const method = getGrowthMethod(unit, customMethod, game);
   const growthPoints = { ...unit.growthPoints };
   const statChanges: Record<string, number> = Object.fromEntries(
     game.db.stats.map((stat: { nid: string }) => [stat.nid, 0]),
   );
 
-  // Python AutoLevel/ExpState feed the growth formulas (and the random
-  // seed) the internal level, not the displayed one.
-  const baseLevel = getInternalLevel(unit, game.db);
   if (levelDifference > 0) {
     for (let offset = 0; offset < levelDifference; offset++) {
       const changes = calculateLevel(unit, baseLevel + offset, method, growthPoints, game);
@@ -388,19 +418,67 @@ export function autoLevelUnit(
   return { statChanges, growthPoints };
 }
 
-/** Apply one displayed level-up through the same deterministic engine as autolevel. */
+/**
+ * Python unit_funcs.difficulty_auto_level: Fixed level-ups driven only by the
+ * difficulty's growth bonus (backpropagate_difficulty_growths for units built
+ * above level 1). Returns the clamped stat changes.
+ */
+export function difficultyAutoLevel(
+  unit: UnitObject,
+  baseLevel: number,
+  numLevels: number,
+  game: any,
+): Record<string, number> {
+  const bonus = getDifficultyGrowthBonus(unit, game);
+  const statNids: string[] = game.db.stats.map((stat: { nid: string }) => stat.nid);
+  const negativeGrowths = Boolean(game.db.getConstant?.('negative_growths', false));
+  const totals: Record<string, number> = Object.fromEntries(statNids.map((nid) => [nid, 0]));
+  for (let offset = 0; offset < numLevels; offset++) {
+    const level = baseLevel + offset;
+    for (const nid of statNids) {
+      let growth = Number(bonus[nid] ?? 0);
+      if (growth > 0) {
+        totals[nid] += Math.floor(growth / 100);
+        growth %= 100;
+        if ((50 + growth * level) % 100 < growth) totals[nid] += 1;
+      } else if (growth < 0 && negativeGrowths) {
+        totals[nid] -= Math.floor(Math.abs(growth) / 100);
+        growth = -(Math.abs(growth) % 100);
+        const increment = pythonModulo(50 + growth * level, 100);
+        if (increment > 100 - growth || increment === 0) totals[nid] -= 1;
+      }
+    }
+  }
+  for (const nid of statNids) {
+    totals[nid] = clamp(totals[nid], -(unit.stats[nid] ?? 0), unit.getStatCap(nid) - (unit.stats[nid] ?? 0));
+  }
+  return totals;
+}
+
+/**
+ * Apply one displayed level-up through the same deterministic engine as autolevel.
+ *
+ * Python ExpState applies the gains with
+ * `ApplyStatChanges(unit, changes, increase_current_stats=name == 'bonus_exp')`:
+ * a combat/item/event level-up leaves current HP alone (only clamped to the
+ * new max), and only the base's bonus-exp screen adds the max-HP increase.
+ * The EOtF fork passes False there too.
+ */
 export function levelUpUnit(
   unit: UnitObject,
   customMethod: string | undefined,
   game: any,
+  bonusExp: boolean = false,
 ): Record<string, number> {
   const result = autoLevelUnit(unit, 1, customMethod, game);
   const oldHp = unit.currentHp;
+  const oldMaxHp = unit.maxHp;
   for (const [nid, change] of Object.entries(result.statChanges)) {
     if (unit.stats[nid] !== undefined) unit.stats[nid] += change;
   }
   unit.growthPoints = result.growthPoints;
   unit.level += 1;
-  unit.currentHp = Math.max(0, Math.min(unit.maxHp, oldHp + (result.statChanges.HP ?? 0)));
+  const increase = bonusExp && !isForkEngine() ? Math.max(0, unit.maxHp - oldMaxHp) : 0;
+  unit.currentHp = Math.max(0, Math.min(unit.maxHp, oldHp + increase));
   return result.statChanges;
 }
