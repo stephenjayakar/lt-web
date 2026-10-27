@@ -1417,7 +1417,7 @@ export function getSupportBonusForCombat(unit: UnitObject, game?: any): SupportE
 export function resolveWeapon(unit: UnitObject | null | undefined): ItemObject | null {
   if (!unit) return null;
   if (isForkEngine()) return unit.equippedWeapon ?? null;
-  return resolveWeapon(unit);
+  return unit.items.find((candidate) => candidate.isWeapon()) ?? null;
 }
 
 export function getEquippedWeapon(

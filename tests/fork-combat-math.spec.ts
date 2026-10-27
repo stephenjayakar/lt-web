@@ -190,4 +190,32 @@ test.describe('Python compute_hit/compute_damage order and phase alternation', (
     expect(result.hit).toBe(1);
     expect(result.crit).toBe(result.critMult);
   });
+
+  test('resolve_weapon reads the equipped weapon on the fork, the first weapon upstream', async ({ page }) => {
+    await boot(page);
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const calcs = await import('/src/combat/combat-calcs.ts');
+      const flavor = await import('/src/engine/engine-flavor.ts');
+      const unit = g.units.get('Eirika');
+      const savedEquipped = unit.equippedWeapon;
+      const first = unit.items.find((item: any) => item.isWeapon());
+      unit.equippedWeapon = null;
+      const wasFork = flavor.isForkEngine();
+      try {
+        flavor.setForkEngine(false);
+        const upstream = calcs.resolveWeapon(unit)?.nid ?? null;
+        flavor.setForkEngine(true);
+        const fork = calcs.resolveWeapon(unit)?.nid ?? null;
+        return { first: first?.nid ?? null, upstream, fork };
+      } finally {
+        flavor.setForkEngine(wasFork);
+        unit.equippedWeapon = savedEquipped;
+      }
+    });
+    // The upstream port keeps its first-weapon fallback (and must not recurse).
+    expect(result.first).not.toBeNull();
+    expect(result.upstream).toBe(result.first);
+    expect(result.fork).toBeNull();
+  });
 });
