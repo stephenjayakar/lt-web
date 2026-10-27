@@ -156,7 +156,11 @@ export class ScrollingBackground {
     this.scrollSpeed = scrollSpeed;
     const resources = game.resources;
     void (async () => {
-      let img: HTMLImageElement | null = await resources?.tryLoadImage?.(`resources/panoramas/${name}.png`) ?? null;
+      // Python create_background asks RESOURCES.panoramas first: an unlisted
+      // name (EOtF has no rune_background) goes straight to the default.
+      const listed = await resources?.hasPanorama?.(name) ?? null;
+      let img: HTMLImageElement | null = listed === false ? null
+        : await resources?.tryLoadImage?.(`resources/panoramas/${name}.png`) ?? null;
       if (!img && name !== 'default_background') {
         img = await resources?.tryLoadImage?.('resources/panoramas/default_background.png') ?? null;
       }
