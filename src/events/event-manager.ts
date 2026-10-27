@@ -1644,6 +1644,11 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     check_ally(left: any, right: any) {
       const rawLeft = unwrapUnit(left);
       const rawRight = unwrapUnit(right);
+      // EOtF reads unit.team without a None check, so a missing unit (e.g.
+      // the absent main target of an area attack) makes the expression fail.
+      if (isForkEngine() && (!rawLeft || !rawRight)) {
+        throw new PyException('AttributeError', "'NoneType' object has no attribute 'team'");
+      }
       return !!rawLeft && !!rawRight &&
         (game.db?.areAllied?.(rawLeft.team, rawRight.team) ??
           rawLeft.team === rawRight.team);

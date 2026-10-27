@@ -11,6 +11,7 @@ import {
   damageOnMiss,
   evaluatedExtraDamageSource,
   extraDamage,
+  effectiveItemComponents,
   extraDamageSources,
   hasDamageOnMiss,
   healAmount,
@@ -153,6 +154,12 @@ export class CombatPhaseSolver {
    * (requested heal of each ally strike that healed something) so far.
    */
   private phaseAllyHealing = 0;
+  /**
+   * EOtF: skill gains/losses queued by after_strike hooks (gain_on_miss,
+   * lost_on_strike, ...). Its solver applies a phase's queued actions only
+   * once the main strike and all its splash strikes are solved.
+   */
+  private phaseSkillMutations: DeferredStrikeSkillMutation[] | null = null;
   /**
    * EOtF: every unit's HP when the current phase began. Python queues a
    * phase's HP changes as actions and applies them only after the phase, so
@@ -332,7 +339,17 @@ export class CombatPhaseSolver {
       const hp = this.simulatedHp(unit);
       if (hp !== undefined) this.phaseStartHp.set(unit, hp);
     }
-    const step = this.withLiveHp(() => session.next());
+    const step = this.withLiveHp(() => {
+      if (!isForkEngine()) return session.next();
+      this.phaseSkillMutations = [];
+      try {
+        return session.next();
+      } finally {
+        const mutations = this.phaseSkillMutations;
+        this.phaseSkillMutations = null;
+        this.applyStrikeSkillMutations(mutations);
+      }
+    });
     if (step.done) {
       this.session = null;
       this.strikes = this.sessionStrikes;
@@ -1137,23 +1154,29 @@ export class CombatPhaseSolver {
     const deferredMutations: DeferredStrikeSkillMutation[] = [];
     strike.redirectedDamage = [];
     if (strike.hit) {
-      const status = strike.item.getComponent<unknown>('status_on_hit');
-      const selfStatus = strike.item.getComponent<unknown>('self_status_on_hit');
-      const statuses = strike.item.getComponent<unknown>('statuses_on_hit');
+      // EOtF runs on_hit for the item's own components and then for every
+      // active item_override component, so an override's status_on_hit is
+      // granted alongside the item's rather than replacing it.
+      const forkComponents = isForkEngine() && this.combatDb
+        ? effectiveItemComponents(strike.attacker, strike.item, this.combatDb, this.game)
+        : null;
+      const onHitValues = (nid: string): unknown[] => (forkComponents
+        ? forkComponents.filter(([component]) => component === nid).map(([, value]) => value)
+        : [strike.item.getComponent<unknown>(nid)]);
       const allyBuff = strike.item.getComponent<unknown>('buff_ally');
       this.grantImmediateItemSkills(
         strike.defender,
         strike.attacker,
         [
-          status,
+          ...onHitValues('status_on_hit'),
           allyBuff,
-          ...(Array.isArray(statuses) ? statuses : []),
+          ...onHitValues('statuses_on_hit').flatMap((value) => (Array.isArray(value) ? value : [])),
         ],
       );
       this.grantImmediateItemSkills(
         strike.attacker,
         strike.attacker,
-        [selfStatus],
+        onHitValues('self_status_on_hit'),
       );
 
       const option = (value: unknown, key: string): unknown => {
@@ -1333,7 +1356,13 @@ export class CombatPhaseSolver {
     // Python's appended actions execute after both after_strike and
     // after_take_strike dispatch, before the solver advances to the next
     // strike. This is later than action.do hooks but still mid-combat.
-    for (const mutation of deferredMutations) {
+    // EOtF holds them until the whole phase (splash included) is solved.
+    if (this.phaseSkillMutations) this.phaseSkillMutations.push(...deferredMutations);
+    else this.applyStrikeSkillMutations(deferredMutations);
+  }
+
+  private applyStrikeSkillMutations(mutations: readonly DeferredStrikeSkillMutation[]): void {
+    for (const mutation of mutations) {
       if (mutation.kind === 'remove') {
         new RemoveSkillAction(mutation.unit, mutation.skill).do();
       } else {

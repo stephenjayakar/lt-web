@@ -123,7 +123,7 @@ function combatSkillEnabled(
   game: CombatLifecycleGame,
   unit: UnitObject,
   skill: SkillObject,
-  target: UnitObject,
+  target: UnitObject | null,
   item: ItemObject | null,
   item2: ItemObject | null = null,
   mode: string = 'attack',
@@ -243,7 +243,7 @@ function triggerSkillEvent(
   nid: unknown,
   type: string,
   unit: UnitObject,
-  target: UnitObject,
+  target: UnitObject | null,
   item: ItemObject | null,
   item2: ItemObject | null,
   mode: string | null,
@@ -277,21 +277,29 @@ function equippedWeapon(unit: UnitObject): ItemObject | null {
 export function queueCombatSkillStartEvents(
   game: CombatLifecycleGame,
   initiator: UnitObject,
-  target: UnitObject,
+  target: UnitObject | null,
   attackItem: ItemObject,
   defenseItem: ItemObject | null,
+  splashDefenders: readonly UnitObject[] = [],
 ): number {
   let queued = 0;
   const participants: Array<{
     unit: UnitObject;
-    target: UnitObject;
+    target: UnitObject | null;
     item: ItemObject | null;
     item2: ItemObject | null;
     mode: string;
   }> = [
     { unit: initiator, target, item: attackItem, item2: defenseItem, mode: 'attack' },
   ];
-  if (initiator.strikePartner) {
+  if (!target) {
+    // EOtF runs start_combat for the initiator even with no main defender
+    // (target None), then for every splashed unit (no item, facing the
+    // initiator).
+    for (const unit of splashDefenders) {
+      participants.push({ unit, target: initiator, item: null, item2: attackItem, mode: 'defense' });
+    }
+  } else if (initiator.strikePartner) {
     participants.push({
       unit: initiator.strikePartner,
       target,
@@ -300,7 +308,7 @@ export function queueCombatSkillStartEvents(
       mode: 'attack',
     });
   }
-  if (target.strikePartner) {
+  if (target?.strikePartner) {
     participants.push({
       unit: target.strikePartner,
       target: initiator,
@@ -309,7 +317,7 @@ export function queueCombatSkillStartEvents(
       mode: 'defense',
     });
   }
-  if (target !== initiator) {
+  if (target && target !== initiator) {
     participants.push({
       unit: target,
       target: initiator,
@@ -317,6 +325,11 @@ export function queueCombatSkillStartEvents(
       item2: attackItem,
       mode: 'defense',
     });
+  }
+  if (target && isForkEngine()) {
+    for (const unit of splashDefenders) {
+      participants.push({ unit, target: initiator, item: null, item2: attackItem, mode: 'defense' });
+    }
   }
 
   for (const participant of participants) {
@@ -332,13 +345,15 @@ export function queueCombatSkillStartEvents(
         const skillNid = typeof options.skill === 'string' ? options.skill : null;
         const recipient = String(options.recipient ?? 'target');
         const allegiance = String(options.allegiance ?? 'enemy');
-        const allied = game.db ? checkAlly(participant.unit, participant.target, game.db) : false;
+        const otherUnit = participant.target;
+        const allied = game.db && otherUnit ? checkAlly(participant.unit, otherUnit, game.db) : false;
         let recipients: UnitObject[] = [];
         if (recipient === 'self') recipients = [participant.unit];
-        else if (recipient === 'both') recipients = [participant.unit, participant.target];
+        else if (recipient === 'both') recipients = otherUnit ? [participant.unit, otherUnit] : [participant.unit];
+        else if (!otherUnit) recipients = [];
         else if ((allegiance === 'both') ||
             (allegiance === 'ally' && allied) ||
-            (allegiance === 'enemy' && !allied)) recipients = [participant.target];
+            (allegiance === 'enemy' && !allied)) recipients = [otherUnit];
         const prefab = skillNid ? game.db?.skills.get(skillNid) : null;
         if (prefab && recipients.length > 0) {
           for (const recipientUnit of recipients) {

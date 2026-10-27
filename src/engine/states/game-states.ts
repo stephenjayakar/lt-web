@@ -7599,9 +7599,12 @@ export class CombatState extends State {
     // Python start_combat: event_before_combat and similar hooks each push
     // an EventState, run (newest first) before the first phase is solved.
     const startEvents: GameEvent[] = [];
-    if (primaryDefender) {
+    if (primaryDefender || isForkEngine()) {
       startEvents.push(...this.captureEvents(() =>
-        queueCombatSkillStartEvents(game, attacker, primaryDefender, attackItem, defenseItem)));
+        queueCombatSkillStartEvents(
+          game, attacker, primaryDefender ?? null, attackItem, defenseItem,
+          isForkEngine() ? splashDefenders : [],
+        )));
     }
     const rngMode = game.rngMode;
 
@@ -18421,9 +18424,10 @@ export class EventState extends State {
             const defItem = targetGroup.mainDefender
               ? targetGroup.mainDefender.items.find((i: ItemObject) => i.isWeapon()) ?? null
               : null;
-            if (targetGroup.mainDefender) {
+            if (targetGroup.mainDefender || isForkEngine()) {
               queueCombatSkillStartEvents(
-                game, iuAttacker, targetGroup.mainDefender, attackItem, defItem,
+                game, iuAttacker, targetGroup.mainDefender ?? null, attackItem, defItem,
+                isForkEngine() ? targetGroup.splashDefenders : [],
               );
             }
             applyCombatParticipantItemStartHooks(
