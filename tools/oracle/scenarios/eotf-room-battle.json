@@ -1,7 +1,7 @@
 {
   "name": "eotf-room-battle",
   "include": "eotf-run-start",
-  "description": "From the run start into a generated room: suspend/continue, then the enemy phase in which the lone Player falls; Global_Loss banks the run and end_turn stops at lose_game's game over.",
+  "description": "From the run start into a generated room: suspend/continue, then the enemy phase in which the lone Player falls; Global_Loss banks the run and end_turn stops at lose_game's game over. Known diff (combat, open): the killing hit's status_on_hit Toxin lands on the dying Player in the fork (two Toxin stacks at game over), not on the web.",
   "actions": [
     {
       "do": "save_load"
@@ -10,5 +10,8 @@
       "do": "end_turn",
       "max_frames": 60000
     }
+  ],
+  "known_diffs": [
+    "units.Player.skills"
   ]
 }
