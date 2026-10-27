@@ -1,0 +1,12 @@
+{
+  "name": "default-trade",
+  "description": "Vanessa gives her Javelin to Moulder and takes his Vulnerary through the trade screen, then waits.",
+  "project": "default.ltproj",
+  "level": "DEBUG",
+  "events": false,
+  "seed": 0,
+  "actions": [
+    {"do": "trade", "unit": "Vanessa", "with": "Moulder", "give": ["Javelin"], "take": ["Vulnerary"]},
+    {"do": "wait", "unit": "Vanessa"}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "eotf-hub-start",
+  "description": "EOtF hub (level X) with its level_start events, settled into free roam.",
+  "project": "eotf.ltproj",
+  "level": "X",
+  "events": true,
+  "seed": 0,
+  "actions": []
+}

@@ -1,0 +1,20 @@
+{
+  "name": "eotf-room1-event-units",
+  "description": "EOtF room 1 without its run-dependent level events: an inline event loads Yusha and the Player from the database and deploys them, gives game/level vars and gold, then Yusha attacks a placeholder Citizen.",
+  "project": "eotf.ltproj",
+  "level": "1",
+  "events": false,
+  "seed": 1,
+  "actions": [
+    {"do": "event", "script": [
+      "load_unit;Yusha;player",
+      "add_unit;Yusha;11,8;immediate",
+      "load_unit;Player;player",
+      "add_unit;Player;11,6;immediate",
+      "game_var;Floor;1",
+      "level_var;num_combats;0",
+      "give_money;250;no_banner"
+    ]},
+    {"do": "attack", "unit": "Yusha", "target": "101", "item": "Iron_Sword"}
+  ]
+}

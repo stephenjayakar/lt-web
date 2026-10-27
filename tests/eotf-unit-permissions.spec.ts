@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog unit permission skills', () => {
-  test('count-locks all 40 authored permission and alliance markers', async ({ page }) => {
+  test('count-locks all 41 authored permission and alliance markers', async ({ page }) => {
     await bootEotf(page);
     const result = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -37,7 +37,7 @@ test.describe('Embrace of the Fog unit permission skills', () => {
         ignore_alliances: 9,
         ignore_rescue_penalty: 8,
         locktouch: 6,
-        unselectable: 15,
+        unselectable: 16, // EOtF 2.0.1 data (2.0.0: 15)
       },
       invalid: [],
     });

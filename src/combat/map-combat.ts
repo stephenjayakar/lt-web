@@ -100,6 +100,11 @@ export interface MapCombatGroup {
   /** Null for spell-style AOE where every affected unit is splash. */
   mainDefender: UnitObject | null;
   splashDefenders: UnitObject[];
+  /**
+   * EOtF merged multi-target: the splash list as the solver strikes it,
+   * with a unit repeated once per time its position was chosen.
+   */
+  splashStrikes?: UnitObject[];
 }
 
 /** movement_counter: the map attack lunge offsets (counters.py). */
@@ -297,7 +302,9 @@ export class MapCombat implements StrikeEventCombat {
       attackItem,
       group ? this.primaryDefender : defender,
       group ? this.defenseItem : defenseItem,
-      group ? this.splashDefenders : [],
+      group
+        ? group.splashStrikes?.filter((unit) => unit !== this.primaryDefender) ?? this.splashDefenders
+        : [],
       db,
       rngMode,
       board,
@@ -1283,7 +1290,13 @@ export class MapCombat implements StrikeEventCombat {
       if (!itemTint) startFlicker(target, 0, 333, [255, 255, 255]);
     }
     // EOtF fork map_combat `extra_damage` brush: purple digits beside the hit.
-    if ((strike.extraDamage ?? 0) > 0) addDamageNumbers(target, strike.extraDamage ?? 0, 'extra_purple');
+    // EOtF draws one set per extra-damage instance, all at the same spot.
+    if ((strike.extraDamage ?? 0) > 0) {
+      const instances = Math.max(1, strike.extraDamageInstances ?? 1);
+      for (let index = 0; index < instances; index++) {
+        addDamageNumbers(target, Math.trunc((strike.extraDamage ?? 0) / instances), 'extra_purple');
+      }
+    }
   }
 
   /** Clear every combat pose/lunge (skip, or the end of the presentation). */

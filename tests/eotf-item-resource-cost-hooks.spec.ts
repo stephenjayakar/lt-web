@@ -80,10 +80,10 @@ test.describe('Embrace of the Fog item resource hooks', () => {
       aquaAboveCost: true,
       counts: {
         stack_cost: 9,
-        stack_cost_multi: 5,
+        stack_cost_multi: 6, // EOtF 2.0.1 data (2.0.0: 5)
         eval_stack_cost: 1,
         eval_hp_cost: 4,
-        cooldown: 86,
+        cooldown: 95, // EOtF 2.0.1 data (2.0.0: 86)
         start_cooldown: 2,
       },
     });
@@ -95,7 +95,9 @@ test.describe('Embrace of the Fog item resource hooks', () => {
     expect(result.multiCosts).toEqual([
       { skill: 'Thundersparks', amount: 3 },
       { skill: 'Monarch_Rule', amount: 3 },
-      { skill: 'Iron_Components', amount: 2 },
+      // EOtF 2.0.1 data: new Karma_Stack cost; Iron_Components 2 -> 1.
+      { skill: 'Karma_Stack', amount: 7 },
+      { skill: 'Iron_Components', amount: 1 },
       { skill: 'Drive_Energy', amount: 6 },
       { skill: 'Grazing', amount: 3 },
     ]);

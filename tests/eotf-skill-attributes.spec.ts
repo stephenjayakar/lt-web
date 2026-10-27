@@ -21,7 +21,7 @@ const COMPONENTS = [
 ] as const;
 
 test.describe('Embrace of the Fog skill attributes', () => {
-  test('count-locks all 671 authored attribute and aura-visibility markers', async ({ page }) => {
+  test('count-locks all 678 authored attribute and aura-visibility markers', async ({ page }) => {
     await bootEotf(page);
     const counts = await page.evaluate((componentNids) => {
       const game = (window as any).__gameRef;
@@ -36,14 +36,15 @@ test.describe('Embrace of the Fog skill attributes', () => {
     }, [...COMPONENTS]);
 
     expect(counts).toEqual({
-      global: 29,
-      grey_if_inactive: 38,
+      // EOtF 2.0.1 data (2.0.0: 29 / 38 / 122 / 96 / 71 / 224).
+      global: 30,
+      grey_if_inactive: 39,
       has_tags: 82,
-      hidden_if_inactive: 122,
-      hide_aura: 96,
+      hidden_if_inactive: 123,
+      hide_aura: 97,
       is_terrain: 9,
-      negative: 71,
-      stack: 224,
+      negative: 72,
+      stack: 226,
     });
   });
 
@@ -219,7 +220,7 @@ test.describe('Embrace of the Fog skill attributes', () => {
       },
       stackCount: 2,
       globals: {
-        count: 29,
+        count: 30, // EOtF 2.0.1 data (2.0.0: 29)
         sources: ['game'],
       },
       aura: {
