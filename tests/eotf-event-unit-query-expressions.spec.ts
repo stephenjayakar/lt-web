@@ -122,7 +122,7 @@ test.describe('Embrace of the Fog event unit queries', () => {
     });
 
     expect(result.authored).toEqual({
-      unitsInParty: 521,
+      unitsInParty: 522, // EOtF 2.0.1 data (2.0.0: 521)
       allUnitsInParty: 153,
       playerUnits: 195,
       enemyUnits: 141,

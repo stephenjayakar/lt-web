@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 65,
-    "merged": 48,
+    "exact": 71,
+    "merged": 42,
     "open": 0,
-    "web": 85
+    "web": 91
   },
   "rows": [
     {
@@ -820,49 +820,49 @@
       "name": "transition_double_pop",
       "className": "TransitionDoublePopState",
       "source": "lt-maker/app/engine/transitions.py",
-      "status": "merged",
-      "webState": "state-machine",
-      "webSource": "src/engine/state-machine.ts"
+      "status": "exact",
+      "webState": "transition_double_pop",
+      "webSource": "src/engine/states/transition-states.ts"
     },
     {
       "name": "transition_in",
       "className": "TransitionInState",
       "source": "lt-maker/app/engine/transitions.py",
-      "status": "merged",
-      "webState": "state-machine",
-      "webSource": "src/engine/state-machine.ts"
+      "status": "exact",
+      "webState": "transition_in",
+      "webSource": "src/engine/states/transition-states.ts"
     },
     {
       "name": "transition_out",
       "className": "TransitionOutState",
       "source": "lt-maker/app/engine/transitions.py",
-      "status": "merged",
-      "webState": "state-machine",
-      "webSource": "src/engine/state-machine.ts"
+      "status": "exact",
+      "webState": "transition_out",
+      "webSource": "src/engine/states/transition-states.ts"
     },
     {
       "name": "transition_pop",
       "className": "TransitionPopState",
       "source": "lt-maker/app/engine/transitions.py",
-      "status": "merged",
-      "webState": "state-machine",
-      "webSource": "src/engine/state-machine.ts"
+      "status": "exact",
+      "webState": "transition_pop",
+      "webSource": "src/engine/states/transition-states.ts"
     },
     {
       "name": "transition_to",
       "className": "TransitionToState",
       "source": "lt-maker/app/engine/transitions.py",
-      "status": "merged",
-      "webState": "state-machine",
-      "webSource": "src/engine/state-machine.ts"
+      "status": "exact",
+      "webState": "transition_to",
+      "webSource": "src/engine/states/transition-states.ts"
     },
     {
       "name": "transition_to_with_pop",
       "className": "TransitionToWithPopState",
       "source": "lt-maker/app/engine/transitions.py",
-      "status": "merged",
-      "webState": "state-machine",
-      "webSource": "src/engine/state-machine.ts"
+      "status": "exact",
+      "webState": "transition_to_with_pop",
+      "webSource": "src/engine/states/transition-states.ts"
     },
     {
       "name": "turn_change",

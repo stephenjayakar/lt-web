@@ -164,7 +164,7 @@ test.describe('EOtF engine fork skill and item components', () => {
         const regen = effects.find((effect: any) => effect.component === 'regeneration')?.value ?? null;
         defender.currentHp = old.defenderHp;
 
-        // A missed strike: lifelink still heals the striker's empower bonus.
+        // A missed strike: the fork's lifelink does nothing (no empower bonus).
         attacker.team = 'player'; defender.team = 'enemy';
         attacker.items = [weapon];
         attacker.skills = [make('_ForkLifelink', [['lifelink', 0.5], ['empower_heal', 3]])];
@@ -181,15 +181,29 @@ test.describe('EOtF engine fork skill and item components', () => {
           attacker, weapon, defender, null, game.db, 'classic', game.board, ['hit1', 'end'], undefined, game,
         );
         const hitSelf = hit.strikes[0].selfSkillHpChange;
-        // Live to serve on a weapon strike heals only the empower bonus (fork).
+        // Live to serve on a weapon strike heals nothing: no ally was healed.
         attacker.skills = [make('_ForkLiveToServe', [['live_to_serve', 0.5], ['empower_heal', 2]])];
         defender.currentHp = old.defenderHp;
         const serve = new MapCombat(
           attacker, weapon, defender, null, game.db, 'classic', game.board, ['miss1', 'end'], undefined, game,
         );
         const serveSelf = serve.strikes[0].selfSkillHpChange;
+        // Mirrors an oracle run of EOtF's engine: a 14-damage hit with
+        // Laceration-style lifelink -0.5 recoils 7, untouched by the +3
+        // empower_heal; a 0.2 lifelink heals int(2.8) + 3 = 5.
+        defender.currentHp = 14;
+        attacker.skills = [make('_ForkRecoil', [['lifelink', -0.5]]), make('_ForkAmp', [['empower_heal', 3]])];
+        const recoil = new MapCombat(
+          attacker, weapon, defender, null, game.db, 'classic', game.board, ['hit1', 'end'], undefined, game,
+        ).strikes[0].selfSkillHpChange;
+        defender.currentHp = 14;
+        attacker.skills = [make('_ForkVitality', [['lifelink', 0.2]]), make('_ForkAmp', [['empower_heal', 3]])];
+        const vitality = new MapCombat(
+          attacker, weapon, defender, null, game.db, 'classic', game.board, ['hit1', 'end'], undefined, game,
+        ).strikes[0].selfSkillHpChange;
+        defender.currentHp = old.defenderHp;
         attacker.currentHp = hpBefore;
-        return { heal, regen, missSelf, hitSelf, serveSelf };
+        return { heal, regen, missSelf, hitSelf, serveSelf, recoil, vitality };
       };
       try {
         const fork = run();
@@ -205,14 +219,18 @@ test.describe('EOtF engine fork skill and item components', () => {
       }
     });
     expect(result.fork.heal).toBe(6);
-    expect(result.fork.missSelf).toBe(3);
+    expect(result.fork.missSelf).toBe(0);
     expect(result.fork.hitSelf).toBe(9);
-    expect(result.fork.serveSelf).toBe(2);
-    expect(result.upstream).toMatchObject({ heal: 6, missSelf: 0, hitSelf: 6, serveSelf: 0 });
+    expect(result.fork.serveSelf).toBe(0);
+    expect(result.fork.recoil).toBe(-7);
+    expect(result.fork.vitality).toBe(5);
+    expect(result.upstream).toMatchObject({
+      heal: 6, missSelf: 0, hitSelf: 6, serveSelf: 0, recoil: -7, vitality: 2,
+    });
     expect(result.upstream.regen).toBeGreaterThan(result.fork.regen);
   });
 
-  test('live to serve adds the user\'s own heal bonus on item use (fork)', async ({ page }) => {
+  test('live to serve adds no heal bonus when no ally was healed (fork)', async ({ page }) => {
     await bootEotf(page);
     const result = await page.evaluate(async () => {
       const game = (window as any).__gameRef;
@@ -252,11 +270,12 @@ test.describe('EOtF engine fork skill and item components', () => {
         unit.currentHp = old.hp;
       }
     });
-    // Heal 5 + 2 empower; the fork's LiveToServe then adds _get_heal_amount(0) = 2.
-    expect(result).toEqual({ fork: 9, upstream: 7 });
+    // Heal 5 + 2 empower on the user itself; LiveToServe only counts allies,
+    // and EOtF's engine adds no empower bonus to a zero amount.
+    expect(result).toEqual({ fork: 7, upstream: 7 });
   });
 
-  test('a missed lifelink strike heals the striker in the combat result', async ({ page }) => {
+  test('a missed lifelink strike leaves the striker alone in the combat result', async ({ page }) => {
     await bootEotf(page);
     const result = await page.evaluate(async () => {
       const game = (window as any).__gameRef;
@@ -298,7 +317,9 @@ test.describe('EOtF engine fork skill and item components', () => {
         attacker.team = old.attackerTeam; defender.team = old.defenderTeam;
       }
     });
-    expect(result.after).toBe(result.before + 3);
+    // EOtF's engine: lifelink with nothing dealt heals nothing (oracle: a
+    // missed Laceration strike leaves the striker's HP unchanged).
+    expect(result.after).toBe(result.before);
     expect(result.reversed).toBe(result.before);
   });
 

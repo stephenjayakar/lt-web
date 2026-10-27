@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog foundational skill lifecycle', () => {
-  test('count-locks all 3,421 authored metadata and chapter-charge uses', async ({ page }) => {
+  test('count-locks all 3,430 authored metadata and chapter-charge uses', async ({ page }) => {
     await bootEotf(page);
     const counts = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -32,10 +32,11 @@ test.describe('Embrace of the Fog foundational skill lifecycle', () => {
     expect(counts).toEqual({
       build_charge: 7,
       charges_per_turn: 21,
-      class_skill: 1651,
-      drain_charge: 540,
-      hidden: 678,
-      lost_on_end_chapter: 524,
+      // EOtF 2.0.1 data (2.0.0: 1651 / 540 / 678 / 524).
+      class_skill: 1653,
+      drain_charge: 541,
+      hidden: 682,
+      lost_on_end_chapter: 526,
     });
   });
 

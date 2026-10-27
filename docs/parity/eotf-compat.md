@@ -7,19 +7,19 @@ focused browser coverage.
 
 ## Summary
 
-- Project metadata: EotF 2.0.0
-- 159 levels, 2339 events, 1749 items,
-  3477 skills, 497 units, and 253 classes
+- Project metadata: EotF 2.0.1
+- 159 levels, 2353 events, 1755 items,
+  3489 skills, 497 units, and 253 classes
 - 185 item-component NIDs; 0 unverified
-- 270 skill-component NIDs; 0 unverified
-- 165/182 project-local Python components
+- 271 skill-component NIDs; 0 unverified
+- 166/183 project-local Python components
   are referenced by current data
-- 226 event command NIDs
-- 4937 event conditions,
-  249 eval substitutions, and
+- 225 event command NIDs
+- 4966 event conditions,
+  252 eval substitutions, and
   646 loops
-- 2988 resource files; 8 missing
-  catalog-backed files across 1797 checks
+- 2992 resource files; 8 missing
+  catalog-backed files across 1799 checks
 
 ## Unverified item components
 
@@ -35,19 +35,19 @@ None.
 |---|---|---|---|
 | item | magic_weapon_rank | 5 | weapon_rank,available |
 | item | steal_con | 3 | init,target_restrict,ai_targets,targets_items,item_restrict,on_hit,end_combat,ai_priority |
-| item | eval_min_range | 3 | minimum_range |
-| item | eval_max_range | 24 | maximum_range |
-| item | damage_any | 8 | damage,on_hit,on_glancing_hit,on_crit |
+| item | eval_min_range | 2 | minimum_range |
+| item | eval_max_range | 25 | maximum_range |
+| item | damage_any | 9 | damage,on_hit,on_glancing_hit,on_crit |
 | item | shove_on_end_combat_initiate | 8 | _check_shove,end_combat |
-| item | shove_flexible_on_end_combat_initiate | 9 | _check_shove,end_combat |
+| item | shove_flexible_on_end_combat_initiate | 8 | _check_shove,end_combat |
 | item | eval_hp_cost | 4 | _check_value,available,on_hit,on_miss,end_combat,reverse_use |
-| item | shove_flex_stops | 2 | _check_shove,on_hit |
+| item | shove_flex_stops | 3 | _check_shove,on_hit |
 | item | permanent_stat_change_early | 2 | _target_restrict,target_restrict,simple_target_restrict,on_hit |
-| item | statuses_after_combat_on_hit | 32 | on_hit,end_combat,ai_priority |
+| item | statuses_after_combat_on_hit | 33 | on_hit,end_combat,ai_priority |
 | item | eval_smartblast_aoe | 20 | _get_power,splash,splash_positions |
 | item | self_unload_unit | 5 | target_restrict,on_hit |
 | item | galeforce_on_crit | 1 | on_crit,end_combat |
-| item | weapon_type_exempt | 26 | weapon_type,available |
+| item | weapon_type_exempt | 28 | weapon_type,available |
 | item | pivot_on_end_combat_initiate | 4 | _check_pivot,end_combat |
 | item | draw_back_on_end_combat_initiate | 1 | _check_draw_back,end_combat |
 | item | eval_damage | 33 | damage,target_restrict,on_hit,on_glancing_hit,on_crit,ai_status_priority_buff |
@@ -62,7 +62,7 @@ None.
 | item | eval_weight | 2 | modify_attack_speed,modify_defense_speed,modify_avoid |
 | item | restore_after_combat | 2 | _can_be_restored,end_combat |
 | item | stack_cost | 9 | available,start_combat,reverse_use |
-| item | stack_cost_multi | 5 | __init__,available,start_combat,reverse_use |
+| item | stack_cost_multi | 6 | __init__,available,start_combat,reverse_use |
 | item | solomon_heal | 1 | _get_heal_amount,on_hit |
 | item | status_after_combat_on_hit_foe_only | 6 | on_hit,end_combat,ai_priority |
 | item | eval_hit | 2 | hit |
@@ -94,12 +94,12 @@ None.
 | skill | gain_on_strike | 4 | after_strike |
 | skill | self_nihil | 24 | condition |
 | skill | eval_galeforce | 3 | end_combat |
-| skill | upkeep_event | 58 | on_upkeep |
+| skill | upkeep_event | 57 | on_upkeep |
 | skill | endstep_event | 5 | on_endstep |
 | skill | crit_event | 5 | end_combat |
-| skill | upkeep_skill_gain | 36 | on_upkeep |
+| skill | upkeep_skill_gain | 37 | on_upkeep |
 | skill | endstep_skill_gain | 2 | on_endstep |
-| skill | lost_on_end_next_combat | 20 | init,values,post_combat,on_end_chapter |
+| skill | lost_on_end_next_combat | 21 | init,values,post_combat,on_end_chapter |
 | skill | full_miracle | 6 | cleanup_combat |
 | skill | combat_trigger_charge | 3 | end_combat |
 | skill | heal_on_kill | 6 | end_combat |
@@ -110,7 +110,7 @@ None.
 | skill | event_before_combat | 23 | start_combat |
 | skill | permanent_damage | 1 | after_strike,after_take_strike,cleanup_combat,end_combat |
 | skill | eval_upkeep_damage | 5 | _playback_processing,on_upkeep |
-| skill | copysafe | 1085 |  |
+| skill | copysafe | 1086 |  |
 | skill | event_after_combat | 71 | end_combat |
 | skill | ability_attack_charge | 11 | extra_ability,end_combat_unconditional |
 | skill | gain_skill_after_crit | 6 | end_combat |
@@ -197,7 +197,8 @@ None.
 | skill | lost_on_charges_depleted | 2 | init,condition,on_end_chapter,trigger_charge,text,cooldown |
 | skill | booster_blocker | 3 |  |
 | skill | better_give_ally_status_after_combat_on_hit | 1 | end_combat |
-| skill | block_specific_status | 4 | after_gain_skill |
+| skill | block_specific_status | 5 | after_gain_skill |
+| skill | regeneration_no_anim | 1 | on_upkeep |
 
 ## Missing catalog-backed resources
 
@@ -236,52 +237,52 @@ None.
 | add_group | 143 |
 | add_item_component | 120 |
 | add_item_to_multiitem | 23 |
-| add_lore | 55 |
+| add_lore | 56 |
 | add_portrait | 71 |
 | add_region | 95 |
 | add_skill_component | 48 |
-| add_tag | 146 |
-| add_talk | 348 |
-| add_unit | 667 |
-| add_unit_map_anim | 2 |
+| add_tag | 147 |
+| add_talk | 352 |
+| add_unit | 673 |
+| add_unit_map_anim | 1 |
 | add_weather | 18 |
-| alert | 737 |
+| alert | 749 |
 | all_item_uids += [item.uid for item in unit.items] | 1 |
 | all_item_uids = [] | 1 |
 | and item.weapon and not item.multi_item and not item.multi_item_hides_unavailable and not item.prf_class)] | 1 |
 | and not item.prf_unit | 1 |
-| arrange_formation | 149 |
+| arrange_formation | 151 |
 | autolevel_to | 221 |
 | b | 65 |
 | base | 1 |
-| bop | 447 |
+| bop | 448 |
 | bop_portrait | 23 |
 | break | 1 |
-| center_cursor | 629 |
+| center_cursor | 640 |
 | change_affinity | 19 |
 | change_ai | 72 |
 | change_ai_group | 2 |
-| change_background | 119 |
-| change_class | 44 |
+| change_background | 122 |
+| change_class | 49 |
 | change_global_level_cap | 4 |
 | change_growths | 14 |
 | change_item_desc | 6 |
 | change_item_name | 5 |
-| change_music | 78 |
+| change_music | 82 |
 | change_objective_loss | 2 |
 | change_objective_simple | 15 |
 | change_objective_win | 5 |
 | change_party | 124 |
-| change_portrait | 33 |
+| change_portrait | 36 |
 | change_roam_ai | 7 |
 | change_roaming_unit | 9 |
-| change_stat_cap_modifiers | 39 |
+| change_stat_cap_modifiers | 40 |
 | change_stats | 151 |
 | change_team | 57 |
 | change_tilemap | 4 |
-| change_unit_desc | 2 |
+| change_unit_desc | 3 |
 | change_unit_level_cap | 2 |
-| choice | 687 |
+| choice | 690 |
 | chosen_item = static_random.get_random_choice(items) | 1 |
 | copied_item = item_funcs.create_item(None, 'Image') | 1 |
 | copied_item = item_funcs.create_item(None, chosen_item.nid) | 1 |
@@ -290,43 +291,43 @@ None.
 | copied_item.name = "Image" | 1 |
 | copied_item.name = chosen_item.weapon_type.value + " Image" | 1 |
 | copy_uid = copied_item.uid | 2 |
-| create_record | 249 |
-| create_unit | 324 |
+| create_record | 261 |
+| create_unit | 329 |
 | credits | 12 |
-| delete_save | 10 |
+| delete_save | 14 |
 | draw_overlay_sprite | 8 |
 | e | 36 |
-| elif | 3543 |
-| else | 1033 |
+| elif | 3554 |
+| else | 1048 |
 | enable_convoy | 1 |
 | enable_fog_of_war | 4 |
 | enable_turnwheel | 1 |
-| end | 5137 |
-| end_skip | 347 |
+| end | 5179 |
+| end_skip | 351 |
 | end_turn | 4 |
 | endf | 1122 |
 | equip_item | 8 |
 | expression | 250 |
 | finish | 57 |
-| flicker_cursor | 717 |
+| flicker_cursor | 727 |
 | for | 1124 |
 | for unit in units | 1 |
-| game_var | 617 |
+| game_var | 619 |
 | game.boundary.displaying_units.discard('Nikume_E') | 1 |
 | game.boundary.reset_surf() | 1 |
 | game.register_item(copied_item) | 2 |
 | give_exp | 10 |
-| give_item | 501 |
+| give_item | 503 |
 | give_money | 108 |
-| give_skill | 1438 |
-| give_wexp | 124 |
-| gvar | 92 |
+| give_skill | 1452 |
+| give_wexp | 127 |
+| gvar | 96 |
 | has_attacked | 60 |
 | has_finished | 30 |
 | has_traded | 30 |
 | heal | 67 |
 | hide_layer | 57 |
-| if | 5132 |
+| if | 5175 |
 | if 1 == 2 | 1 |
 | if chosen_item.magic | 1 |
 | if chosen_item.max_range | 2 |
@@ -336,25 +337,25 @@ None.
 | if len(vessel_item.subitems) >= item_cap | 1 |
 | if not upgraded_skill | 1 |
 | if RECORDS.get('Ayla_5') | 1 |
-| inc_game_var | 159 |
-| inc_level_var | 187 |
+| inc_game_var | 165 |
+| inc_level_var | 188 |
 | interact_unit | 85 |
 | item_cap = 3 if vessel_item.nid == 'False_Vessel' else 8 | 1 |
 | items = [game.get_item(uid) for uid in all_item_uids] | 1 |
 | items = [item for item in items if (not item.prf_tags | 1 |
 | kill | 34 |
 | kill_unit | 80 |
-| level_var | 1783 |
+| level_var | 1788 |
 | load_unit | 160 |
 | location_card | 9 |
 | lose_game | 1 |
-| lvar | 999 |
-| main_menu | 4 |
-| make_generic | 440 |
+| lvar | 1008 |
+| main_menu | 5 |
+| make_generic | 442 |
 | map_anim | 138 |
 | mirror | 1 |
 | mirror_portrait | 92 |
-| modify_item_component | 95 |
+| modify_item_component | 94 |
 | modify_skill_component | 2 |
 | move_cursor | 145 |
 | move_item | 8 |
@@ -367,15 +368,15 @@ None.
 | music_fade_back | 1 |
 | open_library | 1 |
 | open_unit_management | 10 |
-| pair_up | 16 |
+| pair_up | 18 |
 | pop_dialog | 1 |
-| prep | 153 |
+| prep | 155 |
 | promote | 100 |
-| r | 90 |
+| r | 91 |
 | recruit_generic | 5 |
 | region_condition | 4 |
 | remove_all_enemies | 3 |
-| remove_all_units | 39 |
+| remove_all_units | 40 |
 | remove_game_board_bounds | 2 |
 | remove_item | 105 |
 | remove_item_component | 56 |
@@ -384,61 +385,60 @@ None.
 | remove_overlay_sprite | 8 |
 | remove_portrait | 80 |
 | remove_region | 126 |
-| remove_skill | 532 |
+| remove_skill | 537 |
 | remove_table | 141 |
-| remove_tag | 40 |
+| remove_tag | 41 |
 | remove_talk | 7 |
-| remove_unit | 334 |
-| remove_unit_map_anim | 1 |
+| remove_unit | 336 |
 | remove_weather | 6 |
 | replace_record | 1 |
 | reset | 58 |
-| resurrect | 43 |
+| resurrect | 44 |
 | return | 1 |
-| rr | 75 |
-| s | 736 |
+| rr | 77 |
+| s | 741 |
 | screen_shake | 1 |
 | screen_shake_end | 1 |
-| separate | 18 |
-| set_current_hp | 510 |
+| separate | 20 |
+| set_current_hp | 511 |
 | set_custom_options | 9 |
 | set_fog_of_war | 1 |
 | set_game_board_bounds | 5 |
-| set_growths | 58 |
+| set_growths | 60 |
 | set_item_data | 10 |
 | set_item_uses | 6 |
 | set_mode_rng | 1 |
-| set_name | 40 |
-| set_next_chapter | 115 |
-| set_skill_data | 155 |
+| set_name | 41 |
+| set_next_chapter | 117 |
+| set_skill_data | 158 |
 | set_stat_cap_modifiers | 1 |
 | set_stats | 89 |
-| set_unit_field | 113 |
-| set_wexp | 29 |
+| set_unit_field | 116 |
+| set_wexp | 38 |
 | shop | 22 |
-| show_layer | 402 |
+| show_layer | 403 |
 | show_pokedex | 1 |
-| skip_save | 92 |
+| skip_save | 94 |
 | sound | 29 |
 | spawn_group | 2 |
-| speak | 3076 |
+| speak | 3082 |
 | speak_style | 2 |
 | t | 130 |
 | table | 56 |
 | text_entry | 6 |
 | textbox | 109 |
-| transition | 214 |
-| trigger_script | 1558 |
-| trigger_script_with_args | 1160 |
-| u | 69 |
+| transition | 218 |
+| trigger_script | 1565 |
+| trigger_script_with_args | 1162 |
+| u | 70 |
 | unchoice | 60 |
 | units = [unit for unit in units if not unit.nid == 'Ayla'] | 1 |
 | units = game.get_all_units() | 1 |
 | unload_unit | 2 |
 | unlock | 55 |
-| update_record | 208 |
+| update_record | 225 |
 | upgraded_skill = has_skill('Ayla', 'Gods_Identity') | 1 |
-| uu | 64 |
+| uu | 66 |
 | vessel_item = get_item('Ayla', 'False_Vessel') or get_item('Ayla', 'Perfect_Vessel') | 1 |
-| wait | 247 |
-| win_game | 601 |
+| wait | 249 |
+| win_game | 603 |

@@ -133,6 +133,29 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
     expect(lit).toBeGreaterThan(0.5);
   });
 
+  test('prep menu choices fade through transition_to, which drops input (Python prep.py)', async ({ page }) => {
+    test.slow();
+    await openPrep(page);
+    const deployed = () => page.evaluate(() =>
+      [...(window as any).__gameRef.units.values()]
+        .filter((u: any) => u.team === 'player')
+        .map((u: any) => [u.nid, !!u.position]));
+    const before = await deployed();
+    // Pick Units is the first option (EOtF chapters enable picking).
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().options[0])).toBe('Pick Units');
+    await step(page, 1, 'SELECT');
+    const tops: string[] = [];
+    // Enter hammered during the fade must not reach Pick Units.
+    for (let i = 0; i < 6; i++) {
+      tops.push((await stack(page)).at(-1)!);
+      await step(page, 1, 'SELECT');
+    }
+    expect(tops.every((name) => name === 'transition_to')).toBe(true);
+    for (let i = 0; i < 10 && (await stack(page)).at(-1) !== 'prep_pick'; i++) await step(page, 1);
+    expect((await stack(page)).at(-1)).toBe('prep_pick');
+    expect(await deployed(), 'no deployment toggled while fading').toEqual(before);
+  });
+
   test('Pick Units is the 6x2 position-mode unit table with deploy toggling', async ({ page }, testInfo) => {
     test.slow();
     await openPrep(page);
@@ -308,7 +331,8 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
       state.cursor = state.options.indexOf('Manage');
     });
     await step(page, 1, 'SELECT');
-    await step(page, 2);
+    // prep_main reaches Manage through Python's 133 ms transition_to fade.
+    await step(page, 12);
     await page.evaluate(() => {
       const state = (window as any).__gameRef.state.getCurrentState();
       state.menu.moveTo(state.units.findIndex((u: any) => u.nid === 'Termina'));
@@ -446,7 +470,8 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
       state.cursor = state.options.indexOf('Manage');
     });
     await step(page, 1, 'SELECT');
-    await step(page, 2);
+    // prep_main reaches Manage through Python's 133 ms transition_to fade.
+    await step(page, 12);
     await step(page, 1, 'SELECT');
     await step(page, 2);
     const ignore = await page.evaluate(() => {

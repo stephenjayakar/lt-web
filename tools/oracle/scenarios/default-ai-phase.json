@@ -1,0 +1,13 @@
+{
+  "name": "default-ai-phase",
+  "description": "Prologue without events: end the player phase and let two Attack-AI fighters move and fight, then return to player phase 2.",
+  "project": "default.ltproj",
+  "level": "0",
+  "events": false,
+  "seed": 0,
+  "rng_mode": "True Hit",
+  "growths": "Fixed",
+  "actions": [
+    {"do": "end_turn"}
+  ]
+}

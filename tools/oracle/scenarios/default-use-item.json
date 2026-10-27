@@ -1,0 +1,15 @@
+{
+  "name": "default-use-item",
+  "description": "A wounded Eirika moves two tiles and drinks a Vulnerary from the Item menu.",
+  "project": "default.ltproj",
+  "level": "DEBUG",
+  "events": false,
+  "seed": 0,
+  "setup": [
+    {"unit": "Eirika", "hp": 4}
+  ],
+  "actions": [
+    {"do": "move", "unit": "Eirika", "to": [3, 7]},
+    {"do": "use_item", "unit": "Eirika", "item": "Vulnerary"}
+  ]
+}

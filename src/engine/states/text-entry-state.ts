@@ -9,8 +9,12 @@
  * table with the menu hand. START opens the TextConfirmState "Finish text
  * entry?" Yes/No box; Yes stores the text reversibly as a game var.
  *
- * Keyboard typing works like Python's keyboard mode: Enter toggles it (with
- * the focus_fade overlay), printable keys append and Backspace deletes.
+ * Keyboard typing works like Python's keyboard mode (text_entry.py
+ * take_input): Enter toggles it (with the focus_fade overlay), printable keys
+ * append and Backspace deletes. This is Python's behaviour, not a web
+ * addition: Python's default keys (SELECT x, BACK z, START s) leave Enter
+ * free for the toggle. The web's extra Enter alias for SELECT is swallowed
+ * here so the toggle press does not also pick a grid character.
  */
 
 import { State, type StateResult } from '../state';

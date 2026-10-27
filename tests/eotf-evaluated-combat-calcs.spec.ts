@@ -29,7 +29,7 @@ const COMPONENTS = [
 test.describe('Embrace of the Fog evaluated combat calculations', () => {
   // Authored-catalog counts, so this reads the project data directly rather
   // than booting it in a browser.
-  test('count-locks all 647 authored component uses', () => {
+  test('count-locks all 648 authored component uses', () => {
     const authored = skills();
     const counts = Object.fromEntries(COMPONENTS.map((componentNid) => [
       componentNid,
@@ -38,7 +38,7 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
 
     expect(counts).toEqual({
       stat_change_expression: 84,
-      stat_multiplier: 34,
+      stat_multiplier: 35, // EOtF 2.0.1 data (2.0.0: 34)
       eval_damage: 30,
       eval_hit: 21,
       eval_avoid: 10,
@@ -53,7 +53,7 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
       dynamic_defense_speed: 8,
       dynamic_damage_multiplier: 6,
     });
-    expect(Object.values(counts).reduce((total, count) => total + count, 0)).toBe(647);
+    expect(Object.values(counts).reduce((total, count) => total + count, 0)).toBe(648);
   });
 
   test('applies stat, static, dynamic, multiplier, and true-speed hooks', async ({ page }) => {
@@ -443,7 +443,7 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
       };
     }, COMPONENTS);
 
-    expect(result.total).toBeGreaterThan(647);
+    expect(result.total).toBeGreaterThan(648);
     // Authored expressions that CPython itself cannot evaluate: two
     // conditional expressions missing `else` (SyntaxError) and
     // `unit.stats('MAG')` calling a dict (TypeError). Python's call sites

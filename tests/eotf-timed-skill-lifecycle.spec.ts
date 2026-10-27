@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog timed skill lifecycle', () => {
-  test('count-locks all 392 authored phase, combat, and chapter expiry uses', async ({ page }) => {
+  test('count-locks all 394 authored phase, combat, and chapter expiry uses', async ({ page }) => {
     await bootEotf(page);
     const inventory = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -53,10 +53,10 @@ test.describe('Embrace of the Fog timed skill lifecycle', () => {
 
     expect(inventory).toEqual({
       counts: {
-        combined_time: 56,
+        combined_time: 57, // EOtF 2.0.1 data (2.0.0: 56)
         end_time: 43,
         lost_on_end_combat2: 55,
-        lost_on_endstep: 61,
+        lost_on_endstep: 62, // EOtF 2.0.1 data (2.0.0: 61)
         lost_on_upkeep: 79,
         time: 89,
         upkeep_stat_change: 9,
