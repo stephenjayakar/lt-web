@@ -370,6 +370,46 @@ test.describe('EOtF engine fork: actions, AI and map flow', () => {
     expect(result.upstream).toEqual({ items: ['_FlowLance'], equipped: '_FlowLance', remaining: 2 });
   });
 
+  test('an AI unit an event resets after its combat does not run its AI again that phase', async ({ page }) => {
+    // Python AIState keeps has_run_ai for the whole phase (start(), not
+    // begin()). EOtF's Evened_Scales resets the attacker in a combat_end
+    // event; re-picking it attacked a True_Miracle target forever.
+    const setup = await page.evaluate(() => {
+      const { g, keeper, player, place, give, weapon, ai } = (window as any).__flow;
+      place(keeper, 'enemy', [22, 13]);
+      give(keeper, [weapon('_FlowPoke', 1)]);
+      keeper.ai = ai('_FlowPursue', [{ action: 'Attack', target: 'Enemy', view_range: -1 }]);
+      place(player, 'player', [23, 13], { DEF: 0 });
+      give(player, []);
+      for (const [nid, event] of [...g.db.events.entries()]) {
+        if (event.trigger === 'combat_end' || event.trigger === 'unit_wait') g.db.events.delete(nid);
+      }
+      g.db.events.set('_FlowResetAfterCombat', {
+        nid: '_FlowResetAfterCombat', name: '_FlowResetAfterCombat', trigger: 'combat_end', level_nid: null,
+        condition: "unit.nid == 'Keeper'", only_once: false, priority: 0,
+        _source: ["game_var;qa_keeper_combats;v('qa_keeper_combats', 0) + 1", 'reset;Keeper'],
+      });
+      g.memory.set('combat_force_no_animation', true);
+      g.phase.setCurrentTeam('enemy');
+      g.state.change('ai');
+      return true;
+    });
+    expect(setup).toBe(true);
+    let state = '';
+    for (let i = 0; i < 400; i++) {
+      await stepFrames(page, 5);
+      state = await page.evaluate(() => {
+        const g = (window as any).__gameRef;
+        const names = g.state.getStackNames();
+        return names[names.length - 1] ?? '';
+      });
+      if (state !== 'ai' && state !== 'combat' && state !== 'event' && state !== 'move_camera' && state !== 'movement') break;
+    }
+    const combats = await page.evaluate(() => (window as any).__gameRef.gameVars.get('qa_keeper_combats'));
+    expect(combats).toBe(1);
+    expect(state).not.toBe('ai');
+  });
+
   test('after thinking the AI holds items[0], not the weapon it last attacked with', async ({ page }) => {
     const result = await page.evaluate(() => {
       const { g, keeper, player, place, give, weapon, ai } = (window as any).__flow;

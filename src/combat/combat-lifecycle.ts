@@ -481,6 +481,35 @@ export function queueStrikeSkillEvents(game: CombatLifecycleGame, strike: Combat
   return queued;
 }
 
+/**
+ * The mark brushes of a combat's full_playback (MarkHit / MarkCrit /
+ * MarkMiss), one per strike in strike order. main_attacker is the pair-up
+ * lead for an assist strike. Other brush kinds (phases, damage, sounds) are
+ * not reproduced; EOtF's events read only these marks.
+ */
+export function playbackMarks(
+  strikes: CombatStrike[],
+  initiator: UnitObject,
+  primaryTarget: UnitObject | null,
+): Array<{ nid: string; attacker: UnitObject; defender: UnitObject; main_attacker: UnitObject; item: ItemObject | null }> {
+  return strikes.map((strike) => {
+    let mainAttacker = strike.attacker;
+    if (strike.assist) {
+      if (strike.attacker === initiator.strikePartner) mainAttacker = initiator;
+      else if (primaryTarget && strike.attacker === primaryTarget.strikePartner) {
+        mainAttacker = primaryTarget;
+      }
+    }
+    return {
+      nid: strike.crit ? 'mark_crit' : strike.hit ? 'mark_hit' : 'mark_miss',
+      attacker: strike.attacker,
+      defender: strike.defender,
+      main_attacker: mainAttacker,
+      item: strike.item ?? null,
+    };
+  });
+}
+
 /** end_combat skill events, per participant in Python end_combat order. */
 export function queueCombatEndSkillEvents(
   game: CombatLifecycleGame,
@@ -491,21 +520,7 @@ export function queueCombatEndSkillEvents(
   defenseItem: ItemObject | null,
 ): number {
   let queued = 0;
-  const playback = strikes.map((strike) => {
-    let mainAttacker = strike.attacker;
-    if (strike.assist) {
-      if (strike.attacker === initiator.strikePartner) mainAttacker = initiator;
-      else if (strike.attacker === primaryTarget.strikePartner) {
-        mainAttacker = primaryTarget;
-      }
-    }
-    return {
-      nid: strike.crit ? 'mark_crit' : strike.hit ? 'mark_hit' : 'mark_miss',
-      attacker: strike.attacker,
-      defender: strike.defender,
-      main_attacker: mainAttacker,
-    };
-  });
+  const playback = playbackMarks(strikes, initiator, primaryTarget);
   const participants: Array<{
     unit: UnitObject;
     target: UnitObject;

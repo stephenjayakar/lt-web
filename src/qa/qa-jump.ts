@@ -38,9 +38,13 @@ export interface JumpSpec {
   level?: string;
   /** next_reward for `level` (default by level tags). */
   reward?: string;
+  /**
+   * Fog Density: sets the difficulty modifier levels (<mod>_level records)
+   * that sum to it, since the hub recomputes current_density from them.
+   */
+  density?: number;
   /** Game_Speed record: 1 = long (15 floors per Act), 2 = short (10). */
   gameSpeed?: 1 | 2;
-  density?: number;
   party?: (string | UnitSpec)[];
   /** Party level when a unit spec has none (default: by floor). */
   partyLevel?: number;
@@ -59,6 +63,14 @@ export interface JumpSpec {
    * deep floors so later content can be reached and exercised.
    */
   boost?: number;
+  /** Stop in the hub (X) after the party setup, before Run_Start. */
+  hub?: boolean;
+  /**
+   * QA survival: give every party unit EOtF's hidden True_Miracle skill
+   * (lethal damage leaves 1 HP), so a run can reach a hard boss's late
+   * turns and events. Stat boosts stop at class caps; this does not.
+   */
+  miracle?: boolean;
 }
 
 export interface JumpHost {
@@ -196,11 +208,34 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   if (spec.tutorials !== true) for (const nid of TUTORIAL_RECORDS) setRecord(nid, 1);
   setRecord('Progress', 3);
   setRecord('Game_Speed', gameSpeed);
+  // Fog Density is not a stored setting: the hub's y. Legacy_Support sets
+  // current_density to the sum of the Standard/Special difficulty modifier
+  // levels (<mod>_level records) at every level start. Raise modifiers in
+  // table order up to their max_level until the sum is `density`
+  // (25 = every modifier, as Boss_Hidden's room requires).
+  if (spec.density !== undefined) {
+    let remaining = Math.max(0, Math.floor(density));
+    const modifiers: any[] = [...(game.db.rawData?.get?.('Difficulty_Modifiers') ?? [])];
+    for (const modifier of modifiers) {
+      if (modifier?.diff_type !== 'Standard' && modifier?.diff_type !== 'Special') continue;
+      const level = Math.min(remaining, Math.max(0, Number(modifier.max_level ?? 1)));
+      setRecord(`${modifier.nid}_level`, level);
+      remaining -= level;
+    }
+    if (remaining > 0) host.note(`jump: density ${density} exceeds the modifier total; current_density will be ${density - remaining}`);
+  }
   setRecord('current_density', density);
   setRecord('highest_density', Math.max(density, Number(host.records.get('highest_density') ?? 0)));
   const owned = new Set<string>(['Player', ...party.map((u) => u.nid)]);
   setRecord('Available_Units', [...owned]);
   setRecord('Seen_Units', [...owned]);
+  // What unlocking a unit records (Talk_Gacha, Passwords): skill slots and
+  // the support-conversation counter the hub's Bar/Table/Reminisce read.
+  for (const nid of owned) {
+    if (nid === 'Player') continue;
+    if (!host.records.has(`${nid}_skill_slots`)) setRecord(`${nid}_skill_slots`, 1);
+    if (!host.records.has(`${nid}_convos`)) setRecord(`${nid}_convos`, 1);
+  }
   const sortie = party.map((u) => u.nid);
   // Run_Start sorties min(owned, 4 + Sortie_Slot) units.
   const slots = Math.max(0, sortie.length - 4);
@@ -243,9 +278,25 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
       lines.push(`heal;${arg(unit.nid)};999`);
     }
     for (const item of unit.items ?? []) lines.push(`give_item;${arg(unit.nid)};${arg(item)};no_banner`);
+    if (spec.miracle && game.db.skills.get('True_Miracle')) lines.push(`give_skill;${arg(unit.nid)};True_Miracle;no_banner`);
   }
   if (spec.money) lines.push(`give_money;${Math.floor(spec.money)};Player;no_banner`);
   for (const [nid, value] of Object.entries(spec.gameVars ?? {})) lines.push(`game_var;${arg(nid)};${literal(value)}`);
+  if (spec.hub) {
+    host.note(`jump: hub, party ${party.map((u) => u.nid).join(',')}`);
+    if (lines.length > 0) {
+      host.runScript(lines, 'QA_Jump_Setup');
+      await host.waitFor(() => game.state.getCurrentState()?.name === 'free_roam'
+        && !game.eventManager?.hasActiveEvents(), 'hub (X) free roam after setup', 60_000);
+    }
+    return jumpResult(game);
+  }
+  // Global_Give_Exp(receiver=all) tracks the party EXP of the run in
+  // accumulated_exp; recruits and recalled reserves are given that much, so
+  // match it to the party level (EOtF keeps levels through promotion).
+  if (!(spec.gameVars && 'accumulated_exp' in spec.gameVars)) {
+    lines.push(`game_var;accumulated_exp;${100 * (defaultLevel - 1)}`);
+  }
   // Global_Level_End (fired by Run_Start's win_game) adds one floor and one
   // Game_Level step, so preset the values the previous floor would have had.
   const increment = gameLevelIncrement(gameSpeed, density);
@@ -296,6 +347,10 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
     }, `level ${spec.level} ready`, 120_000);
   }
 
+  return jumpResult(game);
+}
+
+function jumpResult(game: any): JumpResult {
   const partyUnits = (game.getUnitsInParty?.() ?? []) as any[];
   return {
     level: game.currentLevel?.nid ?? null,

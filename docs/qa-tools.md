@@ -64,7 +64,9 @@ Run `npm run qa:run -- --help` for every option. The main ones:
 | `--party LIST` | `Nid[:level][:P][:Class][:+Item+Item]`, comma separated. `P` promotes; a number after `P` or a class is the post-promotion level. |
 | `--party-level N`, `--promoted` / `--no-promote` | Defaults: level `1 + 0.8 * floor`, promoted from Act 2 on. |
 | `--money`, `--records k=v,...`, `--vars k=v,...`, `--game-speed`, `--density`, `--seed` | State and the game RNG seed. Values are parsed as JSON where possible. |
-| `--boost N` | QA stat boost: `change_stats` +N to every stat (+2N HP) and a full heal. Off by default. |
+| `--boost N` | QA stat boost: `change_stats` +N to every stat (+2N HP) and a full heal. Off by default. Stats stop at class caps. |
+| `--passive-enemies` | Every enemy gets the `None` AI at each player phase, so a boss's turn events (signals, reinforcements, phase changes) can be walked to the turn limit. |
+| `--miracle` | Give the party EOtF's hidden `True_Miracle` (lethal damage leaves 1 HP), to reach a hard boss's late turns and events. |
 | `--floors N` / `--to-floor N` / `--one-level` / `--no-play` | What to play. |
 | `--max-turns N` (40), `--force-win` | Turn limit per battle map; `--force-win` runs `win_game` at the limit instead of stopping. |
 | `--rooms random\|combat,event,shop,respite,elite` | Room policy. Boss and trial rooms are always taken. |
@@ -73,6 +75,35 @@ Run `npm run qa:run -- --help` for every option. The main ones:
 | `--draw-every N` (16) | Render only every Nth frame. |
 | `--map-combat`, `--no-skip`, `--verbose` | Map combat instead of battle animations; keep event dialogue; keep `console.log`. |
 | `--out DIR`, `--label`, `--shots`, `--headed`, `--timeout SEC` | Reports and debugging. |
+| `--answers k=v,...` | Fixed answers by choice nid (option value or index). |
+| `--texts var=A\|B,...` | Text entries by variable nid, typed in turn (default `answer=TACITA`, the Hallway riddle). |
+| `--script "a\|b"` | Event commands to run right after the jump, e.g. `"trigger_script;Boss_Hidden Outro"`. |
+| `--hub`, `--hub-tour N`, `--hub-skip a,b`, `--hub-only a,b` | Stay in the hub (X); `--hub-tour` visits every hub NPC and event region N times (see below). |
+
+Special content:
+
+```bash
+# Hub systems: summons, upgrades, tonics, bar, desk (records, passwords,
+# Reminisce, Hetja shortcut), music, switches, skill inheritance
+npm run qa:run -- --hub-tour 4 --seed 5 --party Player,Gorbat,Pilus,Viran,Hetja   --records "Tonic_Maker=1,game_clear=1,yasukage_unlocked=1,tether_unlocked=1,Density_5_Cleared=1,SI_unlocked=1,Hetja_3=1,Essence=99999,Flame=99999,Fragments=99999,Master_Seals=999"   --texts "password=ILLUSION|PASSWORD123|HETJASHIELD|WRONG"
+
+# Act 3 boss, the Hallway (its doors need the boss keys) and Act 4
+npm run qa:run -- --level Trinity --floors 3 --boost 15 --force-win   --records "forename=1,original_name=1,loreia_defeated=1,fog_gate_opening=1,sydney_assimilation=1"
+
+# EX levels (entered like their Act 3 trigger events) and Act 4 bosses
+npm run qa:run -- --act 3 --floor 40 --level EX_1 --vars demon_quest=3 --one-level --boost 20
+npm run qa:run -- --level Boss_Hidden --one-level --party-level 35 --boost 20 --force-win
+
+# Boss_Hidden's room the way the game offers it: Fog Density 25 (every
+# difficulty modifier) after the Extra ending; --rooms picks it over Libra
+npm run qa:run -- --act 4 --floor 50 --one-level --density 25 --records Extra_Ending_Cleared=1   --rooms UE --boost 30 --passive-enemies --force-win --max-turns 14
+```
+
+`--density N` sets the difficulty modifier levels (`<mod>_level` records,
+Standard and Special modifiers in table order) that sum to N: the hub
+recomputes `current_density` from them at every level start. `--rooms`
+also chooses between special rooms (Libra, Horologium, UE, a trial or a
+boss) when a floor offers several.
 
 ## Reports
 
@@ -185,6 +216,19 @@ normal inputs and engine paths:
   the first 3 turns, then go for objective regions (Seize, Arrive, Escape,
   Defuse, Visit, Key Point, Switch) and pursue. Healers heal first. The
   units' own AI values are restored when the phase ends.
+- Story roam maps with no rooms, services or exit (the Hallway): the event
+  regions in order of distance, each once; an `interrupt_move` region fires
+  by standing in it, any other is used with SELECT.
+- Hub tour (`--hub-tour N`): every hub NPC with a talk pair and every event
+  region (desk, gacha, bar, music, switches, wardrobe) N times, in the real
+  free-roam paths, with the menus answered by policy. Keeper is skipped by
+  default (talking to him starts a run). A region whose condition fails is
+  noted as unavailable.
+- Text entry: the next `texts` entry for the variable is typed and confirmed;
+  without one the entry is left (AUX), or confirmed empty when forced.
+- A level that `--force-win` has already won three times without ending
+  (a lost level-end flag keeps the map cycling turns) stops the run as
+  `stuck`.
 - Stuck detection: if the state stack, event pointer, turn and unit
   positions and HP stay unchanged for 3600 frames and 10 s, the driver presses
   BACK, then SELECT, then START, and then stops the run as `stuck`.

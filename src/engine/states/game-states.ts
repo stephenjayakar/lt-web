@@ -51,6 +51,7 @@ import {
   pythonIterationValues,
   pythonLiteral,
   pythonStr,
+  triggerFieldArgs,
   type ConditionContext,
   type EventCommand,
   type ExpressionOutcome,
@@ -236,6 +237,7 @@ import {
   applyCombatSkillEndHooks,
   triggerAbilityItemCharge,
   triggerSkillCharge,
+  playbackMarks,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
 import { applySkillTurnHooks } from '../skill-turn-lifecycle';
@@ -8559,7 +8561,9 @@ export class CombatState extends State {
               position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
               item: activeCombat!.attackItem,
               isAnimationCombat: this.isAnimationCombat,
-              playback: activeCombat!.strikes,
+              // Python CombatEnd(..., self.full_playback): brush objects
+              // (p.nid, p.attacker, p.main_attacker), not raw strikes.
+              playback: playbackMarks(activeCombat!.strikes, attacker, defender ?? null),
             },
             { ...ctx, position: attacker.position, item: activeCombat!.attackItem },
           ));
@@ -11195,7 +11199,13 @@ export class EventState extends State {
       this.chapterTitleTimer = 0;
       this.chapterTitleText = '';
       this.locationCard = null;
-      this.isHandlingLevelEnd = false;
+      // Python keeps is_handling_end_event on the EventState that ran
+      // win_game, which resumes once the LevelEnd events pushed above it
+      // finish. Here one EventState runs every queued event, so an event
+      // queued mid-outro (a combat's unit_death or item events from an
+      // interact_unit in the outro, as in EOtF's elite outros) must not
+      // clear it, or the level never ends.
+      if (!game.levelVars?.get?.('_level_end_triggered')) this.isHandlingLevelEnd = false;
       this.levelTransitionInProgress = false;
       const restoredBackground = this.restoreParkedPresentation(nextEvent);
       if (restoredBackground !== undefined) {
@@ -13303,13 +13313,7 @@ export class EventState extends State {
         ...(trigger?.region ? [['region', trigger.region] as [string, any]] : []),
         ...(trigger?.position ? [['position', trigger.position] as [string, any]] : []),
         ...(trigger?.localArgs?.entries() ?? []),
-        ['stat_changes', trigger?.statChanges],
-        ['source', trigger?.source],
-        ['weapon_type', trigger?.weaponType],
-        ['old_wexp', trigger?.oldWexp],
-        ['rank', trigger?.rank],
-        ['is_animation_combat', trigger?.isAnimationCombat],
-        ['playback', trigger?.playback],
+        ...triggerFieldArgs(trigger),
       ]),
     };
   }
