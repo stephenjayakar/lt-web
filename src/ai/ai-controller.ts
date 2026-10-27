@@ -431,7 +431,8 @@ export class AIController {
       const targetSpec = typeof behaviour.target_spec === 'string' ? behaviour.target_spec : '';
       const regions = this.gameRef?.currentLevel?.regions ?? [];
       const region = regions.find((r: any) =>
-        r.region_type === 'event' && r.sub_nid === targetSpec &&
+        // Python Region.contains: a region without a position contains nothing.
+        r.region_type === 'event' && r.sub_nid === targetSpec && !!r.position &&
         destination[0] >= r.position[0] && destination[0] < r.position[0] + (r.size?.[0] ?? 1) &&
         destination[1] >= r.position[1] && destination[1] < r.position[1] + (r.size?.[1] ?? 1) &&
         (!r.condition || (() => {
@@ -626,7 +627,9 @@ export class AIController {
             continue;
           }
         }
-        // Add all positions in the region
+        // Add all positions in the region (Python get_all_positions: none
+        // for a region without a position, e.g. EOtF map 91's Fake_Arrive).
+        if (!region.position) continue;
         const [rx, ry] = region.position;
         const [rw, rh] = region.size ?? [1, 1];
         for (let x = rx; x < rx + rw; x++) {
