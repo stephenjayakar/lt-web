@@ -71,6 +71,9 @@ import { Recordkeeper } from './records';
 import { GameQueryEngine } from './query-engine';
 import { TargetSystem } from './target-system';
 import { getStartingClassSkillNids } from './learned-skills';
+import { autoLevelFrom, difficultyAutoLevel, getGrowthMethod, getInternalLevel } from './leveling';
+import { isForkEngine } from './engine-flavor';
+import { allItemsWithMultiItems, weaponRank, weaponType } from '../combat/item-system';
 import { applyItemEndChapterResourceHooks } from '../combat/item-resource-lifecycle';
 
 
@@ -1489,8 +1492,9 @@ export class GameState {
     team: string,
     position: [number, number] | null,
     ai: NID,
+    opts: BuildUnitOptions = {},
   ): UnitObject {
-    const unit = this.buildUnit(prefab, team, ai);
+    const unit = this.buildUnit(prefab, team, ai, opts);
     this.registerUnit(unit, position);
     return unit;
   }
@@ -1502,8 +1506,14 @@ export class GameState {
    * registration (e.g. the `create_unit` event command) can wrap the
    * registration step in an undoable action while construction itself
    * (which has no observable side effects on shared state) happens eagerly.
+   *
+   * Follows Python UnitObject.from_prefab for level units (level units,
+   * load_unit, create_unit): items, generic wexp from item ranks, skills in
+   * global / personal / class / generic order, difficulty base bonus,
+   * autolevels and true levels, then full HP. With `opts.generic`, the
+   * prefab's `learned_skills` are the generic's starting skills.
    */
-  buildUnit(prefab: UnitPrefab, team: string, ai: NID): UnitObject {
+  buildUnit(prefab: UnitPrefab, team: string, ai: NID, opts: BuildUnitOptions = {}): UnitObject {
     const klassDef = this.db.classes.get(prefab.klass);
     if (!klassDef) {
       throw new Error(
@@ -1514,6 +1524,17 @@ export class GameState {
     const unit = new UnitObject(prefab, klassDef);
     unit.team = team;
     unit.ai = ai;
+    const generic = !!opts.generic;
+    if (generic) {
+      unit.generic = true;
+      unit.persistent = false;
+    }
+
+    // The EOtF fork starts units that level by the Fixed method with 50
+    // growth points per stat (upstream: 0).
+    if (isForkEngine() && getGrowthMethod(unit, undefined, this) === 'Fixed') {
+      for (const nid of Object.keys(unit.stats)) unit.growthPoints[nid] = 50;
+    }
 
     // Equip starting items
     for (const entry of prefab.starting_items) {
@@ -1530,6 +1551,9 @@ export class GameState {
       }
     }
 
+    // Python calculate_needed_wexp_from_items: generics can wield what they hold.
+    if (generic) this.raiseWexpForItems(unit);
+
     // Python UnitObject creates every DB-wide Global skill before personal and
     // class skills. These mechanic-level skills must exist on newly built
     // generics and uniques alike.
@@ -1542,27 +1566,109 @@ export class GameState {
       if (isCantoSkill(skill)) unit.hasCanto = true;
     }
 
-    // Equip starting skills from learned_skills (tuples of [requiredLevel, skillNid])
-    if (prefab.learned_skills) {
-      for (const [requiredLevel, skillNid] of prefab.learned_skills) {
-        // Only equip skills the unit has reached the level for
-        if (unit.level < requiredLevel) continue;
-        const skillPrefab = this.db.skills.get(skillNid);
-        if (skillPrefab) {
-          const skill = new SkillObject(skillPrefab);
-          unit.skills.push(skill);
+    const addSkill = (skillNid: string): void => {
+      const skillPrefab = this.db.skills.get(skillNid);
+      if (!skillPrefab) return;
+      const skill = new SkillObject(skillPrefab);
+      unit.skills.push(skill);
+      if (isCantoSkill(skill)) unit.hasCanto = true;
+    };
 
-          // Check for canto
-          if (isCantoSkill(skill)) {
-            unit.hasCanto = true;
-          }
+    // Personal skills from learned_skills ([requiredLevel, skillNid]) the
+    // unit has reached. Generics have none (theirs are starting skills).
+    if (!generic) {
+      for (const [requiredLevel, skillNid] of prefab.learned_skills ?? []) {
+        if (unit.level >= requiredLevel) addSkill(skillNid);
+      }
+    }
+
+    // Class skills (unit_funcs.get_starting_skills, with promote_skill_inheritance
+    // and generic_feats), for uniques and generics alike.
+    for (const skillNid of getStartingClassSkillNids(unit, 0, this)) addSkill(skillNid);
+
+    // Generic starting skills come last, whatever their level.
+    if (generic) {
+      for (const [, skillNid] of prefab.learned_skills ?? []) addSkill(skillNid);
+    }
+
+    this.applyCreationLevels(unit, klassDef);
+
+    // Autoequip after starting items/skills are populated (Python UnitObject.__init__).
+    unit.autoequip();
+    // Python resets HP after construction so skills and items can raise it.
+    unit.currentHp = unit.maxHp;
+    return unit;
+  }
+
+  /** Python UnitObject.calculate_needed_wexp_from_items. */
+  private raiseWexpForItems(unit: UnitObject): void {
+    for (const item of allItemsWithMultiItems(unit.items)) {
+      const rank = weaponRank(unit, item);
+      if (!rank) continue;
+      const type = weaponType(unit, item);
+      if (!type) continue;
+      const requirement = this.db.weaponRanks.find((candidate) => candidate.rank === rank)?.requirement;
+      if (requirement === undefined) continue;
+      unit.wexp[type] = Math.max(unit.wexp[type] ?? 0, requirement);
+    }
+  }
+
+  /**
+   * The difficulty block of Python UnitObject.from_prefab: base-stat bonus,
+   * generic autolevels (promoted classes only get their previous tiers'
+   * levels scaled by promoted_autolevels_fraction), backpropagated difficulty
+   * growths for uniques, difficulty autolevels and true levels. The EOtF fork
+   * runs the same code.
+   */
+  private applyCreationLevels(unit: UnitObject, klassDef: KlassDef): void {
+    const mode = this.currentMode;
+    const prefab = this.mode;
+    if (!mode || !prefab) return;
+    const tier = Number(klassDef.tier ?? 1);
+    let numLevels = tier === 0 ? unit.level - 1 : getInternalLevel(unit, this.db) - 1;
+    if (tier >= 2) {
+      const previousLevels = numLevels - (unit.level - 1);
+      numLevels = unit.level + Math.trunc(previousLevels * Number(prefab.promoted_autolevels_fraction ?? 0));
+    }
+
+    const allied = this.getAlliedTeams().includes(unit.team);
+    const isBoss = unit.tags.includes('Boss');
+    const baseBonus: Record<string, number> =
+      (allied ? prefab.player_bases : isBoss ? prefab.boss_bases : prefab.enemy_bases) ?? {};
+    for (const nid of Object.keys(unit.stats)) {
+      const maxStat = Number(klassDef.max_stats?.[nid] ?? 30) + Number(unit.statCapModifiers?.[nid] ?? 0);
+      const current = unit.stats[nid] ?? 0;
+      unit.stats[nid] = current + Math.min(Math.max(Number(baseBonus[nid] ?? 0), -current), maxStat - current);
+    }
+
+    const autoLevel = (levels: number): void => {
+      const result = autoLevelFrom(unit, 1, levels, undefined, this);
+      for (const [nid, change] of Object.entries(result.statChanges)) {
+        if (unit.stats[nid] !== undefined) unit.stats[nid] += change;
+      }
+      unit.growthPoints = result.growthPoints;
+    };
+
+    if (unit.generic) {
+      autoLevel(numLevels);
+    } else if (this.db.getConstant('backpropagate_difficulty_growths', false)) {
+      const growthBonus = allied ? prefab.player_growths : isBoss ? prefab.boss_growths : prefab.enemy_growths;
+      if (growthBonus && Object.keys(growthBonus).length > 0) {
+        for (const [nid, change] of Object.entries(difficultyAutoLevel(unit, 1, numLevels, this))) {
+          if (unit.stats[nid] !== undefined) unit.stats[nid] += change;
         }
       }
     }
 
-    // Autoequip after starting items/skills are populated (Python UnitObject.__init__).
-    unit.autoequip();
-    return unit;
+    let difficultyLevels = Number(
+      (allied ? prefab.player_autolevels : isBoss ? prefab.boss_autolevels : prefab.enemy_autolevels) ?? 0,
+    );
+    if (!allied) difficultyLevels += mode.enemyAutolevels + mode.enemyTruelevels;
+    if (isBoss) difficultyLevels += mode.bossAutolevels + mode.bossTruelevels;
+    if (difficultyLevels > 0) autoLevel(difficultyLevels);
+
+    if (!allied) unit.level += mode.enemyTruelevels;
+    if (isBoss) unit.level += mode.bossTruelevels;
   }
 
   /**
@@ -1582,8 +1688,8 @@ export class GameState {
     // Record starting position for Defend AI / return-home
     unit.startingPosition = position ? [...position] as [number, number] : null;
 
-    // Set party for player units if not already assigned
-    if (!unit.party && unit.team === 'player') {
+    // Python level_setup: every level unit without a party joins the level's.
+    if (!unit.party) {
       unit.party = this.currentParty;
     }
 
@@ -1689,9 +1795,6 @@ export class GameState {
     const unit = this.spawnUnit(prefab, data.team, data.starting_position, data.ai);
     if (data.ai_group) unit.aiGroup = data.ai_group;
     if ((data as any).roam_ai) unit.roamAi = (data as any).roam_ai;
-
-    // Apply difficulty base bonuses
-    this.applyDifficultyBaseBonuses(unit);
   }
 
   /**
@@ -1743,8 +1846,7 @@ export class GameState {
       affinity: '',
     };
 
-    const unit = this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai);
-    unit.generic = true;
+    const unit = this.spawnUnit(syntheticPrefab, data.team, data.starting_position, data.ai, { generic: true });
     unit.variant = data.variant ?? null;
     unit.faction = data.faction || null;
     const unitFaction = data.faction ? this.db.factions.get(data.faction) : null;
@@ -1752,114 +1854,8 @@ export class GameState {
     if (data.ai_group) unit.aiGroup = data.ai_group;
     if ((data as any).roam_ai) unit.roamAi = (data as any).roam_ai;
 
-    // Generic units are NOT persistent across levels (Python: self.persistent = False)
-    unit.persistent = false;
-
-    // Python creates generic class skills before autoleveling. `Feat` entries
-    // resolve through the shared growth RNG when generic_feats is enabled.
-    for (const skillNid of getStartingClassSkillNids(unit, 0, this)) {
-      const skillPrefab = this.db.skills.get(skillNid);
-      if (!skillPrefab) continue;
-      const skill = new SkillObject(skillPrefab);
-      unit.skills.push(skill);
-      if (isCantoSkill(skill)) unit.hasCanto = true;
-    }
-
-    // Auto-level: apply FIXED growth-based stat increases.
-    // Python: num_levels = self.level - 1 for tier 0/1 base classes
-    const numLevels = this.getAutoLevelCount(data.level, klassDef);
-    if (numLevels > 0) {
-      autoLevelFixed(unit, 1, numLevels, klassDef);
-    }
-
-    // Apply difficulty bonuses (base stats + autolevels)
-    this.applyDifficultyBaseBonuses(unit);
-    this.applyDifficultyAutolevels(unit, klassDef);
-  }
-
-  /**
-   * Compute the number of auto-level iterations for a generic unit.
-   * Matches Python's logic from unit.py lines 274-278:
-   *   tier 0: level - 1
-   *   tier 1: level
-   *   tier 2+: level + sum(max_level of promote chain back to tier 1)
-   *
-   * For simplicity we use: level - 1 for tier <= 1, and for tier >= 2 we
-   * add the max_level of the immediate promotes_from class.
-   */
-  private getAutoLevelCount(unitLevel: number, klassDef: KlassDef): number {
-    if (klassDef.tier <= 1) {
-      return unitLevel - 1;
-    }
-    // Promoted class: internal level includes levels from previous tier
-    let baseLevels = 0;
-    if (klassDef.promotes_from) {
-      const baseClass = this.db.classes.get(klassDef.promotes_from);
-      if (baseClass) {
-        baseLevels = baseClass.max_level ?? 20;
-      }
-    }
-    return unitLevel + baseLevels - 1;
-  }
-
-  /**
-   * Apply difficulty base stat bonuses to a unit.
-   * Called after spawning to add stat adjustments from the current difficulty mode.
-   */
-  private applyDifficultyBaseBonuses(unit: UnitObject): void {
-    if (!this.currentMode) return;
-    const prefab = this.mode;
-    if (!prefab) return;
-
-    const alliedTeams = this.getAlliedTeams();
-    const baseBonus = this.currentMode.getBaseBonus(unit, alliedTeams, prefab);
-    if (!baseBonus) return;
-
-    for (const [stat, bonus] of Object.entries(baseBonus)) {
-      if (bonus !== 0 && unit.stats[stat] !== undefined) {
-        const maxStat = unit.getStatCap(stat);
-        unit.stats[stat] = Math.min(maxStat, Math.max(0, unit.stats[stat] + bonus));
-      }
-    }
-
-    // Update HP if it was adjusted
-    if (baseBonus['HP'] && baseBonus['HP'] > 0) {
-      unit.currentHp = unit.stats['HP'] ?? unit.currentHp;
-    }
-  }
-
-  /**
-   * Apply difficulty autolevels to a generic unit.
-   * Difficulty autolevels grant extra FIXED-method level-ups beyond
-   * the unit's normal level. Also applies "true levels" which increase
-   * the displayed level without stat gains.
-   */
-  private applyDifficultyAutolevels(unit: UnitObject, klassDef: KlassDef): void {
-    if (!this.currentMode) return;
-    const prefab = this.mode;
-    if (!prefab) return;
-
-    const alliedTeams = this.getAlliedTeams();
-    const extraLevels = this.currentMode.getDifficultyAutolevels(unit, alliedTeams, prefab);
-
-    if (extraLevels > 0) {
-      // Apply promoted_autolevels_fraction for promoted units
-      let effectiveLevels = extraLevels;
-      if (klassDef.tier >= 2 && prefab.promoted_autolevels_fraction !== undefined) {
-        effectiveLevels = Math.round(extraLevels * prefab.promoted_autolevels_fraction);
-      }
-
-      if (effectiveLevels > 0) {
-        // Use the unit's current level as the base for additional auto-leveling
-        autoLevelFixed(unit, unit.level, effectiveLevels, klassDef);
-      }
-    }
-
-    // Apply true levels (display only — increase level without stat gains)
-    const trueLevels = this.currentMode.getDifficultyTruelevels(unit, alliedTeams);
-    if (trueLevels > 0) {
-      unit.level += trueLevels;
-    }
+    // Class skills, autolevels and difficulty bonuses happen in buildUnit
+    // (generic: true), as in Python's UnitObject.from_prefab.
   }
 
   /**
@@ -1937,77 +1933,10 @@ export class GameState {
   }
 }
 
-// ============================================================================
-// Auto-leveling (FIXED growth method)
-// ============================================================================
-
-/**
- * Apply deterministic FIXED-mode auto-leveling to a unit.
- *
- * Matches Python's `_fixed_levelup` from unit_funcs.py lines 109-126:
- *   For each stat, for each pseudo-level from baseLevel to baseLevel+numLevels-1:
- *     - growth >= 100 => guaranteed +1 per 100
- *     - remainder: compute (50 + remainder * level) % 100;
- *       if result < remainder => +1
- *
- * This creates a perfectly deterministic, evenly-spaced level-up pattern.
- *
- * @param unit       The unit to level up (stats are modified in-place).
- * @param baseLevel  Starting pseudo-level (usually 1).
- * @param numLevels  Number of levels to auto-apply.
- * @param klassDef   Class definition for growth_bonus and max_stats.
- */
-function autoLevelFixed(
-  unit: UnitObject,
-  baseLevel: number,
-  numLevels: number,
-  klassDef: import('../data/types').KlassDef,
-): void {
-  const totalGains: Record<string, number> = {};
-  for (const stat of Object.keys(unit.stats)) {
-    totalGains[stat] = 0;
-  }
-
-  for (let i = 0; i < numLevels; i++) {
-    const level = baseLevel + i;
-    for (const stat of Object.keys(unit.growths)) {
-      // Total growth = unit growths (which are class growths for generics) + class growth_bonus
-      let growth = (unit.growths[stat] ?? 0) + (klassDef.growth_bonus?.[stat] ?? 0);
-      let gained = 0;
-
-      // Guaranteed gains for growth >= 100
-      if (growth >= 100) {
-        gained += Math.floor(growth / 100);
-        growth = growth % 100;
-      }
-
-      // Fractional part: deterministic sawtooth
-      if (growth > 0) {
-        const growthInc = (50 + growth * level) % 100;
-        if (growthInc < growth) {
-          gained += 1;
-        }
-      }
-
-      if (totalGains[stat] !== undefined) {
-        totalGains[stat] += gained;
-      }
-    }
-  }
-
-  // Apply gains, clamped to [0, max_stats]
-  for (const stat of Object.keys(totalGains)) {
-    const maxStat = unit.getStatCap(stat);
-    const currentVal = unit.stats[stat] ?? 0;
-    const maxGain = Math.max(0, maxStat - currentVal);
-    const gain = Math.min(totalGains[stat], maxGain);
-    if (gain > 0) {
-      unit.stats[stat] = currentVal + gain;
-    }
-  }
-
-  // Reset HP to full after auto-leveling
-  unit.currentHp = unit.stats['HP'] ?? unit.currentHp;
+/** Options for GameState.buildUnit / spawnUnit. */
+export interface BuildUnitOptions {
+  /** A generic: no personal skills, `learned_skills` are its starting skills, autoleveled. */
+  generic?: boolean;
 }
 
 // ============================================================================

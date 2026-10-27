@@ -398,6 +398,12 @@ async function chooseMenuLabel(page: Page, label: string): Promise<void> {
 
 test('trading returns to the action menu; BACK then commits and waits', async ({ page }) => {
   await boot(page);
+  // Pegasus_Knight learns Canto at level 1; without it the trade commits.
+  await page.evaluate(() => {
+    const u = (window as any).__gameRef.getUnit('Vanessa');
+    u.skills = u.skills.filter((s: any) => s.nid !== 'Canto');
+    u.hasCanto = false;
+  });
   await openUnitMenu(page, 'Vanessa');
   // Pegasus_Knight's class tag Mounted makes RESCUE_AID 25 - CON, as Python
   // reads unit.tags with class tags, so an adjacent ally can be rescued.
@@ -432,11 +438,9 @@ test('trading returns to the action menu; BACK then commits and waits', async ({
 
 test('Canto after a trade moves again and offers only canto_wait', async ({ page }) => {
   await boot(page);
-  await page.evaluate(async () => {
-    const g = (window as any).__gameRef;
-    const { SkillObject } = await import('/src/objects/skill.ts');
-    g.getUnit('Vanessa').skills.push(new SkillObject(g.db.skills.get('Canto')));
-  });
+  // Vanessa's class (Pegasus_Knight) gives her Canto.
+  expect(await page.evaluate(() =>
+    (window as any).__gameRef.getUnit('Vanessa').skills.some((s: any) => s.nid === 'Canto'))).toBe(true);
   await openUnitMenu(page, 'Vanessa');
   await chooseMenuLabel(page, 'Trade');
   await press(page, 'SELECT');
