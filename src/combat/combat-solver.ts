@@ -189,6 +189,8 @@ export class CombatPhaseSolver {
    * after-strike hooks, so removal waits for applyStrikeDamage.
    */
   private pendingStrikeProcs: Parameters<CombatSkillLifecycle['endStrike']>[0] | null = null;
+  /** Who made the pending strike, and in which mode (EOtF splash proc carry). */
+  private pendingStrikeSource: { striker: UnitObject; mode: CombatMode } | null = null;
   /** The running combat's initiator and its item (Python solver.attacker / main_item). */
   private sessionAttacker: UnitObject | null = null;
   private sessionAttackItem: ItemObject | null = null;
@@ -240,9 +242,42 @@ export class CombatPhaseSolver {
   /** End the pending strike's sub-combat, seeing each unit's simulated HP. */
   private endPendingStrike(): void {
     const procs = this.pendingStrikeProcs;
+    this.pendingStrikeSource = null;
     if (!procs) return;
     this.pendingStrikeProcs = null;
     this.lifecycle?.endStrike(procs, this.simulatedHp);
+  }
+
+  /**
+   * Begin a strike's sub-combat. EOtF rolls the attacker's attack_proc once
+   * per attacking phase, against the main defender only (none when the
+   * phase has no main defender), and keeps it through the phase's splash
+   * strikes; each struck unit still gets its own defense_proc.
+   */
+  private beginStrikeProcs(
+    striker: UnitObject,
+    item: ItemObject,
+    target: UnitObject,
+    mode: CombatMode,
+    forcedAttackProcs?: CombatProcMark[],
+  ): Parameters<CombatSkillLifecycle['endStrike']>[0] {
+    if (isForkEngine() && mode === 'splash' && this.lifecycle) {
+      const previous = this.pendingStrikeProcs;
+      const source = this.pendingStrikeSource;
+      let carried: Parameters<CombatSkillLifecycle['endStrike']>[0]['attack'] = [];
+      if (previous && source?.striker === striker &&
+          (source.mode === 'attack' || source.mode === 'splash')) {
+        carried = previous.attack;
+        this.pendingStrikeProcs = { attack: [], defense: previous.defense };
+      }
+      this.endPendingStrike();
+      return { attack: carried, defense: this.lifecycle.beginDefenseProcs(striker, target, this.simulatedHp) };
+    }
+    this.endPendingStrike();
+    return this.lifecycle?.beginStrike(
+      striker, item, target, forcedAttackProcs, this.simulatedHp,
+    ) ??
+      { attack: [], defense: [] };
   }
 
   /** A unit's latest simulated in-combat HP, when this combat tracks it. */
@@ -1574,11 +1609,7 @@ export class CombatPhaseSolver {
     forcedAttackProcs?: CombatProcMark[],
     assist: boolean = false,
   ): CombatStrike {
-    this.endPendingStrike();
-    const procs = this.lifecycle?.beginStrike(
-      striker, item, target, forcedAttackProcs, this.simulatedHp,
-    ) ??
-      { attack: [], defense: [] };
+    const procs = this.beginStrikeProcs(striker, item, target, mode, forcedAttackProcs);
     const defWeapon = this.opposingItem(target, mode, db);
 
     const guarded = db.getConstant('pairup', false) && item.isWeapon() &&
@@ -1640,6 +1671,7 @@ export class CombatPhaseSolver {
       ...(procs.defense.length ? { defenseProcs: procs.defense } : {}),
     };
     this.pendingStrikeProcs = procs;
+    this.pendingStrikeSource = { striker, mode };
     this.updateGuardGauges(striker, item, target, db);
     return strike;
   }
@@ -2240,11 +2272,7 @@ export class CombatPhaseSolver {
     forcedAttackProcs?: CombatProcMark[],
     assist: boolean = false,
   ): CombatStrike {
-    this.endPendingStrike();
-    const procs = this.lifecycle?.beginStrike(
-      striker, item, target, forcedAttackProcs, this.simulatedHp,
-    ) ??
-      { attack: [], defense: [] };
+    const procs = this.beginStrikeProcs(striker, item, target, mode, forcedAttackProcs);
     // Compute hit chance with weapon triangle bonus
     const defWeapon = this.opposingItem(target, mode, db);
     // Python compute_hit folds the weapon triangle in before its 0-100 clamp.
@@ -2357,6 +2385,7 @@ export class CombatPhaseSolver {
       ...(procs.defense.length ? { defenseProcs: procs.defense } : {}),
     };
     this.pendingStrikeProcs = procs;
+    this.pendingStrikeSource = { striker, mode };
     this.updateGuardGauges(striker, item, target, db);
     return strike;
   }

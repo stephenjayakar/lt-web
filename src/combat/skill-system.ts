@@ -1332,6 +1332,31 @@ export function statChange(unit: UnitObject, statNid: string, game?: any): numbe
   }
 }
 
+let combatConditionsOffDepth = 0;
+
+/**
+ * EOtF: run `evaluate` with every combat_condition off unless a combat has
+ * snapshotted it. Its AI scores moves with compute_damage/compute_hit and
+ * never runs pre_combat or test_on, so a CombatCondition keeps its idle
+ * False there (Halting Shield's defense speed, Holy Guard's resist).
+ */
+export function withCombatConditionsOff<T>(evaluate: () => T): T {
+  if (!isForkEngine()) return evaluate();
+  combatConditionsOffDepth++;
+  try {
+    return evaluate();
+  } finally {
+    combatConditionsOffDepth--;
+  }
+}
+
+/** A skill's combat_condition snapshot, or false inside withCombatConditionsOff. */
+export function combatConditionSnapshot(skill: SkillObject): boolean | undefined {
+  const snapshot = skill.data?.get?.('_combat_condition');
+  if (typeof snapshot === 'boolean') return snapshot;
+  return combatConditionsOffDepth > 0 ? false : undefined;
+}
+
 /** Freeze EotF DynamicStatChange expressions for one combat encounter. */
 export function prepareDynamicStatChanges(
   unit: UnitObject,
@@ -1359,7 +1384,7 @@ export function prepareDynamicStatChanges(
         Number(skill.data.get('charge') ?? 0) <= 0) continue;
     const combatCondition = skill.getComponent<string>('combat_condition');
     if (combatCondition) {
-      const snapshot = skill.data.get('_combat_condition');
+      const snapshot = combatConditionSnapshot(skill);
       const enabled = typeof snapshot === 'boolean'
         ? snapshot
         : evaluateCondition(combatCondition, {
@@ -1468,7 +1493,7 @@ function evaluatedSkillActive(
       Number(skill.data?.get?.('charge') ?? 0) <= 0) return false;
   const combatCondition = skill.getComponent<string>('combat_condition');
   if (combatCondition) {
-    const snapshot = skill.data?.get?.('_combat_condition');
+    const snapshot = combatConditionSnapshot(skill);
     if (typeof snapshot !== 'boolean' && !context.target) return false;
     const enabled = typeof snapshot === 'boolean' ? snapshot : evaluateCondition(
       combatCondition,
@@ -2471,7 +2496,7 @@ export function resistMultiplier(
         Number(skill.data.get('charge') ?? 0) <= 0) continue;
     const combatCondition = skill.getComponent<string>('combat_condition');
     if (combatCondition) {
-      const snapshot = skill.data.get('_combat_condition');
+      const snapshot = combatConditionSnapshot(skill);
       const enabled = typeof snapshot === 'boolean'
         ? snapshot
         : evaluateCondition(combatCondition, {

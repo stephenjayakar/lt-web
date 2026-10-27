@@ -385,7 +385,19 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
         lifecycle.applyUnusableCombatItems(game, [[hero, hero.items[0]], [null, null]]);
         const galeforce = kit.skills(hero).includes('Galeforce_Status');
         const stillEquipped = hero.equippedWeapon?.nid ?? null;
-        return { toxins, empowered, vibes, child, galeforce, stillEquipped, killed: fought.strikes.length };
+        game.removeUnit(hero.nid);
+
+        // Revolver (cooldown 2): once used in a combat it is unusable, so it
+        // is unequipped after the combat.
+        const gunner = kit.make('_FzGunner', 'player', { klass: 'Myrmidon', items: ['Revolver'], stats: { SKL: 30 } });
+        const target = kit.make('_FzTarget', 'enemy', { stats: { HP: 60 } });
+        kit.place(gunner, 3, 0);
+        kit.place(target, 4, 0);
+        kit.fight(gunner, target, ['hit1', 'end']);
+        lifecycle.applyUnusableCombatItems(game, [[gunner, gunner.items[0]], [null, null]]);
+        const gunCooldown = gunner.items[0].data.get('cooldown');
+        const gunEquipped = gunner.equippedWeapon?.nid ?? null;
+        return { toxins, empowered, vibes, child, galeforce, stillEquipped, killed: fought.strikes.length, gunCooldown, gunEquipped };
       } finally {
         kit.cleanup();
       }
@@ -397,6 +409,8 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
     expect(result!.child).toBe(true);
     expect(result!.galeforce).toBe(true);
     expect(result!.stillEquipped).toBeNull();
+    expect(result!.gunCooldown).toBe(2);
+    expect(result!.gunEquipped).toBeNull();
   });
 
   test('start-of-combat with no main target, phase-end skill gains, override on-hit statuses', async ({ page }) => {
@@ -495,5 +509,122 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
     expect(result!.mateChild).toBe(false);
     expect(result!.followerChild).toBe(true);
     expect(result!.bubbleHp).toBe(16);
+  });
+
+  test('negative speed clamps to 0, one attack-proc roll per phase, post-combat percent damage', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (kitSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const kit = await (new Function(`${kitSrc}; return makeKit;`)())(game);
+      if (!kit.origin) return null;
+      const rng = await import('/src/engine/static-random.ts');
+      try {
+        // FrigidFetters (weight 9) at SPD 6 / CON 5 is attack speed 2; the
+        // foe's Blizzard_Stone (weight 14) at SPD 1 / CON 6 would be -7 but
+        // counts as 0, so there is no double.
+        const mage = kit.make('_FzMage', 'enemy', { klass: 'Mage', items: ['FrigidFetters'], stats: { MAG: 8, SKL: 5, SPD: 6, CON: 5 } });
+        const heavy = kit.make('_FzHeavy', 'player', { items: ['Blizzard_Stone'], stats: { HP: 60, SPD: 1, CON: 6 } });
+        kit.place(mage, 0, 0);
+        kit.place(heavy, 2, 0);
+        const slow = kit.fight(mage, heavy);
+        game.removeUnit(mage.nid);
+        game.removeUnit(heavy.nid);
+
+        // Pulsar (attack_proc) with a cleaving Hunger: its proc is rolled
+        // once for the phase, not again for each splashed foe.
+        const pulsar = kit.make('_FzPulsar', 'player', { klass: 'Shaman', items: ['Hunger'], skills: ['Pulsar'], stats: { MAG: 1 } });
+        const front = kit.make('_FzFront', 'enemy', { stats: { HP: 60 } });
+        const left = kit.make('_FzLeft', 'enemy', { stats: { HP: 60 } });
+        const right = kit.make('_FzRight', 'enemy', { stats: { HP: 60 } });
+        kit.place(pulsar, 2, 0);
+        kit.place(front, 2, 1);
+        kit.place(left, 1, 0);
+        kit.place(right, 3, 0);
+        rng.setCombatRandomState(game, 12345);
+        const cleave = kit.fight(pulsar, front, ['hit1', 'end']);
+        const after = rng.getCombatRandomState(game);
+        rng.setCombatRandomState(game, 12345);
+        rng.getCombatRandom(game);
+        const oneRoll = rng.getCombatRandomState(game);
+        for (const u of [pulsar, front, left, right]) game.removeUnit(u.nid);
+
+        // Vicious (post_combat_damage_percent 0.2): int(HP - max HP * 0.2),
+        // floored at 1 even for a target the combat killed.
+        const vicious = kit.make('_FzVicious', 'player', { klass: 'Myrmidon', items: ['Iron_Sword'], skills: ['Vicious'], stats: { STR: 40, SKL: 30 } });
+        const missed = kit.make('_FzMissed', 'enemy', { stats: { HP: 23 }, hp: 13 });
+        kit.place(vicious, 0, 1);
+        kit.place(missed, 1, 1);
+        kit.fight(vicious, missed, ['miss1', 'end']);
+        const missedHp = missed.currentHp;
+        game.removeUnit(missed.nid);
+        const killed = kit.make('_FzKilled', 'enemy', { stats: { HP: 10 } });
+        kit.place(killed, 1, 1);
+        kit.fight(vicious, killed, ['hit1', 'end']);
+        game.removeUnit(vicious.nid);
+
+        // Fireheart (recoil 2) on a unit killed by the counter: Recoil has no
+        // HP check, so it is left at 1 HP, still dead.
+        const hothead = kit.make('_FzHothead', 'enemy', { klass: 'Myrmidon', items: ['Iron_Sword'], skills: ['Fireheart'], stats: { HP: 20 }, hp: 2 });
+        const wall = kit.make('_FzWall', 'player', { klass: 'Myrmidon', items: ['Iron_Sword'], stats: { HP: 40, STR: 40, SKL: 30 } });
+        kit.place(hothead, 3, 1);
+        kit.place(wall, 4, 1);
+        kit.fight(hothead, wall, ['miss1', 'hit2', 'end']);
+        return {
+          killedDead: !!killed.dead, recoilHp: hothead.currentHp, recoilDead: !!hothead.dead,
+          slowStrikes: slow.strikes.length,
+          cleaveStrikes: cleave.strikes.length, oneProcRoll: after === oneRoll,
+          missedHp, killedHp: killed.currentHp,
+        };
+      } finally {
+        kit.cleanup();
+      }
+    }, KIT);
+    expect(result).not.toBeNull();
+    expect(result!.slowStrikes).toBe(1);
+    expect(result!.cleaveStrikes).toBe(3);
+    expect(result!.oneProcRoll).toBe(true);
+    expect(result!.missedHp).toBe(8);
+    expect(result!.killedHp).toBe(1);
+    expect(result!.killedDead).toBe(true);
+    expect(result!.recoilHp).toBe(1);
+    expect(result!.recoilDead).toBe(true);
+  });
+
+  test('AI scoring sees combat_condition skills off (no pre_combat in the AI)', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (kitSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const kit = await (new Function(`${kitSrc}; return makeKit;`)())(game);
+      if (!kit.origin) return null;
+      const ss = await import('/src/combat/skill-system.ts');
+      try {
+        // Protective_Gaze_Child (attack_speed -5 under a combat_condition):
+        // a forecast applies it, the AI's scoring does not, so the AI sees
+        // a double (attack speed 6 against 2).
+        const gazed = kit.make('_FzGazed', 'enemy', { klass: 'Mage', items: ['Scorch'], skills: ['Protective_Gaze_Child'], stats: { MAG: 8, SPD: 8, CON: 6 } });
+        const armor = kit.make('_FzArmor', 'player', { items: ['Iron_Axe'], stats: { HP: 40, SPD: 2, CON: 12 } });
+        // Holy_Guard (resist_multiplier 0.5 against Monsters, combat_condition).
+        const monster = kit.make('_FzMonster', 'enemy', { items: ['Wounding_Fang'], stats: { STR: 6 } });
+        monster.tags = [...(monster.tags ?? []), 'Monster'];
+        const cleric = kit.make('_FzCleric', 'player', { skills: ['Holy_Guard'], stats: { HP: 30, DEF: 4 } });
+        kit.place(gazed, 0, 0);
+        kit.place(armor, 1, 0);
+        kit.place(monster, 3, 0);
+        kit.place(cleric, 4, 0);
+        const probe = () => ({
+          double: kit.calcs.canDouble(gazed, gazed.items[0], armor, armor.items[0], kit.db, game),
+          fang: kit.calcs.computeDamage(monster, monster.items[0], cleric, kit.db, game.board, game, 'attack'),
+        });
+        return { forecast: probe(), ai: ss.withCombatConditionsOff(probe) };
+      } finally {
+        kit.cleanup();
+      }
+    }, KIT);
+    expect(result).not.toBeNull();
+    expect(result!.forecast.double).toBe(false);
+    expect(result!.ai.double).toBe(true);
+    expect(result!.ai.fang).toBe(2 * result!.forecast.fang);
   });
 });

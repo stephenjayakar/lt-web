@@ -546,7 +546,18 @@ export function attackSpeed(
     unit, item, game, target, item2, mode, attackInfo,
   );
 
-  return baseAS + rankBonus(unit, item, db, 'attack_speed') + itemMod + skillMod;
+  const speed = baseAS + rankBonus(unit, item, db, 'attack_speed') + itemMod + skillMod;
+  return clampNegativeSpeed(speed, db);
+}
+
+/**
+ * EOtF (like upstream Python): without the allow_negative_as constant an
+ * attack or defense speed below 0 counts as 0, so a heavy weapon cannot
+ * hand the foe a double.
+ */
+function clampNegativeSpeed(speed: number, db: Database): number {
+  if (!isForkEngine() || speed >= 0 || db.getConstant('allow_negative_as', false)) return speed;
+  return 0;
 }
 
 /** Calculate defense speed (for doubling checks on the defender side). */
@@ -575,11 +586,11 @@ export function defenseSpeed(
   const base = speedExpr
     ? evaluateEquation(speedExpr, unit, { db, item })
     : unit.getStatValue('SPD');
-  return base + defensiveRankBonus(unit, item, db, 'defense_speed') +
+  return clampNegativeSpeed(base + defensiveRankBonus(unit, item, db, 'defense_speed') +
     (item ? itemSystem.modifyDefenseSpeed(unit, item, game) : 0) +
     skillSystem.modifyDefenseSpeed(
       unit, defensiveSkillItem(item, itemToAvoid), game, target, itemToAvoid, mode, attackInfo,
-    );
+    ), db);
 }
 
 export function critAccuracy(

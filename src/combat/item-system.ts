@@ -50,6 +50,7 @@ import {
   modifiedMinimumRange,
   multiattacksBlocked,
   noAttackAfterMove as skillNoAttackAfterMove,
+  combatConditionSnapshot,
   skillConditionActive,
   type AlternateSplash,
   unitHasTag,
@@ -361,7 +362,7 @@ function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][n
   // snapshot (forecasts) evaluate it against the item with no target.
   const combatCondition = skill.getComponent<string>('combat_condition');
   if (combatCondition && isForkEngine()) {
-    const snapshot = skill.data.get('_combat_condition');
+    const snapshot = combatConditionSnapshot(skill);
     if (typeof snapshot === 'boolean') {
       if (!snapshot) return false;
     } else if (!evaluateCondition(combatCondition, {

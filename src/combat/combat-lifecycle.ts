@@ -52,6 +52,7 @@ import {
 import {
   checkAlly,
   checkEnemy,
+  combatConditionSnapshot,
   hasDrainingCharge,
   ignoreForcedMovement,
   modifiedHealAmount,
@@ -138,7 +139,7 @@ function combatSkillEnabled(
       Number.isFinite(charge) && charge <= 0) return false;
   const combatCondition = skill.getComponent<string>('combat_condition');
   if (combatCondition) {
-    const snapshot = skill.data.get('_combat_condition');
+    const snapshot = combatConditionSnapshot(skill);
     if (typeof snapshot === 'boolean') {
       if (!snapshot) return false;
     } else if (!evaluateCondition(combatCondition, {
@@ -1159,8 +1160,11 @@ export function applyCombatSkillEndHooks(
           Math.max(1, target.currentHp - amount),
         );
       }
+      // EOtF's post_combat_damage(_percent) sets max(1, HP - damage) with no
+      // HP check, so a target killed in the combat is left at 1 HP.
+      const postDamageHpOk = isForkEngine() || target.currentHp > 0;
       const standardDamage = skill.getComponent<unknown>('post_combat_damage');
-      if (standardDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
+      if (standardDamage !== undefined && enemyHookTarget && postDamageHpOk &&
           !processedGlobalHooks.get(skill)?.has('post_combat_damage')) {
         const amount = Math.trunc(Number(standardDamage));
         if (Number.isFinite(amount)) {
@@ -1172,14 +1176,17 @@ export function applyCombatSkillEndHooks(
         }
       }
       const percentDamage = skill.getComponent<unknown>('post_combat_damage_percent');
-      if (percentDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
+      if (percentDamage !== undefined && enemyHookTarget && postDamageHpOk &&
           !processedGlobalHooks.get(skill)?.has('post_combat_damage_percent')) {
-        const amount = Math.trunc(target.maxHp * Number(percentDamage));
-        if (Number.isFinite(amount)) {
+        // Python: int(hp - max_hp * value), truncating the difference.
+        const endHp = isForkEngine()
+          ? Math.trunc(target.currentHp - target.maxHp * Number(percentDamage))
+          : target.currentHp - Math.trunc(target.maxHp * Number(percentDamage));
+        if (Number.isFinite(endHp)) {
           activateHpHook(
             'post_combat_damage_percent',
             target,
-            Math.max(1, target.currentHp - amount),
+            Math.max(1, endHp),
           );
         }
       }
@@ -1255,7 +1262,9 @@ export function applyCombatSkillEndHooks(
         );
       }
       const standardRecoil = skill.getComponent<unknown>('recoil');
-      if (standardRecoil !== undefined && isHookTarget && unit.currentHp > 0 &&
+      // EOtF's Recoil has no HP check: a unit already dying (its death is
+      // settled before end_combat) is set to 1 HP and still dies.
+      if (standardRecoil !== undefined && isHookTarget && (isForkEngine() || unit.currentHp > 0) &&
           (enemyHookTarget || foughtEnemy) &&
           !processedGlobalHooks.get(skill)?.has('recoil')) {
         const amount = Math.trunc(Number(standardRecoil));
@@ -2051,8 +2060,13 @@ export function applyUnusableCombatItems(
 ): void {
   if (!isForkEngine() || !game.actionLog) return;
   for (const [unit, item] of pairs) {
-    if (!unit || !item || !item.hasComponent('c_uses') || item.hasComponent('uses')) continue;
-    if (Number(item.data.get('c_uses') ?? 1) > 0) continue;
+    if (!unit || !item) continue;
+    // ChapterUses at 0 (when it is the only uses count) or a Cooldown still
+    // running: is_unusable, and on_unusable unequips the item.
+    const spentChapterUses = item.hasComponent('c_uses') && !item.hasComponent('uses') &&
+      Number(item.data.get('c_uses') ?? 1) <= 0;
+    const coolingDown = item.hasComponent('cooldown') && Number(item.data.get('cooldown') ?? 0) !== 0;
+    if (!spentChapterUses && !coolingDown) continue;
     if (unit.equippedWeapon !== item && unit.equippedAccessory !== item) continue;
     game.actionLog.doAction(new UnequipItemAction(unit, item));
   }
