@@ -23,24 +23,9 @@ import {
 } from '../combat/skill-system';
 import { evaluateInt } from '../events/event-manager';
 import { isForkEngine } from './engine-flavor';
+import { sourceAllowsPlainRemoval } from '../combat/skill-system';
 import { getCombatRandom, getCombatRandomState } from './static-random';
 
-/**
- * Python UnitObject.remove_skill: an expiring status calls RemoveSkill with
- * no source, which only removes an instance whose source type is removable
- * (class, personal, fatigue, default). One granted by an item, terrain,
- * region, aura, rescue or the game stays on (at 0 turns) until its own
- * source takes it away.
- */
-function sourceAllowsPlainRemoval(skill: SkillObject): boolean {
-  const data = skill.data;
-  const types = [
-    data.get('sourceType'), data.get('itemSourceType'), data.get('positionStatusSourceType'),
-    data.get('auraSourceType'), data.get('rescueSourceType'),
-  ];
-  return !types.some((type) => typeof type === 'string' &&
-    ['item', 'terrain', 'region', 'aura', 'traveler', 'global'].includes(type));
-}
 
 export type SkillTurnPhase = 'upkeep' | 'endstep';
 

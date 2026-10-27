@@ -160,7 +160,11 @@ test.describe('Equipped-item lifecycle & equip-linked components', () => {
 
     await equipItem(page, 'Eirika', 'Runesword');
     const afterEquip = await getUnitDetail(page, 'Eirika');
-    expect(afterEquip.skillNids.filter((s: string) => s === 'DarkOverride').length).toBe(naturalCount + 1);
+    // Python's unit.skills shows one DarkOverride; the item's instance waits
+    // shadowed behind the natural one.
+    expect(afterEquip.skillNids.filter((s: string) => s === 'DarkOverride').length).toBe(naturalCount);
+    expect(await page.evaluate(() => (window as any).__gameRef.units.get('Eirika').shadowedSkills
+      .filter((s: any) => s.nid === 'DarkOverride').length)).toBe(1);
 
     // Remove the Runesword to force unequip.
     await page.evaluate(() => {

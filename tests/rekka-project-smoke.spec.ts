@@ -66,7 +66,9 @@ test.skip(!rekkaInstalled, 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka all-level compatibility', () => {
   test('all levels clean boot without runtime failures @milestone', async ({ page }) => {
-    test.setTimeout(10 * 60_000);
+    // One full page boot per level (5 min for all 48 under a loaded gate):
+    // budget per level, like the EOtF sweep.
+    test.setTimeout(Math.max(10 * 60_000, (levels.length + 1) * 15_000));
     const failures: string[] = [];
     let currentLevel = 'startup';
     page.on('pageerror', (error) => {
@@ -97,7 +99,9 @@ test.describe('Rekka all-level compatibility', () => {
   });
 
   test('all playable level-start event queues settle @milestone', async ({ page }) => {
-    test.setTimeout(8 * 60_000);
+    // A page boot plus 1200 settle frames per level: the fixed 8 min ran out
+    // under a loaded release gate, so budget per level.
+    test.setTimeout(Math.max(8 * 60_000, levels.length * 20_000));
     const failures: string[] = [];
     let currentLevel = 'startup';
     page.on('pageerror', (error) => {
@@ -1443,7 +1447,7 @@ test.describe('Rekka all-level compatibility', () => {
       const lyn = game.units.get('Lyn');
       return {
         level: game.currentLevel?.nid,
-        previousLevel: game.gameVars.get('_prev_level_nid'),
+        previousLevel: game.memory.get('_prev_level_nid'),
         money: game.getParty().money,
         items: lyn?.items.map((item: any) => item.nid) ?? [],
         persistent: lyn?.persistent,
@@ -1609,7 +1613,7 @@ test.describe('Rekka all-level compatibility', () => {
       const legault = game.units.get('Legault');
       return {
         level: game.currentLevel?.nid,
-        previousLevel: game.gameVars.get('_prev_level_nid'),
+        previousLevel: game.memory.get('_prev_level_nid'),
         team: legault?.team,
         items: legault?.items.map((item: any) => item.nid) ?? [],
       };
@@ -1707,7 +1711,7 @@ test.describe('Rekka all-level compatibility', () => {
       const hector = game.units.get('Hector');
       return {
         level: game.currentLevel?.nid,
-        previousLevel: game.gameVars.get('_prev_level_nid'),
+        previousLevel: game.memory.get('_prev_level_nid'),
         state: game.state.getCurrentState()?.name,
         items: hector?.items.map((item: any) => item.nid) ?? [],
       };

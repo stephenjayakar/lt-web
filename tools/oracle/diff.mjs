@@ -19,6 +19,7 @@ export function loadNoncomparable() {
     ignore: Object.keys(raw.ignore ?? {}),
     zeroMissing: Object.keys(raw.zero_equals_missing ?? {}),
     nullEmpty: Object.keys(raw.null_equals_empty ?? {}),
+    falseMissing: Object.keys(raw.false_equals_missing ?? {}),
     unordered: Object.keys(raw.unordered ?? {}),
     stateAliases: raw.state_aliases ?? {},
   };
@@ -87,10 +88,12 @@ export function diffRuns(py, web, scenario = {}) {
   const alias = (s) => nc.stateAliases[s] ?? s;
   const zeroMissing = makeMatcher(nc.zeroMissing);
   const nullEmpty = makeMatcher(nc.nullEmpty);
+  const falseMissing = makeMatcher(nc.falseMissing);
   const unordered = makeMatcher(nc.unordered);
   const eq = (p, a, b) =>
     (zeroMissing(p) && (a ?? 0) === 0 && (b ?? 0) === 0) ||
-    (nullEmpty(p) && (a ?? '') === '' && (b ?? '') === '');
+    (nullEmpty(p) && (a ?? '') === '' && (b ?? '') === '') ||
+    (falseMissing(p) && (a ?? false) === false && (b ?? false) === false);
   const report = { steps: [], errors: [], ok: true };
   if (py.error) report.errors.push(`python: ${py.error}`);
   if (web.error) report.errors.push(`web: ${web.error}`);
@@ -115,6 +118,14 @@ export function diffRuns(py, web, scenario = {}) {
         if (ignored(d.path)) continue;
         (known(d.path) ? entry.known : entry.diffs).push(d);
       }
+    }
+    // save_load steps: what each engine's own suspend/reload changed.
+    for (const [side, st] of [['python', ps], ['web', ws]]) {
+      if (!st?.pre_snapshot) continue;
+      const raw = [];
+      walk(structuredClone(st.pre_snapshot), structuredClone(st.snapshot), '', raw, { eq, unordered });
+      const changed = raw.filter((d) => !ignored(d.path));
+      if (changed.length) (entry.roundtrip ??= {})[side] = changed;
     }
     if (entry.diffs.length || entry.errors.length) report.ok = false;
     report.steps.push(entry);
@@ -146,7 +157,7 @@ export function formatReport(name, report, { all = false, full = false } = {}) {
     const persisting = s.diffs.length - shown.length;
     const resolved = full ? [] : [...prev.keys()].filter((p) => !cur.has(p));
     prev = cur;
-    if (!all && !shown.length && !s.errors.length && !s.known.length && !resolved.length) continue;
+    if (!all && !shown.length && !s.errors.length && !s.known.length && !resolved.length && !s.roundtrip) continue;
     const act = { ...s.action };
     const label = act.do + (act.unit ? ` ${act.unit}` : '') + (act.target ? ` -> ${act.target}` : '');
     lines.push(`  [${s.index}] ${label}${persisting ? `  (+${persisting} persisting)` : ''}`);
@@ -154,6 +165,11 @@ export function formatReport(name, report, { all = false, full = false } = {}) {
     for (const d of shown) lines.push(`      ${fmtDiff(d)}`);
     for (const p of resolved) lines.push(`      (now equal) ${p}`);
     for (const d of s.known) lines.push(`      (known) ${fmtDiff(d)}`);
+    for (const [side, changed] of Object.entries(s.roundtrip ?? {})) {
+      for (const d of changed) {
+        lines.push(`      (${side} reload changed) ${d.path}: ${fmt(d.py)} -> ${fmt(d.web)}`);
+      }
+    }
   }
   return lines.join('\n');
 }

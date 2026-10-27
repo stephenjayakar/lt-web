@@ -343,6 +343,7 @@ import {
   unitSpriteTint,
   canUnlock as skillCanUnlock,
   unitHasTag,
+  sourceAllowsPlainRemoval,
   changeAi,
   checkEnemy,
 } from '../../combat/skill-system';
@@ -12183,7 +12184,7 @@ export class EventState extends State {
     }
 
     if (game.levelVars.get('_lose_game')) {
-      game.levelVars.set('_lose_game', false);
+      // Python leaves _lose_game set; the game over leads to the title.
       console.warn('GAME OVER — loss condition met via lose_game flag');
       game.state.clear();
       game.state.change('game_over');
@@ -12391,7 +12392,8 @@ export class EventState extends State {
    */
   private levelEnd(game: any): void {
     const currentLevelNid = game.currentLevel?.nid ?? '';
-    game.gameVars.set('_prev_level_nid', currentLevelNid);
+    // Python keeps this in game.memory, not in the (saved, event-visible) game vars.
+    game.memory.set('_prev_level_nid', currentLevelNid);
 
     // Find current level index in the ordered db.levels map
     const levelNids = Array.from(game.db.levels.keys()) as string[];
@@ -12407,6 +12409,13 @@ export class EventState extends State {
     // Determine the next level
     let nextLevelNid: string | null = null;
     const gotoLevel = game.gameVars.get('_goto_level') ?? null;
+
+    // Python level_end records whether the next level comes from the overworld.
+    if (currentIndex < levelNids.length - 1 || gotoLevel !== null) {
+      const levelPrefab = game.db.levels.get(currentLevelNid);
+      game.gameVars.set('_should_go_to_overworld',
+        !!levelPrefab?.go_to_overworld && !!game.db.getConstant?.('overworld', false) && gotoLevel === null);
+    }
 
     if (gotoLevel !== null) {
       if (gotoLevel === '_force_quit') {
@@ -14423,9 +14432,9 @@ export class EventState extends State {
         // Resolve/assign the new unit's nid
         let newNid = explicitNid;
         if (!newNid) {
-          let counter = 201;
-          while (game.units.has(String(counter))) counter++;
-          newNid = String(counter);
+          // Python str_utils.get_next_int('201', unit nids): '201' if free,
+          // else the first free '1', '2', ...
+          newNid = nextIntNid('201', game.units);
         } else if (game.units.has(newNid)) {
           console.warn(`create_unit: unit with nid "${newNid}" already exists`);
           this.advancePointer();
@@ -15484,7 +15493,8 @@ export class EventState extends State {
         const deathPosition = unit.position
           ? [unit.position[0], unit.position[1]] as [number, number]
           : undefined;
-        game.actionLog.doAction(new SetCurrentHpAction(unit, 0));
+        // Python kill_unit marks the unit dead (Die / DyingState) and leaves
+        // its HP alone (upstream and the EOtF fork).
         // Python: an on-map unit goes through game.death.should_die and the
         // DyingState (Death sfx, white flicker, fade; Die after 400 ms) once
         // the UnitDeath events it triggers have run; `immediate` and off-map
@@ -16104,12 +16114,16 @@ export class EventState extends State {
           const uid = /^\d+$/.test(skillId) ? parseInt(skillId, 10) : null;
           const matches = unit.skills.filter((skill: SkillObject) =>
             uid !== null ? skill.uid === uid : skill.nid === skillId);
+          // Python RemoveSkill without a source: instances granted by an
+          // item, terrain, region, aura, rescue or the game stay, and a count
+          // only counts the instances actually removed.
+          const removable = matches.filter((skill: SkillObject) => sourceAllowsPlainRemoval(skill));
           const removals = uid !== null || count === 1
-            ? matches.slice(0, 1)
+            ? matches.slice(0, 1).filter((skill: SkillObject) => removable.includes(skill))
             : count < 0
-              ? matches
-              : matches.slice(0, count);
-          rsRemovedSkill = removals[0];
+              ? removable
+              : removable.slice(0, count);
+          rsRemovedSkill = matches[0];
           for (const skill of removals) {
             game.actionLog.doAction(new RemoveSkillAction(unit, skill));
           }

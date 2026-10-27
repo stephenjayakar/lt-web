@@ -23,6 +23,7 @@ import { enterStartedLevel } from '../../../src/engine/states/game-states';
 import { setSetting } from '../../../src/engine/states/settings-state';
 import { GameEvent } from '../../../src/events/event-manager';
 import { getCombatRandomState, getGrowthRandomState } from '../../../src/engine/static-random';
+import { loadSuspend, suspendGame } from '../../../src/engine/save';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 type Action = { do: string; [k: string]: any };
@@ -41,10 +42,13 @@ export interface Scenario {
   start_frames?: number;
   startup_events?: boolean;
   start_game_vars?: Record<string, unknown>;
+  start_records?: Record<string, unknown>;
   /** Level sweep: start each level from the same state, one snapshot each. */
   levels?: string[];
   /** Press Fight when a level settles in preparations. */
   through_prep?: boolean;
+  /** Sweep: actions run on every turn-based level after it starts. */
+  level_actions?: Action[];
   /** Captured run state (capture_run_state.py), inlined by web-driver.mjs. */
   run_state?: RunState;
 }
@@ -70,6 +74,16 @@ const REST_STATES = new Set([
 
 class OracleError extends Error {}
 
+/**
+ * Like py_driver.py's frame clock: screens that time themselves with
+ * performance.now() (level-up and promotion screens, portrait fades, prep
+ * fades) see exactly 1000/60 ms per stepped frame, not wall-clock time.
+ */
+let virtualNow = performance.now();
+function installVirtualClock(): void {
+  Object.defineProperty(performance, 'now', { configurable: true, value: () => virtualNow });
+}
+
 const w = window as any;
 
 class WebEngine {
@@ -77,9 +91,19 @@ class WebEngine {
   h: any = w.__harness;
   frame = 0;
   suppressEvents = false;
+  eventsOff = false;
+
+  /** With events off, trigger-based events never fire; re-run after a load (new EventManager). */
+  hookEvents(): void {
+    if (!this.eventsOff) return;
+    const manager = this.game.eventManager;
+    const real = manager.trigger.bind(manager);
+    manager.trigger = (t: any, c: any) => (this.suppressEvents ? false : real(t, c));
+  }
 
   step(button: string | null = null): void {
     this.frame++;
+    virtualNow += 1000 / 60;
     this.h.stepFrames(1, button);
   }
 
@@ -96,9 +120,17 @@ class WebEngine {
     return this.game.state.getStackNames();
   }
 
+  /** An event `choice` menu waiting for the player (Python's player_choice state). */
+  awaitingChoice(): boolean {
+    const st: any = this.game.state.getCurrentState();
+    return st?.name === 'event' && !!st.choiceMenu;
+  }
+
   busy(): boolean {
     const g = this.game;
     if ((g.state as any).tempState?.length) return true;
+    // Prep and similar screens fade out for a few hundred ms before leaving.
+    if ((g.state.getCurrentState() as any)?.fadeOut === true) return true;
     // Free roam keeps the roam unit's movement live (as in Python).
     if (g.movementSystem?.isMoving?.() && this.top() !== 'free_roam') return true;
     return false;
@@ -113,7 +145,7 @@ class WebEngine {
     for (let i = 0; i < maxFrames; i++) {
       if (i % 20 === 19) await new Promise<void>((r) => setTimeout(r, 0));
       const top = this.top();
-      const rest = opts.until ? opts.until(this) : (top !== undefined && REST_STATES.has(top));
+      const rest = opts.until ? opts.until(this) : (top !== undefined && REST_STATES.has(top)) || this.awaitingChoice();
       if (rest && !this.busy()) {
         stable++;
         if (stable >= 3) return;
@@ -151,6 +183,8 @@ class WebEngine {
     const st: any = this.game.state.getCurrentState();
     if (!st) throw new OracleError('no state');
     if (st.confirm) return { menu: st.confirm, items: null };
+    // EventState's `choice` command (Python player_choice).
+    if (st.choiceMenu && Array.isArray(st.choiceMenu.options)) return { menu: st.choiceMenu, items: null };
     if (st.child) return { menu: st.child, items: null };
     if (st.targetMenu) return { menu: st.targetMenu, items: null };
     if (st.menu && Array.isArray(st.menu.options)) {
@@ -172,15 +206,26 @@ class WebEngine {
     let idx = -1;
     if (items) idx = items.findIndex((it: any) => it?.nid === want);
     if (idx < 0) {
-      idx = opts.findIndex((o: any) => label(o).toLowerCase() === lw || value(o).toLowerCase() === lw);
+      // choice entries may be 'value|display text'
+      const keys = (o: any): string[] => [label(o), value(o)].flatMap((t) => [t, t.split('|')[0]]).map((t) => t.toLowerCase());
+      idx = opts.findIndex((o: any) => keys(o).includes(lw));
     }
     if (idx < 0) {
       throw new OracleError(`option ${want} not in ${this.top()} menu ${JSON.stringify(opts.map(label))}`);
     }
-    for (let n = 0; n < opts.length + 2 && index(menu) !== idx; n++) {
-      this.press(idx > index(menu) ? 'DOWN' : 'UP');
-      menu = this.activeMenu().menu;
+    // Grids: rows with DOWN/UP; on overshoot (or no move) go back and step sideways.
+    const current = (): number => index(this.activeMenu().menu);
+    for (let n = 0; n < 4 * opts.length + 4 && current() !== idx; n++) {
+      const cur = current();
+      const forward = idx > cur;
+      this.press(forward ? 'DOWN' : 'UP');
+      const moved = current();
+      if (moved === cur || (forward ? moved > idx : moved < idx)) {
+        if (moved !== cur) this.press(forward ? 'UP' : 'DOWN');
+        this.press(forward ? 'RIGHT' : 'LEFT');
+      }
     }
+    menu = this.activeMenu().menu;
     if (index(menu) !== idx) throw new OracleError(`could not reach option ${want} in ${this.top()}`);
     this.press('SELECT');
   }
@@ -390,16 +435,21 @@ class Runner {
     e.press('SELECT');
     await e.settle({ until: (en) => en.top() === 'option_menu' });
     e.choose('End');
+    // Back to the player phase, or a level whose turn ended in free roam or
+    // a game over (stop there rather than pressing on into the title).
     await e.settle({
-      until: (en) => en.top() === 'free' && en.game.phase.getCurrent() === 'player',
+      until: (en) => (['free', 'free_roam'].includes(en.top() ?? '') && en.game.phase.getCurrent() === 'player') ||
+        en.top() === 'game_over',
       maxFrames: a.max_frames ?? 20000,
     });
   }
 
+  /** First unoccupied tile inside the board's movement bounds (py_driver). */
   private emptyTile(): [number, number] {
     const g = this.e.game;
-    for (let y = 0; y < g.tilemap.height; y++) {
-      for (let x = 0; x < g.tilemap.width; x++) {
+    const [minX, minY, maxX, maxY] = g.board.bounds ?? [0, 0, g.tilemap.width - 1, g.tilemap.height - 1];
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
         if (!g.board.getUnit(x, y)) return [x, y];
       }
     }
@@ -440,10 +490,88 @@ class Runner {
     }
   }
 
+  /**
+   * py_driver do_attack_or_wait: `unit` (default Player) attacks with its
+   * first weapon the nearest valid target (Manhattan distance, then x, then
+   * y) if its menu offers Attack, else waits in place.
+   */
+  async do_attack_or_wait(a: Action): Promise<void> {
+    const e = this.e;
+    const nid = a.unit ?? 'Player';
+    const u = e.game.units.get(nid);
+    if (!u || !u.position || u.finished || u.team !== 'player') return;
+    await this.inMenuFor(nid);
+    const { menu } = e.activeMenu();
+    const labels: string[] = menu.options.map((o: any) => String(o.label ?? o.entry?.text ?? ''));
+    if (labels.includes('Attack')) {
+      e.choose('Attack');
+      await e.settle();
+      if (e.top() === 'weapon_choice') {
+        e.press('SELECT');
+        await e.settle();
+      }
+      e.expect('targeting', 'combat_targeting');
+      const st: any = e.game.state.getCurrentState();
+      const [ux, uy] = u.position;
+      const positions: [number, number][] = (st.targets ?? []).map((t: any) => t?.position ?? t)
+        .filter((p: any) => Array.isArray(p));
+      positions.sort((p, q) =>
+        (Math.abs(p[0] - ux) + Math.abs(p[1] - uy)) - (Math.abs(q[0] - ux) + Math.abs(q[1] - uy)) ||
+        p[0] - q[0] || p[1] - q[1]);
+      if (!positions.length) throw new OracleError('Attack offered but no targets');
+      await this.targetAndFire(positions[0]);
+    } else {
+      e.choose('Wait');
+      await e.settle();
+    }
+  }
+
   /** Pick a named option in whatever menu the top state shows. */
   async do_choose(a: Action): Promise<void> {
     this.e.choose(a.option);
     await this.e.settle({ skip: a.skip, maxFrames: a.max_frames });
+  }
+
+  /** Python do_roam_talk: beside the target, half a tile in, SELECT. */
+  async do_roam_talk(a: Action): Promise<void> {
+    const e = this.e;
+    const g = e.game;
+    e.expect('free_roam');
+    const st: any = g.state.getCurrentState();
+    const ru = st.roamUnit;
+    const [tx, ty] = e.targetPos(a.target);
+    const from: [number, number] = a.from ?? this.freeNeighbour(tx, ty);
+    if (!ru.position || ru.position[0] !== from[0] || ru.position[1] !== from[1]) {
+      g.actionLog.doAction(new WarpUnitAction(ru, from, g.board));
+    }
+    st.movementComponent.roamPosition = { x: from[0] + (tx - from[0]) * 0.5, y: from[1] + (ty - from[1]) * 0.5 };
+    e.press('SELECT');
+    await e.settle({ skip: a.skip, maxFrames: a.max_frames });
+  }
+
+  private freeNeighbour(x: number, y: number): [number, number] {
+    const g = this.e.game;
+    for (const [dx, dy] of [[0, 1], [-1, 0], [1, 0], [0, -1]]) {
+      const px = x + dx;
+      const py = y + dy;
+      if (g.board.inBounds(px, py) && !g.board.getUnit(px, py)) return [px, py];
+    }
+    throw new OracleError(`no free tile next to ${x},${y}`);
+  }
+
+  /** Python counterpart: suspend through the save store, load it back, settle. */
+  preSnapshot: Json | null = null;
+
+  async do_save_load(a: Action): Promise<void> {
+    const e = this.e;
+    e.expect(...(a.states ?? ['free']));
+    this.preSnapshot = snapshot(e);
+    const g = e.game;
+    // The real suspend and title Continue paths: save store write, then read.
+    await suspendGame(g);
+    if (!(await loadSuspend(g))) throw new OracleError('loadSuspend failed');
+    e.hookEvents();
+    await e.settle({ skip: a.skip, maxFrames: a.max_frames });
   }
 
   async do_frames(a: Action): Promise<void> {
@@ -494,6 +622,7 @@ function itemSnap(it: any): Json {
     uses: hasUses ? it.uses : (it.data?.get?.('uses') ?? null),
     c_uses: hasCUses ? it.uses : (it.data?.get?.('c_uses') ?? null),
     droppable: !!it.droppable,
+    data: it.data instanceof Map ? jsonable(it.data) : {},
   };
 }
 
@@ -587,9 +716,12 @@ export function snapshot(e: WebEngine): Json {
     level: g.currentLevel?.nid ?? null,
     turn: g.turnCount,
     phase: g.phase?.getCurrent?.() ?? null,
-    state: e.top() ?? null,
+    // EventState's choice menu is Python's player_choice state.
+    state: e.awaitingChoice() ? 'player_choice' : (e.top() ?? null),
     stack: e.stack(),
     money: g.getParty?.()?.money ?? null,
+    bexp: g.getParty?.()?.bexp ?? null,
+    convoy: (g.getParty?.()?.convoy ?? []).map((it: any) => ({ nid: it.nid, data: it.data instanceof Map ? jsonable(it.data) : {} })),
     units,
     game_vars: jsonable(g.gameVars),
     level_vars: jsonable(g.levelVars),
@@ -729,9 +861,14 @@ async function startLevel(e: WebEngine, scn: Scenario, level: string): Promise<v
     g.buildNew();
     g.eventManager?.restoreOnceTriggered([]);
   }
+  // Persistent records a returning player would have.
+  for (const [nid, value] of Object.entries(scn.start_records ?? {})) RECORDS.replace(nid, value);
   // Python build_new: fresh game vars holding only the seed.
   g.gameVars.clear();
   g.gameVars.set('_random_seed', scn.seed ?? 0);
+  // Python's driver fixes cf.SETTINGS['random_seed'] too, so a later New Game
+  // (after a defeat, say) reuses the scenario seed.
+  g.fixedRandomSeed = scn.seed ?? 0;
   // Fresh difficulty mode with the scenario overrides, set before the level
   // builds so generic autolevels use them (loadLevel keeps an existing
   // mode). Same defaults as py_driver.py: Python's own default mode object
@@ -752,8 +889,8 @@ async function startLevel(e: WebEngine, scn: Scenario, level: string): Promise<v
     while (g.eventManager?.hasActiveEvents()) g.eventManager.dequeueCurrentEvent();
     g.eventManager.restoreOnceTriggered([]);
     e.suppressEvents = true;
-    const real = g.eventManager.trigger.bind(g.eventManager);
-    g.eventManager.trigger = (t: any, c: any) => (e.suppressEvents ? false : real(t, c));
+    e.eventsOff = true;
+    e.hookEvents();
   }
   enterStartedLevel(g);
   await e.settle({ skip: scn.skip, maxFrames: scn.start_frames ?? 20000 });
@@ -778,6 +915,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
 
 export async function runScenario(scn: Scenario): Promise<Json> {
   const out: any = { engine: 'web', scenario: scn.name ?? null, steps: [], error: null };
+  installVirtualClock();
   const e = new WebEngine();
   try {
     for (const [k, v] of Object.entries({ ...DEFAULT_SETTINGS, ...(scn.settings ?? {}) })) setSetting(k, v);
@@ -786,8 +924,14 @@ export async function runScenario(scn: Scenario): Promise<Json> {
     // drains it before it runs. Run it here, before the level, as Python's
     // title screen does (EOtF creates its persistent records there).
     if (scn.startup_events !== false) {
+      // Python's title_start (where py_driver boots): title music, then
+      // on_title_screen and on_startup. A level without music of its own
+      // keeps playing the title song.
+      const titleSong = RECORDS.get('_music_title_screen') ?? g.db.getConstant?.('music_main', null);
+      if (titleSong) void g.audioManager?.fadeIn?.(titleSong, 50);
       const ctx = { game: g, gameVars: g.gameVars, levelVars: g.levelVars };
-      if (g.eventManager.trigger({ type: 'on_startup' }, ctx)) {
+      const titleEvents = g.eventManager.trigger({ type: 'on_title_screen' }, ctx);
+      if (g.eventManager.trigger({ type: 'on_startup' }, ctx) || titleEvents) {
         g.state.change('event');
         await e.settle({ until: (en) => !en.game.eventManager.hasActiveEvents() && en.top() !== 'event' });
       }
@@ -811,6 +955,27 @@ export async function runScenario(scn: Scenario): Promise<Json> {
           step.error ??= `snapshot failed: ${err?.message ?? err}`;
         }
         out.steps.push(step);
+        // The same actions on every level that settled into a turn-based
+        // phase (free roam levels have no turns to end), as py_driver does.
+        if (!step.error && e.top() !== 'free_roam') {
+          const runner = new Runner(e);
+          for (const a of scn.level_actions ?? []) {
+            const act: any = { action: { ...a, level: String(level) } };
+            try {
+              await runner.run(a);
+            } catch (err: any) {
+              console.error(err);
+              act.error = `${err?.name ?? 'Error'}: ${err?.message ?? err}`;
+            }
+            try {
+              act.snapshot = snapshot(e);
+            } catch (err: any) {
+              act.error ??= `snapshot failed: ${err?.message ?? err}`;
+            }
+            out.steps.push(act);
+            if (act.error) break;
+          }
+        }
       }
       const failed = out.steps.filter((st: any) => st.error).map((st: any) => st.action.level);
       if (failed.length) out.level_errors = failed;
@@ -829,7 +994,12 @@ export async function runScenario(scn: Scenario): Promise<Json> {
         console.error(err);
         break;
       }
-      out.steps.push({ action: a, snapshot: snapshot(e) });
+      const step: any = { action: a, snapshot: snapshot(e) };
+      if (r.preSnapshot) {
+        step.pre_snapshot = r.preSnapshot;
+        r.preSnapshot = null;
+      }
+      out.steps.push(step);
     }
   } catch (err: any) {
     console.error(err);

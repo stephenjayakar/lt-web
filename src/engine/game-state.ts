@@ -52,6 +52,7 @@ import {
   activeUnitAnimations,
   changeVariant,
   isCantoSkill,
+  initializeSkillData,
   onRemoveRescue,
   unitHasTag,
 } from '../combat/skill-system';
@@ -346,6 +347,13 @@ export class GameState {
    * persistent combat/growth streams; leaving it unset made every new game
    * share seed 0.
    */
+  /**
+   * Python cf.SETTINGS['random_seed'] (a debug setting): when set (>= 0),
+   * every New Game uses this seed instead of a random one. The harness's
+   * ?seed= and the differential oracle set it.
+   */
+  fixedRandomSeed: number | null = null;
+
   buildNew(): void {
     this.playtime = 0;
     this.units.clear();
@@ -367,7 +375,7 @@ export class GameState {
     this.initiative = null;
     this.roamInfo = new RoamInfo();
     this.gameVars = new Map();
-    this.gameVars.set('_random_seed', Math.floor(Math.random() * 1024));
+    this.gameVars.set('_random_seed', this.fixedRandomSeed ?? Math.floor(Math.random() * 1024));
     this.teamPaletteOverrides.clear();
     this.initParties();
     this.overworldRegistry = new Map();
@@ -1570,6 +1578,8 @@ export class GameState {
       skill.data.set('sourceType', 'global');
       skill.data.set('sourceNid', 'game');
       unit.skills.push(skill);
+      // Python item_funcs.create_skill runs every component's init().
+      initializeSkillData(skill, unit, this);
       if (isCantoSkill(skill)) unit.hasCanto = true;
     }
 
@@ -1577,7 +1587,15 @@ export class GameState {
       const skillPrefab = this.db.skills.get(skillNid);
       if (!skillPrefab) return;
       const skill = new SkillObject(skillPrefab);
+      // Python keeps every instance in _skills but unit.skills shows one per
+      // nid (up to `stack`); a generic whose class and starting skills both
+      // grant HP_Double gets one multiplier. Same limit as AddSkillAction.
+      const stack = Number(skill.getComponent<unknown>('stack') ?? skill.getComponent<unknown>('stax') ?? 1);
+      const limit = Number.isFinite(stack) ? Math.max(1, stack) : 1;
+      if (unit.skills.filter((existing) => existing.nid === skillNid).length >= limit) return;
       unit.skills.push(skill);
+      // Python item_funcs.create_skill runs every component's init().
+      initializeSkillData(skill, unit, this);
       if (isCantoSkill(skill)) unit.hasCanto = true;
     };
 

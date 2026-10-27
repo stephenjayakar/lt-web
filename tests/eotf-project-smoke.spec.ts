@@ -595,7 +595,7 @@ test.describe('Embrace of the Fog project compatibility', () => {
         ['free', 'free_roam', 'prep_main', 'base_main'],
       );
       return {
-        previous: game.gameVars.get('_prev_level_nid'),
+        previous: game.memory.get('_prev_level_nid'),
         level: game.currentLevel?.nid,
         state: harness.getState().currentStateName,
       };
@@ -1313,40 +1313,52 @@ test.describe('Embrace of the Fog project compatibility', () => {
     expect(result.skillCount).toBe(result.expectedSkillCount);
   });
 
-  test('all levels clean boot without runtime failures @milestone', async ({ page }) => {
-    test.setTimeout(12 * 60_000);
-    // Clean boots skip the level's events, so most levels have no player
-    // units; Python's FreeState would auto-end that empty phase and run the
-    // enemy turn without its setup. Keep each boot in its first player phase.
-    await page.addInitScript(() => localStorage.setItem('lt-web-settings', JSON.stringify({ autoend_turn: 0 })));
-    const failures: string[] = [];
-    let currentLevel = 'startup';
-    page.on('pageerror', (error) => {
-      failures.push(`${currentLevel}: PAGEERROR: ${error.message}`);
-    });
-    page.on('console', (message) => {
-      const text = message.text();
-      if (!expectedAssetNoise(text) && compatibilityFailure(text)) {
-        failures.push(`${currentLevel}: ${message.type().toUpperCase()}: ${text}`);
-      }
-    });
+  // Every authored level, in catalog shards (like the level-start settlement
+  // below) so parallel workers split the sweep: 15-20 min serial under load.
+  test.describe('all levels clean boot without runtime failures @milestone', () => {
+    test.describe.configure({ mode: 'parallel' });
+    const shardCount = 4;
+    for (let shard = 0; shard < shardCount; shard++) {
+      test(`catalog shard ${shard + 1}/${shardCount}`, async ({ page }) => {
+        const shardLevels = levels.filter((level, index) => index % shardCount === shard &&
+          (requestedLevelNids.size === 0 || requestedLevelNids.has(level.nid)));
+        // One full page boot per level: ~4.5 s each on an idle machine, but 6-13 s
+        // under a loaded release gate (159 levels took 15-20 min). A fixed 12 min
+        // budget timed out mid-sweep with every level booting, so budget per level.
+        test.setTimeout(Math.max(12 * 60_000, (shardLevels.length + 1) * 15_000));
+        // Clean boots skip the level's events, so most levels have no player
+        // units; Python's FreeState would auto-end that empty phase and run the
+        // enemy turn without its setup. Keep each boot in its first player phase.
+        await page.addInitScript(() => localStorage.setItem('lt-web-settings', JSON.stringify({ autoend_turn: 0 })));
+        const failures: string[] = [];
+        let currentLevel = 'startup';
+        page.on('pageerror', (error) => {
+          failures.push(`${currentLevel}: PAGEERROR: ${error.message}`);
+        });
+        page.on('console', (message) => {
+          const text = message.text();
+          if (!expectedAssetNoise(text) && compatibilityFailure(text)) {
+            failures.push(`${currentLevel}: ${message.type().toUpperCase()}: ${text}`);
+          }
+        });
 
-    for (const level of levels) {
-      if (requestedLevelNids.size > 0 && !requestedLevelNids.has(level.nid)) continue;
-      currentLevel = level.nid;
-      await page.goto(`/?harness=true&project=eotf.ltproj&level=${encodeURIComponent(level.nid)}&clean=true&bundle=false`);
-      await waitForHarness(page);
-      await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
-      const state = await page.evaluate(() => (window as any).__harness.getState());
-      if (state.levelNid !== level.nid) {
-        failures.push(`${level.nid}: loaded level ${String(state.levelNid)}`);
-      }
-      if (!settledStates.has(state.currentStateName)) {
-        failures.push(`${level.nid}: clean boot ended in ${String(state.currentStateName)}`);
-      }
+        for (const level of shardLevels) {
+          currentLevel = level.nid;
+          await page.goto(`/?harness=true&project=eotf.ltproj&level=${encodeURIComponent(level.nid)}&clean=true&bundle=false`);
+          await waitForHarness(page);
+          await page.evaluate(() => (window as any).__harness.stepFrames(3, null));
+          const state = await page.evaluate(() => (window as any).__harness.getState());
+          if (state.levelNid !== level.nid) {
+            failures.push(`${level.nid}: loaded level ${String(state.levelNid)}`);
+          }
+          if (!settledStates.has(state.currentStateName)) {
+            failures.push(`${level.nid}: clean boot ended in ${String(state.currentStateName)}`);
+          }
+        }
+
+        expect(failures, failures.join('\n')).toEqual([]);
+      });
     }
-
-    expect(failures, failures.join('\n')).toEqual([]);
   });
 
   test('loading a level over a restored roam snapshot keeps a live state stack', async ({ page }) => {

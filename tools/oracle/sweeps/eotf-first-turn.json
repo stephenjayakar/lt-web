@@ -1,0 +1,17 @@
+{
+  "name": "eotf-first-turn",
+  "description": "Every EOtF level from the captured run state: settle to the first player phase, end the turn without acting, run the AI phases and the next upkeep.",
+  "project": "eotf.ltproj",
+  "levels": "all",
+  "events": true,
+  "through_prep": true,
+  "seed": 0,
+  "run_state": "run-state/eotf-run.json",
+  "level_actions": [
+    {"do": "end_turn", "max_frames": 60000}
+  ],
+  "known_diffs": [
+    "units.*.growth_points",
+    "units.*.party"
+  ]
+}

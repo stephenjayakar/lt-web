@@ -109,6 +109,13 @@ export class ItemObject {
     }
     this.data = new Map<string, any>();
 
+    // Deprecated Effective / EffectiveMultiplier.init (upstream and the EOtF
+    // fork) copy their values into the item data.
+    if (this.components.has('effective')) this.data.set('effective', this.components.get('effective') ?? 0);
+    if (this.components.has('effective_multiplier')) {
+      this.data.set('effective_multiplier', this.components.get('effective_multiplier') ?? 1);
+    }
+
     // Derive uses from the "uses" component if present.
     const usesValue = this.components.get('uses');
     if (usesValue != null) {
