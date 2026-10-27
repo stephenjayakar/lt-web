@@ -1458,7 +1458,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1665
+          "line": 1663
         },
         {
           "source": "src/native.ts",
@@ -1505,7 +1505,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1670
+          "line": 1668
         }
       ],
       "directReads": [
@@ -1587,7 +1587,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1669
+          "line": 1667
         }
       ],
       "directReads": [
@@ -2482,7 +2482,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1712
+          "line": 1710
         }
       ],
       "directReads": [
@@ -2537,7 +2537,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1715
+          "line": 1713
         }
       ],
       "directReads": [
@@ -5633,11 +5633,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1578
+          "line": 1576
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1638
+          "line": 1636
         },
         {
           "source": "src/objects/item.ts",
@@ -5742,7 +5742,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1638
+          "line": 1636
         }
       ],
       "directReads": [
@@ -9105,7 +9105,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1677
+          "line": 1675
         }
       ],
       "directReads": [

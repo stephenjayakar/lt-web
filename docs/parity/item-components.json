@@ -2150,7 +2150,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1601
+          "line": 1599
         },
         {
           "source": "src/objects/item.ts",
@@ -2279,7 +2279,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1597
+          "line": 1595
         },
         {
           "source": "src/objects/item.ts",
@@ -3804,7 +3804,7 @@
         },
         {
           "source": "src/events/py-expr/runtime.ts",
-          "line": 1792
+          "line": 1803
         }
       ],
       "directReads": [
@@ -7664,7 +7664,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1971
+          "line": 2005
         },
         {
           "source": "src/main.ts",
@@ -9712,7 +9712,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1575
+          "line": 1573
         },
         {
           "source": "src/main.ts",
@@ -9824,7 +9824,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1582
+          "line": 1580
         },
         {
           "source": "src/main.ts",
@@ -9904,7 +9904,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1601
+          "line": 1599
         },
         {
           "source": "src/main.ts",
@@ -10244,11 +10244,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1578
+          "line": 1576
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1638
+          "line": 1636
         },
         {
           "source": "src/objects/item.ts",
