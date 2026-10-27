@@ -210,6 +210,10 @@ export function initializeSkillData(
   if (isForkEngine() && skill.hasComponent('witch_warp_expression') && !skill.data.has('arbitrary')) {
     skill.data.set('arbitrary', '');
   }
+  // Python CombatArt.init: a combat art starts inactive.
+  if (skill.hasComponent('combat_art') && !skill.data.has('active')) {
+    skill.data.set('active', false);
+  }
   if (!skill.hasComponent('stat_change_at_apply_expression') ||
       skill.data.has('stat_changes')) return;
 

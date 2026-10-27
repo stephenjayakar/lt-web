@@ -6696,6 +6696,9 @@ test.describe('Sacred Stones Later Chapters', () => {
 
 test.describe('Sacred Stones Chapter Mechanics', () => {
   test('Chapter 3 seize objective triggers chapter transition to 4', async ({ page }) => {
+    // The Outro is a long dialogue walked frame by frame (about 2,350 step
+    // round trips), which runs close to the default 120 s on a loaded host.
+    test.setTimeout(300_000);
     await page.goto('/?harness=true&level=3&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 10);

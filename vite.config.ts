@@ -181,6 +181,13 @@ function swPrecacheManifest(): Plugin {
  * client to src/packs/.
  */
 const siteBuild = process.env.LT_SITE_BUILD === '1';
+/**
+ * QA tools (src/qa/, docs/qa-tools.md): compiled into the dev server and into
+ * builds made with LT_QA=1 only. Player builds (`npm run build`,
+ * `build:site`) get __LT_QA__ = false, so the dynamic import of src/qa/ is
+ * dead code and no QA chunk is emitted.
+ */
+const qaBuildFlag = process.env.LT_QA === '1' && !siteBuild;
 // fork-sprites ship inside the engine pack (scripts/lib/asset-packs.mjs).
 const SITE_EXCLUDED_PUBLIC = new Set(['game-data', 'bundles', 'fork-sprites', 'soak-seed.json']);
 
@@ -204,7 +211,7 @@ function copyPublicShell(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -269,9 +276,10 @@ export default defineConfig({
     __AVAILABLE_PROJECTS__: JSON.stringify(siteBuild ? [] : discoverProjects()),
     __LT_HOSTED__: JSON.stringify(siteBuild),
     __LT_SPRITES__: JSON.stringify(discoverSprites()),
+    __LT_QA__: JSON.stringify(command === 'serve' || qaBuildFlag),
   },
   build: {
     target: 'es2022',
     copyPublicDir: !siteBuild,
   },
-});
+}));

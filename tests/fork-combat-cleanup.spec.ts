@@ -60,6 +60,9 @@ async function runHookCombat(page: Page, fork: boolean, extras = false): Promise
     define('_ForkCombatDeath', 'combat_death', 'combat_death', "unit1.nid == '_ForkDefender'");
     define('_ForkUnitDeath', 'unit_death', 'unit_death', "unit1.nid == '_ForkDefender'");
     define('_ForkCombatEnd', 'combat_end', 'combat_end', "unit2.nid == '_ForkDefender'");
+    // CombatEnd's playback: brush objects with attributes (p.nid, ...).
+    game.db.events.get('_ForkCombatEnd')._source.push(
+      'level_var;_fork_playback;[(p.nid, p.attacker.nid, p.defender.nid, p.main_attacker.nid) for p in playback]');
     if (extras) {
       define('_ForkUnitWait', 'unit_wait', 'unit_wait', "unit1.nid == '_ForkAttacker' and not actively_chosen");
     }
@@ -156,6 +159,15 @@ test.describe('EOtF engine fork combat cleanup order', () => {
     // The exp screen follows the end_combat hook events.
     expect(timeline[4]).toMatchObject({ combat: true, onMap: false });
     expect(timeline[5]).toMatchObject({ combat: false });
+  });
+
+  test('combat_end playback holds mark brushes read by attribute (p.nid, p.attacker)', async ({ page }) => {
+    const timeline = await runHookCombat(page, true);
+    expect(timeline.map((entry) => entry.label)).toContain('combat_end');
+    const playback = await page.evaluate(() => (window as any).__gameRef.levelVars.get('_fork_playback'));
+    expect(JSON.parse(JSON.stringify(playback))).toEqual([
+      ['mark_hit', '_ForkAttacker', '_ForkDefender', '_ForkAttacker'],
+    ]);
   });
 
   test('upstream projects keep the three-part cleanup with combat_death', async ({ page }) => {

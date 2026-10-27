@@ -144,6 +144,34 @@ test.describe('AI parity', () => {
     expect(result.count).toBe(2);
   });
 
+  test('Interact ignores a same-named event region that has no position (Python Region.contains)', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const bone = g.units.get('Bone');
+      if (!bone?.position) return null;
+      const [bx, by] = bone.position;
+      const target: [number, number] = [bx, Math.max(0, by - 1)];
+      const regions = g.currentLevel.regions;
+      // EOtF map 91 authors an 'Arrive' region (Fake_Arrive) with position None.
+      regions.push({ nid: '__qa_nowhere', region_type: 'event', sub_nid: '__qa_goal', position: null, size: [1, 1], condition: 'True' });
+      regions.push({ nid: '__qa_goal', region_type: 'event', sub_nid: '__qa_goal', position: target, size: [1, 1], condition: 'True' });
+      const behaviour = {
+        action: 'Interact', target: 'Event', target_spec: '__qa_goal',
+        view_range: -4, invert_targeting: false, roam_speed: 100,
+        desired_proximity: 0, condition: '',
+      };
+      try {
+        const action = (g.aiController as any).tryBehaviour(bone, behaviour, [bone.position], 1);
+        return { ok: true, type: action?.type ?? null };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      } finally {
+        regions.splice(regions.length - 2, 2);
+      }
+    });
+    expect(result?.ok, JSON.stringify(result)).toBe(true);
+  });
+
   test('guard mode (view_range -1) restricts to current position unless ai_group is active', async ({ page }) => {
     const result = await page.evaluate(() => {
       const g = (window as any).__gameRef;

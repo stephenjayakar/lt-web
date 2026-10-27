@@ -1417,7 +1417,9 @@ export function getSupportBonusForCombat(unit: UnitObject, game?: any): SupportE
 export function resolveWeapon(unit: UnitObject | null | undefined): ItemObject | null {
   if (!unit) return null;
   if (isForkEngine()) return unit.equippedWeapon ?? null;
-  return resolveWeapon(unit);
+  // Upstream: the first weapon in the inventory, as before 9d6791a (whose
+  // replace-all turned this line into an infinite self-call).
+  return unit.items.find((item) => item.isWeapon()) ?? null;
 }
 
 export function getEquippedWeapon(

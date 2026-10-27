@@ -156,7 +156,11 @@ export class ScrollingBackground {
     this.scrollSpeed = scrollSpeed;
     const resources = game.resources;
     void (async () => {
-      let img: HTMLImageElement | null = await resources?.tryLoadImage?.(`resources/panoramas/${name}.png`) ?? null;
+      // Python create_background asks RESOURCES.panoramas first: an unlisted
+      // name (EOtF has no rune_background) goes straight to the default.
+      const listed = await resources?.hasPanorama?.(name) ?? null;
+      let img: HTMLImageElement | null = listed === false ? null
+        : await resources?.tryLoadImage?.(`resources/panoramas/${name}.png`) ?? null;
       if (!img && name !== 'default_background') {
         img = await resources?.tryLoadImage?.('resources/panoramas/default_background.png') ?? null;
       }
@@ -385,18 +389,27 @@ export function drawUnitMapSprite(
   surf: Surface, game: any, unit: UnitObject, x: number, y: number,
   kind: 'passive' | 'gray' | 'active',
 ): void {
+  const frame = unitStandFrame(game, unit, kind);
+  if (frame) surf.blit(frame, x - 20, y - 24 - 1);
+}
+
+/**
+ * Python unit.sprite.create_image(kind): the unit's current 64x48 stand frame
+ * (passive/gray cycle 32-4-32 frames, active 20-4-20), or null while the map
+ * sprite loads.
+ */
+export function unitStandFrame(game: any, unit: UnitObject, kind: 'passive' | 'gray' | 'active'): Surface | null {
   const sprite: any = unit.sprite;
   if (!sprite) {
     if (!(unit as any)._prepSpriteRequested && game.loadMapSpriteForUnit) {
       (unit as any)._prepSpriteRequested = true;
       void game.loadMapSpriteForUnit(unit);
     }
-    return;
+    return null;
   }
   const frames: Surface[] = sprite.getStandFrames?.(kind) ?? [];
   const index = backAndForthFrame(getFrameCount(), kind === 'active' ? [20, 4, 20] : [32, 4, 32]);
-  const frame: Surface | null = frames.length ? frames[index % frames.length] : sprite.getCurrentFrame?.() ?? null;
-  if (frame) surf.blit(frame, x - 20, y - 24 - 1);
+  return frames.length ? frames[index % frames.length] : sprite.getCurrentFrame?.() ?? null;
 }
 
 // ---------------------------------------------------------------------------

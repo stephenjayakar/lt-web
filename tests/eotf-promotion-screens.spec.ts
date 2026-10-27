@@ -215,7 +215,7 @@ test('BACK from the item promotion choice returns to the map without spending th
   });
 });
 
-/** Give the selected Mercenary a Canter (canto 1) skill and an Iron Sword after the crest. */
+/** Give the selected, already-moved Mercenary a Canter (canto 1) skill and an Iron Sword after the crest. */
 async function cantoMercenary(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const game = (window as any).__gameRef;
@@ -229,6 +229,10 @@ async function cantoMercenary(page: Page): Promise<void> {
     const sword = new ItemObject(game.db.items.get('Iron_Sword'));
     sword.owner = unit;
     unit.items.push(sword);
+    // As after a one-tile Move (MOV 4 -> 3). Python's movement_left property
+    // reads the live movement until has_moved, so the stored budget only
+    // counts once the unit has moved (unit.py movement_left).
+    unit.hasMoved = true;
     unit.movementLeft = 3;
     (window as any).__logStart = game.actionLog.actions.length;
   });
@@ -423,4 +427,30 @@ test('a non-silent event promote plays the promotion screen and resumes the even
   await runUntil(page, async () => (await page.evaluate(() =>
     (window as any).__gameRef.gameVars.get('after_promo'))) === 1, 30_000);
   expect(await page.evaluate(() => (window as any).__promoUnit.klass)).toBe('Hero');
+});
+
+test('Promotion1/2 have no frames, so no sprite sheet is requested (BattleAnimation.__init__)', async ({ page }) => {
+  const warnings: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'warning' && msg.text().includes('combat_effects/')) warnings.push(msg.text());
+  });
+  await boot(page);
+  const sizes = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const promotion = g.state.allStates.get('promotion').owner;
+    const out: Record<string, number> = {};
+    for (const nid of ['Promotion1', 'Promotion2', 'PromoRing']) {
+      out[`${nid}:frames`] = g.db.combatEffects.get(nid)?.frames?.length ?? -1;
+      promotion.getEffectFrameImages(nid);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    out.PromoRing = promotion.getEffectFrameImages('PromoRing').size;
+    return out;
+  });
+  expect(sizes['Promotion1:frames']).toBe(0);
+  expect(sizes['Promotion2:frames']).toBe(0);
+  // An effect with frames still loads its sheet.
+  expect(sizes['PromoRing:frames']).toBeGreaterThan(0);
+  expect(sizes.PromoRing).toBeGreaterThan(0);
+  expect(warnings).toEqual([]);
 });

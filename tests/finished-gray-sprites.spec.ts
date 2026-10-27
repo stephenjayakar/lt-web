@@ -34,6 +34,10 @@ async function boot(page: Page, setup: string = ''): Promise<void> {
     const enemy = [...g.units.values()].find((u: any) => u.team === 'enemy' && u.position) as any;
     g.board.removeUnit(enemy);
     g.board.setUnit(8, 4, enemy);
+    // Level 87 starts with no player units, so its first turn auto-ends and an
+    // enemy phase runs before the test acts. Generics can wield their items
+    // (Python calculate_needed_wexp_from_items), so keep this one passive.
+    enemy.ai = 'None';
     (window as any).__enemyNid = enemy.nid;
     if (extra === 'canto') {
       const { SkillObject } = await import('/src/objects/skill.ts');
@@ -206,7 +210,7 @@ test.describe('finished units draw gray (unit_sprite.update_state)', () => {
     for (let i = 0; i < 200; i++) {
       const top = await stateName(page);
       if (top === 'move') break;
-      await step(page, 8, ['combat', 'targeting', 'weapon_choice'].includes(top) && i % 3 === 0 ? 'SELECT' : null);
+      await step(page, 8, ['combat', 'combat_targeting', 'weapon_choice'].includes(top) && i % 3 === 0 ? 'SELECT' : null);
       await page.waitForTimeout(25);
     }
     expect(await stateName(page)).toBe('move');

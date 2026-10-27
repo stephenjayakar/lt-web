@@ -105,7 +105,10 @@ one released), and the state machine is updated exactly like `driver.run`.
   "setup": [ ... ],                   // direct state edits after the level settles
   "actions": [ ... ],                 // one snapshot after each
   "ignore": ["units.*.ai"],           // extra non-comparable paths for this scenario
-  "known_diffs": ["units.Eirika.hp"]  // reported as (known), do not fail the run
+  "known_diffs": ["units.Eirika.hp"], // reported as (known), do not fail the run
+  "run_state": "run-state/eotf-run.json", // captured run state loaded before the level (see Run states)
+  "levels": ["0", "1"],               // level sweep instead of "level": one snapshot per level
+  "through_prep": true                // press Fight when a level settles in preparations
 }
 ```
 
@@ -179,9 +182,11 @@ several trade partners are a menu on the web instead of map targeting.
       "items": [{"nid", "uses", "c_uses", "droppable"}],
       "equipped_weapon", "skills", "skill_data",
       "finished", "has_attacked", "has_traded", "has_moved",
-      "ai", "ai_group", "traveler" } },
+      "ai", "ai_group", "traveler", "generic" } },
   "game_vars", "level_vars", "regions": [{"nid", "region_type", "position", "size", "sub_nid", "time_left", "only_once"}],
-  "events",                                // queued/running event nids
+  "objective": {"simple", "win", "loss"},
+  "music",                                 // song on top of the music stack
+  "events",                                // queued/running event nids, in processing order
   "already_triggered",                     // only_once events used
   "rng": {"combat", "growth", "other"}     // LCG states; catches extra or missing rolls
 }
@@ -212,12 +217,7 @@ behaviour, not harness artefacts (checked against the Python source):
 
 | Diff | Seen in |
 |---|---|
-| Unique units miss their class skills on the web (Seth/Vanessa have no Canto): `spawnUnit` only grants the unit's personal `learned_skills` | all default scenarios |
-| Python gives every level unit the level's party; the web only player units | every level with non-player units |
-| Generic units: Python raises wexp to their items' requirements (`calculate_needed_wexp_from_items`, e.g. Shaman 101 Dark 31 -> 71) | default DEBUG |
-| Generic autolevels ignore `enemy_leveling` (default.ltproj: Dynamic) on the web | default Prologue (fighter 102 DEF/RES, then its HP in the AI phase) |
-| Promoted generics: Python autolevels `level + previous levels * promoted_autolevels_fraction`; the web levels through the internal level (EOtF hub NPCs at roughly double stats) | eotf-hub-start |
-| EOtF fork: units on Fixed growths start with 50 growth points per stat (upstream and the web start at 0) | all eotf scenarios |
+| none currently | — |
 
 Matching so far: combat strike order, damage, weapon uses, exp and RNG in the
 default and EOtF attacks; trade results; Vulnerary and Heal amounts and their
@@ -226,11 +226,13 @@ level-up HP; `gba_poison`, Stunned/Sleep unequipping and expiring at upkeep;
 terrain statuses after event moves; inline
 event commands (vars, money, items, HP, team, regions, movement, stats, exp,
 wexp, unit removal); the EOtF Dragon AI phase; unit loading/deployment by
-event in EOtF.
+event in EOtF; unit construction (class skills, parties, generic wexp and
+autolevels, promoted generics, the fork's starting growth points) for level
+units, `load_unit` and `create_unit` (default-event-units, eotf-hub-start).
 
 ## EOtF under each engine
 
-- **fork**: boots `lt-maker/eotf.ltproj` (project 2.0.0) directly. The hub
+- **fork**: boots `lt-maker/eotf.ltproj` (project 2.0.1, the data the fork release ships) directly. The hub
   (`X`) runs its level_start events and settles into free roam; `EX_2`
   combat and AI phases run; event-loaded units can be fought on room maps.
 - **upstream**: loads EOtF only through the shim (no `resources/fonts`, no
@@ -241,6 +243,40 @@ event in EOtF.
   `Generate_Enemies` on the fork too. Use `"events": false` plus event
   scripts and setup for room maps, or seed variables with
   `start_game_vars`.
+
+## Run states
+
+Room levels need the state a real run builds before them. A run state is
+captured once from a Python engine and loaded into both engines before each
+level, so both start from the same documented state:
+
+```
+<fork python> -I tools/oracle/capture_run_state.py -o $LT_ORACLE_HOME/run-state/eotf-run.json
+```
+
+The capture boots the project, runs on_startup, starts the hub with its
+events, triggers the hub keeper's run-start event, answers its menus (the
+first units offered, then "Yes"), and lets the real level end carry the run
+into the next level (`Act_1`). Once that level settles it writes JSON with
+the game vars, persistent records, parties (money, convoy), spent only_once
+events and the persistent units with their items and skills as the Python
+engine saves them. Both drivers load it after `build_new`: units start off
+the map without terrain statuses, as after a level end, and the uid counters
+continue after the captured items and skills. The file is generated from the
+project's data, so it stays outside the repo.
+
+## Level sweeps
+
+`node tools/oracle/level-sweep.mjs [sweep.json] [--levels=a,b] [--chunk=8]
+[--workers=3]` starts every level (default `sweeps/eotf-level-sweep.json`:
+all EOtF levels except DEBUG) from the run state on both engines, settles
+through preparations to the first player phase, and diffs one snapshot per
+level. Levels run in chunks (one Python process and one page per chunk,
+`workers` chunks in parallel, about ten minutes for EOtF). It prints a
+per-level table and writes `report.md` and `diffs.json` under
+`$LT_ORACLE_OUT/<name>/`. Diffs on generic units' construction (stats, HP,
+weapon experience, equipped weapon, growth points, party, class skills) are
+counted in their own column, so level flow differences stand out.
 
 ## Writing a scenario
 
