@@ -130,16 +130,21 @@ export class GameOverState extends State {
     this.textTransparency = 1;
     this.currentTime = performance.now();
 
-    // Play game-over music
+    // Python: get_sound_thread().fade_in(_music_game_over or music_game_over)
     const musicOverride = game.gameVars?.get?.('_music_game_over') ?? null;
     const musicConstant = game.db?.getConstant?.('music_game_over', null) ?? null;
     const musicNid = musicOverride || musicConstant;
     if (musicNid && game.audioManager) {
-      void game.audioManager.playMusic(musicNid);
+      void game.audioManager.fadeIn(musicNid);
     }
 
     // Load sprites asynchronously
     this.loadSprites();
+
+    // Python: a quick transition_in (transition_speed 0.1) over the screen.
+    game.memory.set('transition_speed', 0.1);
+    game.state.change('transition_in');
+    return 'repeat';
   }
 
   private loadSprites(): void {
@@ -169,10 +174,11 @@ export class GameOverState extends State {
 
   override takeInput(event: InputEvent): StateResult {
     if (this.phase === 'stasis' && event) {
-      // Any input returns to title screen
+      // Python: any input fades (transition_to) to title_start, which
+      // refreshes the stack down to itself.
       const game = getGame();
-      game.state.clear();
-      game.state.change('title');
+      game.memory.set('next_state', 'title');
+      game.state.change('transition_to');
     }
   }
 

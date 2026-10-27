@@ -157,6 +157,17 @@ async function runHookCombat(page: Page, fork: boolean, extras = false, loseGame
       initialized: combatState.initialized,
       stack: game.state.getStackNames(),
     };
+    if (loseGame) {
+      // Any input in the game over's stasis fades to the title screen.
+      for (let frame = 0; frame < 1200 && game.state.getCurrentState()?.name !== 'title'; frame++) {
+        harness.stepFrames(1, frame % 15 === 14 ? 'SELECT' : null);
+        if (frame % 20 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      (window as any).__forkTitle = {
+        initialized: combatState.initialized,
+        stack: game.state.getStackNames(),
+      };
+    }
     const { setForkEngine } = await import('/src/engine/engine-flavor.ts');
     setForkEngine(false);
     (window as any).__forkDeathEnd = probe();
@@ -204,17 +215,25 @@ test.describe('EOtF engine fork combat cleanup order', () => {
     });
   }
 
-  // Python: a game over from a UnitDeath event stops there; the dying fade
-  // never runs (the unit stays is_dying, not dead), CombatEnd's events stay
-  // queued, and the dropped CombatState never resumes in a later combat.
-  test('fork: a game over from UnitDeath leaves the unit dying and the combat closed', async ({ page }) => {
+  // Python: a game over from a UnitDeath event stops there. EventState
+  // end_event fades (transition_to) to game_over pushed over the whole
+  // stack, so the dying fade never runs (the unit stays is_dying, not dead)
+  // and CombatEnd's events stay queued. Any input then fades to
+  // title_start, whose refresh drops everything under it, and the dropped
+  // CombatState never resumes in a later combat.
+  test('fork: a game over from UnitDeath keeps the stack under it until the title', async ({ page }) => {
     const timeline = await runHookCombat(page, true, false, true);
     expect(timeline.map((entry) => entry.label)).toEqual(['on_hit', 'unit_death']);
     expect(await page.evaluate(() => (window as any).__forkDeathEnd)).toMatchObject({
       dead: false, dying: true, queued: expect.arrayContaining(['_ForkCombatEnd']),
     });
-    expect(await page.evaluate(() => (window as any).__forkCombatLeft)).toEqual({
-      initialized: false, stack: ['game_over'],
+    const left = await page.evaluate(() => (window as any).__forkCombatLeft);
+    expect(left.initialized).toBe(true);
+    expect(left.stack.at(-1)).toBe('game_over');
+    expect(left.stack.slice(-2, -1)).toEqual(['event']);
+    expect(left.stack).toContain('combat');
+    expect(await page.evaluate(() => (window as any).__forkTitle)).toEqual({
+      initialized: false, stack: ['title'],
     });
   });
 
