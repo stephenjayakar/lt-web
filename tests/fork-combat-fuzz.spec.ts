@@ -385,7 +385,19 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
         lifecycle.applyUnusableCombatItems(game, [[hero, hero.items[0]], [null, null]]);
         const galeforce = kit.skills(hero).includes('Galeforce_Status');
         const stillEquipped = hero.equippedWeapon?.nid ?? null;
-        return { toxins, empowered, vibes, child, galeforce, stillEquipped, killed: fought.strikes.length };
+        game.removeUnit(hero.nid);
+
+        // Revolver (cooldown 2): once used in a combat it is unusable, so it
+        // is unequipped after the combat.
+        const gunner = kit.make('_FzGunner', 'player', { klass: 'Myrmidon', items: ['Revolver'], stats: { SKL: 30 } });
+        const target = kit.make('_FzTarget', 'enemy', { stats: { HP: 60 } });
+        kit.place(gunner, 3, 0);
+        kit.place(target, 4, 0);
+        kit.fight(gunner, target, ['hit1', 'end']);
+        lifecycle.applyUnusableCombatItems(game, [[gunner, gunner.items[0]], [null, null]]);
+        const gunCooldown = gunner.items[0].data.get('cooldown');
+        const gunEquipped = gunner.equippedWeapon?.nid ?? null;
+        return { toxins, empowered, vibes, child, galeforce, stillEquipped, killed: fought.strikes.length, gunCooldown, gunEquipped };
       } finally {
         kit.cleanup();
       }
@@ -397,6 +409,8 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
     expect(result!.child).toBe(true);
     expect(result!.galeforce).toBe(true);
     expect(result!.stillEquipped).toBeNull();
+    expect(result!.gunCooldown).toBe(2);
+    expect(result!.gunEquipped).toBeNull();
   });
 
   test('start-of-combat with no main target, phase-end skill gains, override on-hit statuses', async ({ page }) => {

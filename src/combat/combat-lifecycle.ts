@@ -2060,8 +2060,13 @@ export function applyUnusableCombatItems(
 ): void {
   if (!isForkEngine() || !game.actionLog) return;
   for (const [unit, item] of pairs) {
-    if (!unit || !item || !item.hasComponent('c_uses') || item.hasComponent('uses')) continue;
-    if (Number(item.data.get('c_uses') ?? 1) > 0) continue;
+    if (!unit || !item) continue;
+    // ChapterUses at 0 (when it is the only uses count) or a Cooldown still
+    // running: is_unusable, and on_unusable unequips the item.
+    const spentChapterUses = item.hasComponent('c_uses') && !item.hasComponent('uses') &&
+      Number(item.data.get('c_uses') ?? 1) <= 0;
+    const coolingDown = item.hasComponent('cooldown') && Number(item.data.get('cooldown') ?? 0) !== 0;
+    if (!spentChapterUses && !coolingDown) continue;
     if (unit.equippedWeapon !== item && unit.equippedAccessory !== item) continue;
     game.actionLog.doAction(new UnequipItemAction(unit, item));
   }
