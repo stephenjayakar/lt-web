@@ -19,6 +19,7 @@ import { skillCondition } from '../combat/item-system';
 import { applyExpGain, autoLevelUnit } from './leveling';
 import { triggerInterruptRegions } from '../movement/region-interrupt';
 import { isForkEngine } from './engine-flavor';
+import { setCombatRandomState, type RandomGameState } from './static-random';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
 import type { GameState } from './game-state';
@@ -2279,6 +2280,33 @@ export class ProcessStatusEffectsAction extends Action {
       ...effect,
       statMods: { ...effect.statMods },
     }));
+  }
+}
+
+/**
+ * Python action.RecordRandomState: the combat stream moved from `before` to
+ * `after` outside the solver (gba_poison, item-use strikes). The first do is
+ * a no-op in Python; execute here sets the after-state, which is already the
+ * live state the first time, so redo and the first run agree.
+ */
+export class RecordCombatRandomStateAction extends Action {
+  private game: RandomGameState;
+  private before: number;
+  private after: number;
+
+  constructor(game: RandomGameState, before: number, after: number) {
+    super();
+    this.game = game;
+    this.before = before;
+    this.after = after;
+  }
+
+  execute(): void {
+    setCombatRandomState(this.game, this.after);
+  }
+
+  reverse(): void {
+    setCombatRandomState(this.game, this.before);
   }
 }
 

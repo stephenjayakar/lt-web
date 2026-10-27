@@ -7,6 +7,7 @@
  * units, tilemap, mapView, etc.) without creating circular imports.
  */
 
+import { drawItemUseRolls } from '../../combat/item-use-rolls';
 import type { SongObject } from '../../audio/music-controller';
 import { State, MapState, type StateResult } from '../state';
 import { isForkEngine } from '../engine-flavor';
@@ -4379,6 +4380,7 @@ export function applyCoreTargetedItem(
   const game = getGame();
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, [{ item, positions: [position] }]);
   const targets = effectUnits(unit, item, position);
   const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
   const canto = classChangeCanto(game, unit, item, targets[0] ?? null);
@@ -4413,6 +4415,7 @@ export function applyCoreMultiTargetedItem(
   const game = getGame();
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, [{ item, positions }]);
   let applied = false;
   const targets = new Map<string, UnitObject>();
   const hpBefore = new Map<UnitObject, number>();
@@ -4448,6 +4451,10 @@ export function applyCoreSequenceItem(
   if (!item.hasComponent('sequence_item') || item.subitems.length === 0) return false;
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, item.subitems.map((child, childIndex) => ({
+    item: child,
+    positions: targetsByItem[childIndex] ?? [],
+  })));
   let storedUnit: UnitObject | null = null;
   let applied = false;
   const targets = new Map<string, UnitObject>();

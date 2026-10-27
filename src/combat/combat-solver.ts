@@ -6,6 +6,7 @@ import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
 import {
+  crit as itemCrit,
   damage as itemDamage,
   damageOnMiss,
   evaluatedExtraDamageSource,
@@ -1932,17 +1933,13 @@ export class CombatPhaseSolver {
     // Pair Up guard case afterward -- the guard doesn't skip the roll, it just
     // discards it. Mirror that ordering so the combat-random stream position
     // stays aligned with Python even when a strike is guarded.
-    // Items without a hit hook (Steal, Warp, utility staves) auto-hit in LT
-    // and never call generate_roll() at all.
-    let hitRoll = true;
-    let roll = 0;
-    let effectiveHit = finalHit;
-    if (item.hasComponent('hit')) {
-      const detail = this.rollHitDetailed(finalHit, rngMode);
-      hitRoll = detail.hit;
-      roll = detail.roll;
-      effectiveHit = detail.effectiveHit;
-    }
+    // Items without a hit value (Steal, Warp, utility staves) still draw the
+    // roll: compute_hit gives them 10000 (computeHit's 100), so they always
+    // hit, but process() calls generate_roll() before comparing.
+    const detail = this.rollHitDetailed(finalHit, rngMode);
+    const hitRoll = detail.hit;
+    const roll = detail.roll;
+    const effectiveHit = detail.effectiveHit;
     const hit = guarded || hitRoll;
 
     // Roll for crit.
@@ -1950,7 +1947,12 @@ export class CombatPhaseSolver {
     // strike hits, regardless of guard_hit -- guard_hit only gates whether the
     // crit *effect* applies (`if crit and not guard_hit:`), not whether the
     // roll happens. Consume the roll first, then discard the result on guard.
-    const critRoll = hit ? this.randomRoll() < critChance : false;
+    // Crits must be on (the `crit` constant or crit_anyway), and an item
+    // without a crit value has to_crit None and draws nothing.
+    const critsOn = db.getConstant<boolean | number>('crit', true) !== false || skillSystem.critAnyway(striker);
+    const critRoll = hit && critsOn && itemCrit(striker, item) !== null
+      ? this.randomRoll() < critChance
+      : false;
     const crit = critRoll && !guarded;
 
     // Glancing hit: solver.py -- when a strike hits but isn't a crit, and
