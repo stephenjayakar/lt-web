@@ -1663,6 +1663,9 @@ export class PartyTransferState extends State {
     this.bottomLimit = bottomLimit ?? 0;
     this.staged = new Map();
     for (const unit of game.units.values()) {
+      // Python game.get_units_in_party: persistent player units only (every
+      // level unit carries the level's party).
+      if (unit.team !== 'player' || !unit.persistent) continue;
       if (unit.party === this.topParty || unit.party === this.bottomParty) {
         this.staged.set(unit.nid, unit.party);
       }

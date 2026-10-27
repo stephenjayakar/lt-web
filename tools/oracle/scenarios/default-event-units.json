@@ -1,0 +1,15 @@
+{
+  "name": "default-event-units",
+  "description": "Units built by events: load_unit of a unique Paladin (class skills, base bonus) and create_unit of a level-10 generic from the Soldier 103 (autolevels by enemy_leveling, item wexp).",
+  "project": "default.ltproj",
+  "level": "DEBUG",
+  "events": false,
+  "seed": 0,
+  "actions": [
+    {"do": "event", "script": [
+      "load_unit;Franz;player",
+      "add_unit;Franz;3,3;immediate",
+      "create_unit;103;Nid=Clone;Level=10;Position=6,8;EntryType=immediate"
+    ]}
+  ]
+}

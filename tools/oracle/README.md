@@ -212,12 +212,7 @@ behaviour, not harness artefacts (checked against the Python source):
 
 | Diff | Seen in |
 |---|---|
-| Unique units miss their class skills on the web (Seth/Vanessa have no Canto): `spawnUnit` only grants the unit's personal `learned_skills` | all default scenarios |
-| Python gives every level unit the level's party; the web only player units | every level with non-player units |
-| Generic units: Python raises wexp to their items' requirements (`calculate_needed_wexp_from_items`, e.g. Shaman 101 Dark 31 -> 71) | default DEBUG |
-| Generic autolevels ignore `enemy_leveling` (default.ltproj: Dynamic) on the web | default Prologue (fighter 102 DEF/RES, then its HP in the AI phase) |
-| Promoted generics: Python autolevels `level + previous levels * promoted_autolevels_fraction`; the web levels through the internal level (EOtF hub NPCs at roughly double stats) | eotf-hub-start |
-| EOtF fork: units on Fixed growths start with 50 growth points per stat (upstream and the web start at 0) | all eotf scenarios |
+| none currently | — |
 
 Matching so far: combat strike order, damage, weapon uses, exp and RNG in the
 default and EOtF attacks; trade results; Vulnerary and Heal amounts and their
@@ -226,11 +221,13 @@ level-up HP; `gba_poison`, Stunned/Sleep unequipping and expiring at upkeep;
 terrain statuses after event moves; inline
 event commands (vars, money, items, HP, team, regions, movement, stats, exp,
 wexp, unit removal); the EOtF Dragon AI phase; unit loading/deployment by
-event in EOtF.
+event in EOtF; unit construction (class skills, parties, generic wexp and
+autolevels, promoted generics, the fork's starting growth points) for level
+units, `load_unit` and `create_unit` (default-event-units, eotf-hub-start).
 
 ## EOtF under each engine
 
-- **fork**: boots `lt-maker/eotf.ltproj` (project 2.0.0) directly. The hub
+- **fork**: boots `lt-maker/eotf.ltproj` (project 2.0.1, the data the fork release ships) directly. The hub
   (`X`) runs its level_start events and settles into free roam; `EX_2`
   combat and AI phases run; event-loaded units can be fought on room maps.
 - **upstream**: loads EOtF only through the shim (no `resources/fonts`, no

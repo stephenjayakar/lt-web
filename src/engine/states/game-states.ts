@@ -14048,7 +14048,9 @@ export class EventState extends State {
         const baseItems: [string, boolean][] = templateUnit
           ? templateUnit.items.map((it: ItemObject) => [it.nid, !!it.droppable] as [string, boolean])
           : (templatePrefab.starting_items ?? []);
-        const learnedSkills = templateUnit ? [] : (templatePrefab.learned_skills ?? []);
+        // Python create_unit builds GenericUnit(..., starting_skills=[]): class
+        // skills only, whether the template is a unit or a prefab.
+        const learnedSkills: [number, string][] = [];
 
         const baseKlassDef = game.db?.classes?.get(baseKlass);
         if (!baseKlassDef) {
@@ -14081,7 +14083,7 @@ export class EventState extends State {
           affinity: '',
         };
 
-        const newUnit = game.buildUnit(syntheticPrefab, baseTeam, baseAi);
+        const newUnit = game.buildUnit(syntheticPrefab, baseTeam, baseAi, { generic: true });
         newUnit.generic = true;
         newUnit.faction = baseFaction || null;
         if (copyStats && templateUnit) {
