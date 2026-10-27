@@ -250,3 +250,28 @@ test('upkeep damage runs after_take_strike over the pending actions', async ({ p
   expect(result).toEqual({ hp: 1, dead: false, gained: 1 });
 });
 
+
+test('negative statuses are inactive while the unit has immune_status', async ({ page }) => {
+  await boot(page);
+  await definePrefabs(page, [
+    { nid: '_FzPoison', components: [['negative', null], ['upkeep_damage', 4], ['time', 3]] },
+    { nid: '_FzWard', components: [['immune_status', null], ['lost_on_upkeep', null]] },
+  ]);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const { SkillObject } = await import('/src/objects/skill.ts');
+    const { applySkillTurnHooks } = await import('/src/engine/skill-turn-lifecycle.ts');
+    const unit = g.units.get('Eirika');
+    // Pushed directly: immune_status would purge a status added after it.
+    const poison = new SkillObject(g.db.skills.get('_FzPoison'));
+    unit.skills.push(poison, new SkillObject(g.db.skills.get('_FzWard')));
+    unit.currentHp = 12;
+    applySkillTurnHooks(g, [unit], 'upkeep');
+    const first = { hp: unit.currentHp, ward: unit.skills.some((s: any) => s.nid === '_FzWard'), turns: poison.data.get('turns') };
+    applySkillTurnHooks(g, [unit], 'upkeep');
+    return { first, second: { hp: unit.currentHp, turns: poison.data.get('turns') } };
+  });
+  // The ward blocks the first tick (time still counts) and expires with it.
+  expect(result.first).toEqual({ hp: 12, ward: false, turns: 2 });
+  expect(result.second).toEqual({ hp: 8, turns: 1 });
+});

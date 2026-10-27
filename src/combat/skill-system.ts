@@ -301,6 +301,20 @@ export function selfNihilActive(skill: SkillObject, unit: UnitObject): boolean {
  * `self_nihil` declares `ignore_conditional = True`, so it must be evaluated
  * independently of (and before) the ordinary Conditional component.
  */
+const immunityChecks = new WeakSet<UnitObject>();
+
+/** Python skill_system.has_immune: any condition-active immune_status skill. */
+function unitHasImmunity(unit: UnitObject, asking: SkillObject, context: SkillConditionContext): boolean {
+  if (immunityChecks.has(unit)) return false;
+  immunityChecks.add(unit);
+  try {
+    return unit.skills.some((other) => other !== asking && other.hasComponent('immune_status') &&
+      skillConditionActive(other, unit, context));
+  } finally {
+    immunityChecks.delete(unit);
+  }
+}
+
 export function skillConditionActive(
   skill: SkillObject,
   unit: UnitObject,
@@ -315,6 +329,9 @@ export function skillConditionActive(
     }
   }
   if (!selfNihilActive(skill, unit)) return false;
+  // Python Negative.condition (upstream and fork): a negative skill is off
+  // while skill_system.has_immune(unit) (an active immune_status skill).
+  if (skill.hasComponent('negative') && unitHasImmunity(unit, skill, context)) return false;
   // Upstream IsTerrain turns terrain skills off for Flying units; EOtF's fork
   // comments that condition out, so terrain skills also apply to fliers.
   if (skill.hasComponent('is_terrain') && !isForkEngine()) {

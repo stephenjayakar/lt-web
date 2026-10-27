@@ -114,6 +114,7 @@ test.describe('Embrace of the Fog status admission and cleansing', () => {
       const rejectedDuplicate = {
         present: unit.skills.includes(rejectedTimed),
         turns: rejectedTimed.data.get('turns'),
+        oldPresent: unit.skills.includes(existingTimed),
       };
 
       const block = make('_BlockFirstTwo', [
@@ -189,7 +190,9 @@ test.describe('Embrace of the Fog status admission and cleansing', () => {
       reversed: { nids: ['_Resistance'], turns: 4, charge: null },
       redone: { present: true, turns: 1, charge: null },
     });
-    expect(result.rejectedDuplicate).toEqual({ present: false, turns: 4 });
+    // Python unit.add_skill at max stacks displaces the oldest DEFAULT
+    // instance, so the re-gained status replaces it (and is resisted to 1).
+    expect(result.rejectedDuplicate).toEqual({ present: true, turns: 1, oldPresent: false });
     expect(result.blocked).toEqual({
       applied: { present: false, turns: null, charge: 1 },
       reversed: { nids: ['_BlockFirstTwo'], turns: null, charge: 2 },

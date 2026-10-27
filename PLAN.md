@@ -284,3 +284,13 @@ lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
   autoequip); a unit whose stun ends at upkeep acts that phase (live
   `movement_left`); event-moved units keep terrain statuses.
 - [ ] EOtF fork: units on Fixed growths start with 50 growth points per stat.
+- [x] Turn-lifecycle fuzz (`tools/oracle/fuzz.mjs`) fixes: status re-gain
+  displaces (refreshes) a DEFAULT instance; upkeep/endstep actions deferred
+  per unit with Python's event-vs-playback order and after_take_strike
+  (gain_skill_after_take_damage, ignore_damage, TrueMiracle); EvalUpkeepDamage
+  draws the combat stream; aura skills propagate when given; sourced timed
+  skills are not removed; kill_unit keeps HP; End waits nobody.
+- [ ] Fuzz leftovers: the fork has no `add_skill` alias for `give_skill`
+  (the web accepts it); `load_unit` units miss class skills (Flying) and
+  class stat caps (Wall40 HP 30); AI ability use (Temptation → Charm/Seduced)
+  and some AI moves differ (Citizens with Defend/Pursue).

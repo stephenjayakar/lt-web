@@ -189,10 +189,12 @@ test.describe('skill turn lifecycle', () => {
       'event:phase_change:player',
       'LockTurnwheel',
       'ResetAllAction',
-      `hp:${second}`,
+      // Regeneration has playback, so Python's StatusUpkeepState runs the
+      // queued upkeep event (pushed over it) before the unit's ChangeHP.
       `event:upkeep_${second}:player`,
-      `hp:${first}`,
+      `hp:${second}`,
       `event:upkeep_${first}:player`,
+      `hp:${first}`,
       'MarkPhase',
     ]);
   });
