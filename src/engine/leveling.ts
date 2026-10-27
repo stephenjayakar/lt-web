@@ -69,6 +69,7 @@ export function applyExpGain(
   amount: number,
   customMethod: string | undefined,
   game: any,
+  increaseCurrentStats: boolean = false,
 ): { applied: number; levelUps: Record<string, number>[] } {
   const applied = game ? cappedExpGain(unit, amount, game) : amount;
   const levelUps: Record<string, number>[] = [];
@@ -77,7 +78,7 @@ export function applyExpGain(
   while (unit.exp >= 100 && unit.level < levelCap) {
     unit.exp -= 100;
     levelUps.push(game
-      ? levelUpUnit(unit, customMethod, game)
+      ? levelUpUnit(unit, customMethod, game, increaseCurrentStats)
       : unit.levelUp(customMethod ?? 'random'));
   }
   if (unit.level >= levelCap && unit.exp >= 100) unit.exp = 0;
@@ -388,11 +389,18 @@ export function autoLevelUnit(
   return { statChanges, growthPoints };
 }
 
-/** Apply one displayed level-up through the same deterministic engine as autolevel. */
+/**
+ * Apply one displayed level-up through the same deterministic engine as
+ * autolevel. Python ExpState applies it with ApplyStatChanges(...,
+ * increase_current_stats): False for combat and event exp, so a level's HP
+ * gain raises max HP but not current HP; upstream passes True only for base
+ * bonus exp, EOtF's fork never does.
+ */
 export function levelUpUnit(
   unit: UnitObject,
   customMethod: string | undefined,
   game: any,
+  increaseCurrentStats: boolean = false,
 ): Record<string, number> {
   const result = autoLevelUnit(unit, 1, customMethod, game);
   const oldHp = unit.currentHp;
@@ -401,6 +409,7 @@ export function levelUpUnit(
   }
   unit.growthPoints = result.growthPoints;
   unit.level += 1;
-  unit.currentHp = Math.max(0, Math.min(unit.maxHp, oldHp + (result.statChanges.HP ?? 0)));
+  const gain = increaseCurrentStats ? (result.statChanges.HP ?? 0) : 0;
+  unit.currentHp = Math.max(0, Math.min(unit.maxHp, oldHp + gain));
   return result.statChanges;
 }

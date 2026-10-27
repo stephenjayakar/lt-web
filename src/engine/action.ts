@@ -2472,11 +2472,15 @@ export class GainExpAction extends Action {
   private startHp: number = 0;
   private applied: number = 0;
 
-  constructor(unit: UnitObject, amount: number, growthMode: string = 'random') {
+  /** Python ExpState 'bonus_exp' raises current stats with each level (upstream only). */
+  private increaseCurrentStats: boolean;
+
+  constructor(unit: UnitObject, amount: number, growthMode: string = 'random', increaseCurrentStats: boolean = false) {
     super();
     this.unit = unit;
     this.amount = amount;
     this.growthMode = growthMode;
+    this.increaseCurrentStats = increaseCurrentStats;
   }
 
   execute(): void {
@@ -2487,7 +2491,7 @@ export class GainExpAction extends Action {
     this.startHp = this.unit.currentHp;
     // Python routes exp through ExpState, which clamps the gain at the level
     // cap (get_level_cap) and grants nothing when can_give_exp fails.
-    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.());
+    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.(), this.increaseCurrentStats);
     this.applied = result.applied;
     this.levelUps = result.levelUps;
   }

@@ -34,7 +34,7 @@ import { unitSpriteTint } from '../../combat/skill-system';
 import type { FogRenderConfig } from '../../rendering/map-view';
 import { shouldDrawMapHp } from '../../rendering/map-view';
 import { evaluateCondition, type ConditionContext } from '../../events/event-manager';
-import { drawUnitMarkers, fadeInPhaseMusic } from './game-states';
+import { animationViewboxActive, blitMapWithViewbox, drawUnitMarkers, fadeInPhaseMusic } from './game-states';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts)
@@ -181,20 +181,18 @@ function drawRoamMap(
     };
   }
 
-  const mapSurf = game.mapView.draw(
+  blitMapWithViewbox(surf, units, (drawn) => game.mapView.draw(
     game.tilemap,
     cullRect,
-    units,
+    drawn,
     highlights,
     cursorInfo,
     false, // showGrid
     surf.scale,
     fogConfig,
-  );
-
-  surf.blit(mapSurf);
+  ));
   // Python MapState.draw -> MapView.draw_units: talk/interact markers.
-  drawUnitMarkers(surf);
+  if (!animationViewboxActive()) drawUnitMarkers(surf);
   return surf;
 }
 
