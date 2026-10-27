@@ -395,16 +395,21 @@ class Runner {
     e.press('SELECT');
     await e.settle({ until: (en) => en.top() === 'option_menu' });
     e.choose('End');
+    // Back to the player phase, or a level whose turn ended in free roam or
+    // a game over (stop there rather than pressing on into the title).
     await e.settle({
-      until: (en) => en.top() === 'free' && en.game.phase.getCurrent() === 'player',
+      until: (en) => (['free', 'free_roam'].includes(en.top() ?? '') && en.game.phase.getCurrent() === 'player') ||
+        en.top() === 'game_over',
       maxFrames: a.max_frames ?? 20000,
     });
   }
 
+  /** First unoccupied tile inside the board's movement bounds (py_driver). */
   private emptyTile(): [number, number] {
     const g = this.e.game;
-    for (let y = 0; y < g.tilemap.height; y++) {
-      for (let x = 0; x < g.tilemap.width; x++) {
+    const [minX, minY, maxX, maxY] = g.board.bounds ?? [0, 0, g.tilemap.width - 1, g.tilemap.height - 1];
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
         if (!g.board.getUnit(x, y)) return [x, y];
       }
     }

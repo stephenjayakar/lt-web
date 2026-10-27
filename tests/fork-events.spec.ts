@@ -594,3 +594,26 @@ test.describe('Level-start differential fixes', () => {
     expect({ ...result, ...prep }).toEqual({ active: false, descs: false, enabled: [] });
   });
 });
+
+test.describe('First-turn differential fixes', () => {
+  test('create_unit without a nid takes 201, then 1, 2, ... as Python get_next_int does', async ({ page }) => {
+    await bootEotf(page);
+    const before = await page.evaluate(() => [...(window as any).__gameRef.units.keys()]);
+    await runEvent(page, 'QaCreateNids', ['create_unit;Keeper', 'create_unit;Keeper', 'create_unit;Keeper']);
+    const added = await page.evaluate((prior: string[]) =>
+      [...(window as any).__gameRef.units.keys()].filter((nid: string) => !prior.includes(nid)), before);
+    expect(added).toEqual(['201', '1', '2']);
+  });
+  test('remove_skill leaves skills the game granted, and counts only removed instances', async ({ page }) => {
+    await bootEotf(page);
+    await runEvent(page, 'QaRemoveSkillSource', [
+      'give_skill;Player;HaveFaith;no_banner', 'give_skill;Player;HaveFaith;no_banner',
+      'remove_skill;Player;Global_Parameters;no_banner', 'remove_skill;Player;HaveFaith;1;no_banner',
+    ]);
+    const counts = await page.evaluate(() => {
+      const nids = (window as any).__gameRef.units.get('Player').skills.map((s: any) => s.nid);
+      return [nids.filter((n: string) => n === 'Global_Parameters').length, nids.filter((n: string) => n === 'HaveFaith').length];
+    });
+    expect(counts).toEqual([1, 0]);
+  });
+});

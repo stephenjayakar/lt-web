@@ -780,13 +780,18 @@ class Runner:
         e.press('SELECT')
         e.settle(until=lambda en: en.top() == 'option_menu')
         e.choose('End')
-        e.settle(until=lambda en: en.top() == 'free' and en.game.phase.get_current() == 'player',
-                 max_frames=a.get('max_frames', 20000))
+        # Back to the player phase, or a level whose turn ended in free roam
+        # or a game over (stop there rather than pressing on into the title).
+        e.settle(until=lambda en: (en.top() in ('free', 'free_roam') and en.game.phase.get_current() == 'player')
+                 or en.top() == 'game_over', max_frames=a.get('max_frames', 20000))
 
     def _empty_tile(self):
+        """First unoccupied tile inside the board's movement bounds (the
+        cursor cannot leave them, so a tile outside could land on a unit)."""
         g = self.e.game
-        for y in range(g.tilemap.height):
-            for x in range(g.tilemap.width):
+        min_x, min_y, max_x, max_y = g.board.bounds
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
                 if not g.board.get_unit((x, y)):
                     return (x, y)
         raise OracleError('no empty tile')
