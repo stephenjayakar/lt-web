@@ -382,7 +382,9 @@ export class ItemHelpDialog extends HelpBox {
   }
 
   protected paint(surf: Surface): void {
-    const v = this.vOffset;
+    // EOtF's engine predates upstream moving the stat grid down 2 px: its
+    // rows sit at y 6 and 22 (below the optional name header).
+    const v = this.vOffset + (isForkEngine() ? -2 : 0);
     const wtype = this.item.getWeaponType?.();
     const wdef = wtype ? (_game?.db?.weapons ?? []).find((w: any) => w.nid === wtype) : null;
     if (wdef?.icon_nid) drawIcon16(surf, wdef.icon_nid, wdef.icon_index ?? [0, 0], 8, 8 + v);

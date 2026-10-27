@@ -92,9 +92,9 @@ export function hasSprite(name: string): boolean {
  * resources/custom_sprites/menu/{1..4}/<name><n>.png.
  */
 const WINDOW_SKIN_SPRITES: ReadonlySet<string> = new Set([
-  'menu_bg_base', 'menu_bg_base_opaque', 'menu_gem_small', 'menu_shimmer1', 'menu_shimmer2',
+  'menu_bg_base', 'menu_gem_small', 'menu_shimmer1', 'menu_shimmer2',
   'money_bg', 'funds_display', 'rescue_window', 'give_window', 'sound_player',
-  'tile_info_quick', 'tile_info_quick_opaque', 'tile_info_destructible', 'tile_info_destructible_opaque',
+  'tile_info_quick_opaque', 'tile_info_destructible_opaque', 'trade_window', 'Weather_Window',
 ]);
 
 let windowDisplay: () => unknown = () => 1;
@@ -104,15 +104,42 @@ export function setWindowDisplayProvider(provider: () => unknown): void {
   windowDisplay = provider;
 }
 
+/** The live window_display skin (EOtF fork; 1 elsewhere). */
+export function currentWindowSkin(): unknown {
+  return windowDisplay() ?? 1;
+}
+
+let startupWindowDisplay: unknown = null;
+
+/**
+ * Remember the skin the session started with. EOtF's engine bakes the
+ * skin into a few windows when it starts (bare `create_base_surf(w, h)`
+ * calls take a default argument evaluated at import), so those keep the
+ * startup skin until the game is restarted.
+ */
+export function freezeStartupWindowSkin(): void {
+  startupWindowDisplay = windowDisplay() ?? 1;
+}
+
+/** `skinnedSpriteName` with a given skin number. */
+export function skinnedSpriteNameFor(name: string, skin: unknown): string {
+  if (!isForkEngine() || !WINDOW_SKIN_SPRITES.has(name)) return name;
+  const skinned = `${name}${skin ?? 1}`;
+  return hasSprite(skinned) ? skinned : name;
+}
+
+/** The skinned name for a window EOtF builds with the startup skin. */
+export function startupSkinnedSpriteName(name: string): string {
+  return skinnedSpriteNameFor(name, startupWindowDisplay ?? windowDisplay());
+}
+
 /**
  * The SPRITES name actually used for `name`: on the EOtF fork, the
  * window_display skin's copy of a menu/window sprite (falling back to the
  * bare name when that skin lacks it); otherwise `name` unchanged.
  */
 export function skinnedSpriteName(name: string): string {
-  if (!isForkEngine() || !WINDOW_SKIN_SPRITES.has(name)) return name;
-  const skinned = `${name}${windowDisplay() ?? 1}`;
-  return hasSprite(skinned) ? skinned : name;
+  return skinnedSpriteNameFor(name, windowDisplay());
 }
 
 /** Load a sprite (resolves null when it does not exist or fails to load). */

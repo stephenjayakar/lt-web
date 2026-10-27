@@ -188,6 +188,12 @@ The release gate is green: build, all four audits, the full serial suite,
 
 - [x] Gallery: fork-only `show_pokedex` opens the ported unit dex
   (`base_info_menu`), also from `type_dex_unit` choice INFO and manage AUX.
+- [x] EOtF engine UI: weather window, forecast digits 100-998, four window
+  skins (startup/New Game baked parts), forced skin on Choice/Table, red
+  sold-out stock, item help grid offsets, Gallery dex entries.
+- [ ] Map ability targeting (Trade/Rescue/Take/Give/Steal) uses list menus;
+  Python's TargetingState moves the cursor with a pennant and draws the
+  trade_window / rescue_window / give_window previews.
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in
@@ -264,13 +270,17 @@ The release gate is green: build, all four audits, the full serial suite,
 lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
 
 - [ ] Unique units get their class `learned_skills` (Canto on Paladins).
-- [ ] `WaitAction` also sets has_moved/has_traded/has_attacked.
+- [x] `WaitAction` also sets has_moved/has_traded/has_attacked; WaitState also
+  waits units that died after attacking.
 - [ ] Every level unit gets the level's party (Python `level_setup`).
 - [ ] Generics raise wexp to their items' requirements.
 - [ ] Generic autolevels honour `enemy_leveling` and, for promoted classes,
   `promoted_autolevels_fraction`.
-- [ ] Combat level-ups leave current HP alone (only bonus exp raises it).
-- [ ] Item uses and staves draw the combat RNG like Python's solver.
-- [ ] `gba_poison`; `cannot_use_items` unequips; a unit whose stun ends at
-  upkeep acts that phase.
+- [x] Combat level-ups leave current HP alone (only bonus exp raises it,
+  upstream only).
+- [x] Item uses and staves draw the combat RNG like Python's solver (also
+  solver strikes without a hit value; crit rolls need crits on and a crit value).
+- [x] `gba_poison`; `cannot_use_items` unequips (AddSkill/RemoveSkill
+  autoequip); a unit whose stun ends at upkeep acts that phase (live
+  `movement_left`); event-moved units keep terrain statuses.
 - [ ] EOtF fork: units on Fixed growths start with 50 growth points per stat.

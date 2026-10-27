@@ -30,7 +30,7 @@ import { createBaseSurf, getMenuBgSpriteSync } from './base-surf';
 import { drawItemIcon, getIconSheet } from './icons';
 import { getSetting } from '../engine/states/settings-state';
 import { getTerrainBonuses } from '../combat/terrain-bonuses';
-import { evaluateTextTag } from '../events/event-manager';
+import { evaluateTextTag, pythonStr } from '../events/event-manager';
 import {
   canCounterattack, canDefenderDouble, canDouble, computeAssistDamage, computeBlitzPhases,
   computeCrit, computeDamage, computeExtraAttackPhases, computeHit, computeStrikeCount,
@@ -54,9 +54,59 @@ const HUD_SPRITES = [
   ]),
   'Minimap_Tiles', 'Minimap_Sprites', 'Minimap_Cursor',
   'marker_talk', 'marker_interact', 'marker_warning', 'marker_danger', 'marker_steal',
+  // EOtF project sprites for its engine's weather window.
+  'Weather_Window', 'Sun_Icon', 'Rain_Icon', 'Sand_Icon', 'Snow_Icon',
 ];
 
+/** Weather names with an icon in EOtF's weather window (anything else shows the sun). */
+const WEATHER_ICONS: Record<string, string> = {
+  Sun: 'Sun_Icon', Rain: 'Rain_Icon', Sand: 'Sand_Icon', Snow: 'Snow_Icon',
+};
+
 type Game = any;
+
+/** The distinct opaque colours of a sprite, in scan order. */
+function opaqueColors(surf: Surface): [number, number, number][] {
+  const data = surf.getImageData().data;
+  const seen = new Set<number>();
+  const colors: [number, number, number][] = [];
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] !== 255) continue;
+    const packed = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+    if (seen.has(packed)) continue;
+    seen.add(packed);
+    colors.push([data[i], data[i + 1], data[i + 2]]);
+  }
+  return colors;
+}
+
+/** A copy of `surf` with each opaque pixel moved to its nearest palette colour. */
+function snapToPalette(surf: Surface, palette: [number, number, number][]): Surface {
+  const out = surf.copy();
+  if (!palette.length) return out;
+  const image = out.getImageData();
+  const data = image.data;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    let best = palette[0];
+    let bestDist = Infinity;
+    for (const color of palette) {
+      const dr = color[0] - data[i];
+      const dg = color[1] - data[i + 1];
+      const db = color[2] - data[i + 2];
+      const dist = dr * dr + dg * dg + db * db;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = color;
+      }
+    }
+    data[i] = best[0];
+    data[i + 1] = best[1];
+    data[i + 2] = best[2];
+  }
+  out.putImageData(image);
+  return out;
+}
 
 /** Python utils.frames2ms. */
 const frames2ms = (frames: number): number => frames * FRAMETIME;
@@ -109,25 +159,87 @@ function itemUses(item: ItemObject): number {
   return item.hasComponent('uses') ? item.uses : 100;
 }
 
-/**
- * Python TextEvaluator._evaluate_all for objective strings: {v:var},
- * {var:var}, {e:expr} and {eval:expr}. Python stores the objective as an
- * unevaluated EvaluableString and runs this on every draw (ui_view) and when
- * the objective menu opens, so variable changes show up live.
- */
-export function evaluateText(text: string, game: Game): string {
-  return text.replace(/\{(v|var|e|eval):([^{}]*)\}/g, (_m, kind: string, body: string) => {
-    if (kind === 'v' || kind === 'var') {
-      if (game.levelVars?.has(body)) return String(game.levelVars.get(body));
-      if (game.gameVars?.has(body)) return String(game.gameVars.get(body));
-      return '??';
+/** Top-level balanced `{...}` blocks of `text`, braces included (str_utils.matched_expr). */
+function topLevelBlocks(text: string): string[] {
+  const blocks: string[] = [];
+  let depth = 0;
+  let start = -1;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '{') {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (character === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0) blocks.push(text.slice(start, index + 1));
     }
+  }
+  return blocks;
+}
+
+/**
+ * TextEvaluator._evaluate_phrase for the tags objectives use: `{v:}`/`{var:}`
+ * and `{e:}`/`{eval:}`. Like Python's `re.match(r'\{e:[^{}]*\}')`, a phrase
+ * that still holds braces after its inner blocks were evaluated (a variable
+ * whose text contains braces) is passed back unevaluated; anything else is
+ * left as it is.
+ */
+function evaluatePhrase(phrase: string, game: Game): string {
+  const tag = phrase.match(/^\{(v|var|e|eval):([^{}]*)\}/);
+  if (!tag) return phrase;
+  const pattern = tag[1] === 'v' || tag[1] === 'var'
+    ? /\{(?:v|var):([^{}]*)\}/g
+    : /\{(?:e|eval):([^{}]*)\}/g;
+  if (tag[1] === 'v' || tag[1] === 'var') {
+    return phrase.replace(pattern, (_match, key: string) => {
+      if (game.levelVars?.has(key)) return pythonStr(game.levelVars.get(key));
+      if (game.gameVars?.has(key)) return pythonStr(game.gameVars.get(key));
+      return '??';
+    });
+  }
+  return phrase.replace(pattern, (_match, body: string) => {
     try {
       return evaluateTextTag(body, { game, gameVars: game.gameVars, levelVars: game.levelVars });
     } catch {
       return '??';
     }
   });
+}
+
+/** One balanced block: evaluate its inner blocks first, then the block itself. */
+function evaluateBlock(block: string, game: Game): string {
+  const inner = block.slice(1, -1);
+  let resolved = '';
+  let depth = 0;
+  let start = -1;
+  for (let index = 0; index < inner.length; index += 1) {
+    const character = inner[index];
+    if (character === '{') {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (character === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0) resolved += evaluateBlock(inner.slice(start, index + 1), game);
+    } else if (depth === 0) {
+      resolved += character;
+    }
+  }
+  return evaluatePhrase(`{${resolved}}`, game);
+}
+
+/**
+ * Python TextEvaluator._evaluate_all for objective strings: each top-level
+ * `{...}` block is resolved innermost-first, then substituted (longest
+ * first, every occurrence). Python stores an upstream objective unevaluated
+ * and runs this on every draw (ui_view) and when the objective menu opens,
+ * so variable changes show up live.
+ */
+export function evaluateText(text: string, game: Game): string {
+  const pairs = topLevelBlocks(text).map((block) => [block, evaluateBlock(block, game)] as const);
+  pairs.sort((left, right) => right[0].length - left[0].length);
+  let result = text;
+  for (const [block, value] of pairs) result = result.split(block).join(value);
+  return result;
 }
 
 export class HUD {
@@ -170,6 +282,7 @@ export class HUD {
   private objTop = false;
 
   private lastFrame = -1;
+  private weatherInfo: { key: string; surf: Surface } | null = null;
 
   /** Where each element was last drawn ([x, y, w, h]), for tests. */
   layout: Record<string, [number, number, number, number]> = {};
@@ -323,6 +436,27 @@ export class HUD {
         const y = top ? 0 : winH - disp.height - 3;
         if (right) this.place(surf, 'tile', disp, 5 - offset, y);
         else this.place(surf, 'tile', disp, winW - disp.width - 5 + offset, y);
+      }
+    }
+
+    // EOtF's engine adds a weather window (current -> next weather) just
+    // above the terrain box, on the same side and sliding with it, whenever
+    // the chapter's `current_weather` level var is set.
+    const weather = game.levelVars?.get?.('current_weather') ?? 0;
+    if (isForkEngine() && legal && this.settingOn('show_terrain') && weather !== 0) {
+      const disp = this.createWeatherInfo(game);
+      if (disp) {
+        let right = this.cursorRight;
+        let offset = 0;
+        if (this.tileTransitionState === 'out') {
+          right = !right;
+          offset = disp.width * this.tileProgress;
+        } else if (this.tileTransitionState === 'in') {
+          offset = disp.width * (1 - this.tileProgress);
+        }
+        const y = winH - disp.height - 48;
+        if (right) this.place(surf, 'weather', disp, 5 - offset, y);
+        else this.place(surf, 'weather', disp, winW - disp.width - 5 + offset, y);
       }
     }
 
@@ -559,6 +693,36 @@ export class HUD {
     return bgSurf;
   }
 
+  /**
+   * EOtF's weather window: the skinned 45x24 Weather_Window (opaque) with
+   * the current weather's icon at x 3 and the next weather's at x 27, both
+   * 3 px off the bottom; the arrow between them is part of the window art.
+   *
+   * The window ships as an 8-bit paletted PNG, and the engine blits the icons
+   * onto a copy of that paletted surface, so every icon colour snaps to the
+   * nearest window palette colour (squared RGB distance). Every palette entry
+   * is used by the art, so the window's own opaque colours are its palette.
+   */
+  private createWeatherInfo(game: Game): Surface | null {
+    const base = getSprite('Weather_Window');
+    if (!base) return null;
+    const vars = game.levelVars;
+    const icons = [vars?.get?.('current_weather'), vars?.get?.('next_weather')]
+      .map((weather) => WEATHER_ICONS[String(weather)] ?? 'Sun_Icon');
+    const key = `${skinnedSpriteName('Weather_Window')}|${icons.join('|')}`;
+    if (this.weatherInfo?.key === key) return this.weatherInfo.surf;
+    const iconSurfs = icons.map((name) => getSprite(name));
+    if (iconSurfs.some((icon) => !icon)) return base;
+    const surf = base.copy();
+    const palette = opaqueColors(base);
+    iconSurfs.forEach((icon, idx) => {
+      const snapped = snapToPalette(icon!, palette);
+      surf.blit(snapped, idx === 0 ? 3 : 27, surf.height - 3 - snapped.height);
+    });
+    this.weatherInfo = { key, surf };
+    return surf;
+  }
+
   private createObjInfo(game: Game): Surface | null {
     const obj: string = game.currentLevel?.objective?.simple ?? '';
     if (!obj) return null;
@@ -644,12 +808,16 @@ export class HUD {
     const text = font('text');
     if (!blue || !text) return null;
     const db = game.db;
+    const fork = isForkEngine();
     const blitNum = (surf: Surface, num: number | string | null, x: number, y: number): void => {
       if (num === null || num === '--') {
         blue.blitRight(surf, '--', x - 1, y);
         return;
       }
-      if (typeof num === 'number' && num >= 100) blit(surf, getSprite('blue_100'), x - 15, y);
+      // EOtF's engine keeps the narrow blue_100 glyph for 999 and up; 100-998
+      // print as digits, 2 px further right.
+      if (typeof num === 'number' && num >= (fork ? 999 : 100)) blit(surf, getSprite('blue_100'), x - 15, y);
+      else if (fork && typeof num === 'number' && num >= 100) blue.blitRight(surf, String(num), x + 2, y);
       else blue.blitRight(surf, String(num), x, y);
     };
 
