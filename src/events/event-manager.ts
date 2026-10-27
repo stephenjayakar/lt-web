@@ -1275,6 +1275,26 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   // Build the game proxy object
   const regions = game.currentLevel?.regions ?? [];
   let levelRegions: any = null;
+  const level = {
+    // Wrapped on first read (once per scope), not with every game proxy.
+    get regions() { return (levelRegions ??= wrapRegions(regions)); },
+    nid: game.currentLevel?.nid ?? '',
+    objective: {
+      ...(game.currentLevel?.objective ?? {}),
+      get(key: string, fallback: unknown = null) {
+        const objective = game.currentLevel?.objective ?? {};
+        return Object.prototype.hasOwnProperty.call(objective, key)
+          ? Reflect.get(objective, key)
+          : fallback;
+      },
+    },
+    get units() {
+      return Array.from(game.units?.values?.() ?? []).map(wrapUnit);
+    },
+    name: game.currentLevel?.name ?? '',
+  };
+  // One literal with every member (no properties added afterwards): the
+  // proxy keeps a fast object shape instead of turning into a dictionary.
   const gameProxy: any = {
     turncount: game.turnCount ?? game.turncount ?? 0,
     turn_count: game.turnCount ?? game.turncount ?? 0,
@@ -1325,23 +1345,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
           game.tilemap?.getTerrain?.(pos[0], pos[1]) ?? null;
       },
     },
-    level: {
-      // Wrapped on first read (once per scope), not with every game proxy.
-      get regions() { return (levelRegions ??= wrapRegions(regions)); },
-      nid: game.currentLevel?.nid ?? '',
-      objective: {
-        ...(game.currentLevel?.objective ?? {}),
-        get(key: string, fallback: unknown = null) {
-          const objective = game.currentLevel?.objective ?? {};
-          return Object.prototype.hasOwnProperty.call(objective, key)
-            ? Reflect.get(objective, key)
-            : fallback;
-        },
-      },
-      get units() {
-        return Array.from(game.units?.values?.() ?? []).map(wrapUnit);
-      },
-    },
+    level,
     phase: {
       get_current() {
         return game.phase?.getCurrent?.() ?? game.phase?.get_current?.() ?? 'player';
@@ -1536,16 +1540,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       const u = game.units?.get(nid) ?? game.getUnit?.(nid);
       return !!u && !isDeadOrDying(u);
     },
+    _current_level: level,
+    // Python Game.target_system is the same module evaluate.py exposes.
+    get target_system() { return getModules().target_system; },
   };
-
-  gameProxy._current_level = gameProxy.level;
-  gameProxy.level.name = game.currentLevel?.name ?? '';
-  // Python Game.target_system is the same module evaluate.py exposes.
-  Object.defineProperty(gameProxy, 'target_system', {
-    configurable: true,
-    enumerable: true,
-    get: () => getModules().target_system,
-  });
   return gameProxy;
   };
   const buildModules = (): Record<string, any> => {
@@ -1938,36 +1936,73 @@ function regionWrapper(region: any): any {
  * Python's evaluate.get_context for one evaluation: the context names,
  * the query-engine functions, the engine modules evaluate.py imports, and
  * the trigger's local args. Names are resolved on first use and memoized,
- * so an expression only pays for the wrappers it reads.
+ * so an expression only pays for the wrappers it reads. One object per
+ * evaluation (the helpers are methods, not per-evaluation closures).
  */
-function buildPythonGlobals(ctx: ConditionContext): RootScope {
-  const game = ctx.game;
-  let scope: Record<string, any> | null = null;
-  const evalScope = (): Record<string, any> => (scope ??= buildEvalScope(ctx));
-  const wrapUnit = (value: any): any => {
-    if (!game) return value ?? null;
-    return evalScope().wrapUnit(value?._raw ?? value) ?? null;
-  };
-  const wrapItem = (value: any): any => (game ? evalScope().wrapItem(value?._raw ?? value) : value ?? null);
-  const wrapSkill = (value: any): any => (game ? evalScope().wrapSkill(value?._raw ?? value) : value ?? null);
-  const wrapClass = (value: any): any => (game ? evalScope().wrapClass(value) : value ?? null);
-  const units = (values: any): any[] => Array.from(values ?? []).map(wrapUnit);
-  const closest = (values: any): any[] => Array.from(values ?? [])
-    .map((pair: any) => makeTuple([wrapUnit(pair[0]), pair[1]]));
+class PythonGlobals implements RootScope {
+  private readonly ctx: ConditionContext;
+  private readonly game: any;
+  private scope: Record<string, any> | null = null;
+  private resolved: Map<string, any> | null = null;
 
-  const wrapLocal = (value: any): any => {
-    if (!game || !value || typeof value !== 'object' || value._raw) return value;
-    if (Array.isArray(value)) return value.map(wrapLocal);
-    if (value.components instanceof Map && value.data instanceof Map) {
-      if ('uses' in value && 'subitems' in value) return wrapItem(value);
-      if ('uid' in value && 'ownerNid' in value) return wrapSkill(value);
-    }
-    if ('team' in value && 'items' in value && 'stats' in value) return wrapUnit(value);
+  constructor(ctx: ConditionContext) {
+    this.ctx = ctx;
+    this.game = ctx.game;
+  }
+
+  lookup(name: string): any {
+    const resolved = (this.resolved ??= new Map<string, any>());
+    if (resolved.has(name)) return resolved.get(name);
+    const value = this.resolve(name);
+    resolved.set(name, value);
     return value;
-  };
-  const localValue = (name: string, value: any): any => {
-    if (name === 'skill') return wrapSkill(value);
-    if (name === 'item2') return wrapItem(value);
+  }
+
+  private evalScope(): Record<string, any> {
+    return (this.scope ??= buildEvalScope(this.ctx));
+  }
+
+  private wrapUnit(value: any): any {
+    if (!this.game) return value ?? null;
+    return this.evalScope().wrapUnit(value?._raw ?? value) ?? null;
+  }
+
+  private wrapItem(value: any): any {
+    return this.game ? this.evalScope().wrapItem(value?._raw ?? value) : value ?? null;
+  }
+
+  private wrapSkill(value: any): any {
+    return this.game ? this.evalScope().wrapSkill(value?._raw ?? value) : value ?? null;
+  }
+
+  private wrapClass(value: any): any {
+    return this.game ? this.evalScope().wrapClass(value) : value ?? null;
+  }
+
+  private units(values: any): any[] {
+    return Array.from(values ?? []).map((entry: any) => this.wrapUnit(entry));
+  }
+
+  private closest(values: any): any[] {
+    return Array.from(values ?? [])
+      .map((pair: any) => makeTuple([this.wrapUnit(pair[0]), pair[1]]));
+  }
+
+  private wrapLocal(value: any): any {
+    const game = this.game;
+    if (!game || !value || typeof value !== 'object' || value._raw) return value;
+    if (Array.isArray(value)) return value.map((entry: any) => this.wrapLocal(entry));
+    if (value.components instanceof Map && value.data instanceof Map) {
+      if ('uses' in value && 'subitems' in value) return this.wrapItem(value);
+      if ('uid' in value && 'ownerNid' in value) return this.wrapSkill(value);
+    }
+    if ('team' in value && 'items' in value && 'stats' in value) return this.wrapUnit(value);
+    return value;
+  }
+
+  private localValue(name: string, value: any): any {
+    if (name === 'skill') return this.wrapSkill(value);
+    if (name === 'item2') return this.wrapItem(value);
     if (name === 'playback' && Array.isArray(value)) {
       return value.map((mark: any) => {
         if (!mark || typeof mark !== 'object') return mark;
@@ -1977,32 +2012,32 @@ function buildPythonGlobals(ctx: ConditionContext): RootScope {
         return {
           _raw: mark,
           ...mark,
-          ...('item' in mark ? { item: wrapItem(mark.item) ?? mark.item } : {}),
-          attacker: wrapUnit(mark.attacker) ?? mark.attacker,
-          defender: wrapUnit(mark.defender) ?? mark.defender,
-          main_attacker: wrapUnit(mark.main_attacker ?? mark.mainAttacker) ??
+          ...('item' in mark ? { item: this.wrapItem(mark.item) ?? mark.item } : {}),
+          attacker: this.wrapUnit(mark.attacker) ?? mark.attacker,
+          defender: this.wrapUnit(mark.defender) ?? mark.defender,
+          main_attacker: this.wrapUnit(mark.main_attacker ?? mark.mainAttacker) ??
             mark.main_attacker ?? mark.mainAttacker,
         };
       });
     }
-    return wrapLocal(value);
-  };
+    return this.wrapLocal(value);
+  }
 
-  const queryFunction = (name: string): any => {
+  private queryFunction(name: string): any {
     const qf = sharedQueryFuncs();
     switch (name) {
-      case 'u': return (...args: any[]) => wrapUnit(qf.u(...args));
-      case 'get_item': return (...args: any[]) => wrapItem(qf.get_item(...args));
-      case 'find_item': return (...args: any[]) => wrapItem(qf.find_item(...args));
-      case 'get_subitem': return (...args: any[]) => wrapItem(qf.get_subitem(...args));
-      case 'get_skill': return (...args: any[]) => wrapSkill(qf.get_skill(...args));
-      case 'get_klass': return (...args: any[]) => wrapClass(qf.get_klass(...args));
-      case 'get_class': return (...args: any[]) => wrapClass(qf.get_class(...args));
-      case 'get_roam_unit': return (...args: any[]) => wrapUnit(qf.get_roam_unit(...args));
+      case 'u': return (...args: any[]) => this.wrapUnit(qf.u(...args));
+      case 'get_item': return (...args: any[]) => this.wrapItem(qf.get_item(...args));
+      case 'find_item': return (...args: any[]) => this.wrapItem(qf.find_item(...args));
+      case 'get_subitem': return (...args: any[]) => this.wrapItem(qf.get_subitem(...args));
+      case 'get_skill': return (...args: any[]) => this.wrapSkill(qf.get_skill(...args));
+      case 'get_klass': return (...args: any[]) => this.wrapClass(qf.get_klass(...args));
+      case 'get_class': return (...args: any[]) => this.wrapClass(qf.get_class(...args));
+      case 'get_roam_unit': return (...args: any[]) => this.wrapUnit(qf.get_roam_unit(...args));
       case 'get_closest_allies':
       case 'get_closest_units':
       case 'get_closest_enemies':
-        return (...args: any[]) => closest(qf[name](...args));
+        return (...args: any[]) => this.closest(qf[name](...args));
       case 'get_units_within_distance':
       case 'get_allies_within_distance':
       case 'get_units_in_area':
@@ -2011,9 +2046,9 @@ function buildPythonGlobals(ctx: ConditionContext): RootScope {
       case 'get_player_units':
       case 'get_enemy_units':
       case 'get_all_units':
-        return (...args: any[]) => units(qf[name](...args));
+        return (...args: any[]) => this.units(qf[name](...args));
       case 'get_convoy_inventory':
-        return (...args: any[]) => Array.from(qf.get_convoy_inventory(...args) || []).map(wrapItem);
+        return (...args: any[]) => Array.from(qf.get_convoy_inventory(...args) || []).map((entry: any) => this.wrapItem(entry));
       case 'has_item': case 'has_skill': case 'get_debuff_count': case 'get_total_charge':
       case 'check_pivot': case 'any_unit_in_region': case 'is_dead': case 'check_alive':
       case 'get_internal_level': case 'get_support_rank': case 'get_terrain':
@@ -2022,25 +2057,27 @@ function buildPythonGlobals(ctx: ConditionContext): RootScope {
         return qf[name];
     }
     return NOT_FOUND;
-  };
+  }
 
-  const resolve = (name: string): any => {
+  private resolve(name: string): any {
+    const ctx = this.ctx;
+    const game = this.game;
     if (!CONTEXT_NAMES.has(name) && ctx.localArgs?.has(name)) {
-      return localValue(name, ctx.localArgs.get(name));
+      return this.localValue(name, ctx.localArgs.get(name));
     }
     switch (name) {
-      case 'game': return game ? evalScope().game : NOT_FOUND;
+      case 'game': return game ? this.evalScope().game : NOT_FOUND;
       case 'unit':
       case 'unit1':
-        return wrapUnit(ctx.localArgs?.has('unit') ? ctx.localArgs.get('unit') : ctx.unit1);
+        return this.wrapUnit(ctx.localArgs?.has('unit') ? ctx.localArgs.get('unit') : ctx.unit1);
       case 'unit2':
       case 'target':
-        return wrapUnit(ctx.unit2);
+        return this.wrapUnit(ctx.unit2);
       case 'region': return regionWrapper(ctx.region);
       case 'position': return ctx.position ?? null;
       case 'target_pos':
-        return ctx.localArgs?.get('target_pos') ?? wrapUnit(ctx.unit2)?.position ?? null;
-      case 'item': return wrapItem(ctx.item) ?? ctx.item ?? null;
+        return ctx.localArgs?.get('target_pos') ?? this.wrapUnit(ctx.unit2)?.position ?? null;
+      case 'item': return this.wrapItem(ctx.item) ?? ctx.item ?? null;
       case 'mode': return ctx.localArgs?.get('mode') ?? null;
       case 'stat_changes': return ctx.localArgs?.get('stat_changes') ?? null;
       case 'support_rank_nid': return ctx.localArgs?.get('support_rank_nid') ?? null;
@@ -2079,9 +2116,9 @@ function buildPythonGlobals(ctx: ConditionContext): RootScope {
       case 'DB': case 'utils': case 'item_funcs': case 'item_system':
       case 'skill_system': case 'unit_funcs': case 'combat_calcs': case 'movement_funcs':
       case 'target_system':
-        return game ? evalScope()[name] : NOT_FOUND;
+        return game ? this.evalScope()[name] : NOT_FOUND;
       case 'static_random':
-        return game ? { get_random_choice: evalScope().game.get_random_choice } : NOT_FOUND;
+        return game ? { get_random_choice: this.evalScope().game.get_random_choice } : NOT_FOUND;
       case 'get_stacks':
         return (candidate: any, skillNid: string) => {
           const raw = typeof candidate === 'string'
@@ -2144,18 +2181,12 @@ function buildPythonGlobals(ctx: ConditionContext): RootScope {
         };
       case 'SourceType': return { TRAVELER: 'traveler' };
     }
-    return game ? queryFunction(name) : NOT_FOUND;
-  };
+    return game ? this.queryFunction(name) : NOT_FOUND;
+  }
+}
 
-  const resolved = new Map<string, any>();
-  return {
-    lookup(name: string): any {
-      if (resolved.has(name)) return resolved.get(name);
-      const value = resolve(name);
-      resolved.set(name, value);
-      return value;
-    },
-  };
+function buildPythonGlobals(ctx: ConditionContext): RootScope {
+  return new PythonGlobals(ctx);
 }
 
 type PythonOutcome = { ok: true; value: any } | { ok: false; error: unknown };
