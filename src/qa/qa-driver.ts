@@ -321,8 +321,12 @@ export class QaDriver {
       target = pick ? talkable.find((u) => u.nid === pick) : null;
       if (target) {
         const label = `${this.roomKind(target.nid)}${this.roomReward(target.nid)}`;
-        this.currentFloor?.chosen.push(label);
-        this.note(`room ${target.nid} = ${label}`);
+        // A press can be dropped (a state starting that frame); log the retry once.
+        const chosen = this.currentFloor?.chosen;
+        if (chosen && chosen[chosen.length - 1] !== label) {
+          chosen.push(label);
+          this.note(`room ${target.nid} = ${label}`);
+        }
       } else {
         target = talkable.find((u) => u.nid === 'exit') ?? null;
       }
