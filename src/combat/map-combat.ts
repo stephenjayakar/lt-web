@@ -633,8 +633,9 @@ export class MapCombat implements StrikeEventCombat {
     for (; this.walked < upTo; this.walked++) {
       const strike = this.strikes[this.walked];
       if (!strike.hit && !hasDamageOnMiss(strike.item)) {
-        // Skill lifelink / live_to_serve can heal on a miss (EOtF fork).
-        const missHeal = strike.selfSkillHpChange ?? 0;
+        // Skill lifelink / live_to_serve and item lifelink can heal on a
+        // miss (EOtF: from the phase's earlier strikes).
+        const missHeal = (strike.selfSkillHpChange ?? 0) + (strike.itemLifelinkHeal ?? 0);
         if (missHeal !== 0) {
           if (strike.attacker === this.attacker) {
             atkHp = Math.max(0, Math.min(attackerMaxHp, atkHp + missHeal));
@@ -1222,6 +1223,9 @@ export class MapCombat implements StrikeEventCombat {
       return;
     }
 
+    // EOtF: the digits show the damage brush even when a survival hook
+    // changed the HP the strike applies.
+    const shownDamage = strike.shownDamage ?? damage;
     let hitSoundPlayed = false;
     const hitSound = (name: string) => {
       hitSoundPlayed = true;
@@ -1245,8 +1249,8 @@ export class MapCombat implements StrikeEventCombat {
     }
 
     if (strike.crit) {
-      addDamageNumbers(target, damage, 'small_yellow');
-      if (damage === 0) {
+      addDamageNumbers(target, shownDamage, 'small_yellow');
+      if (shownDamage === 0) {
         hitSound('No Damage');
         if (target.position) this.spawnMapAnimation('MapNoDamage', target.position);
       }
@@ -1262,7 +1266,7 @@ export class MapCombat implements StrikeEventCombat {
       startFlicker(target, 83, 33, [255, 255, 255]);
       startFlicker(target, 166, 333, [255, 255, 255], 'add', true);
     } else {
-      addDamageNumbers(target, damage, 'small_red');
+      addDamageNumbers(target, shownDamage, 'small_red');
       if (strike.glancing) {
         if (target.position) {
           this.spawnMapAnimation(damage === 0 ? 'MapNoDamage' : 'MapGlancingHit', target.position);
@@ -1291,10 +1295,11 @@ export class MapCombat implements StrikeEventCombat {
     }
     // EOtF fork map_combat `extra_damage` brush: purple digits beside the hit.
     // EOtF draws one set per extra-damage instance, all at the same spot.
-    if ((strike.extraDamage ?? 0) > 0) {
+    const shownExtra = strike.shownExtraDamage ?? strike.extraDamage ?? 0;
+    if (shownExtra > 0) {
       const instances = Math.max(1, strike.extraDamageInstances ?? 1);
       for (let index = 0; index < instances; index++) {
-        addDamageNumbers(target, Math.trunc((strike.extraDamage ?? 0) / instances), 'extra_purple');
+        addDamageNumbers(target, Math.trunc(shownExtra / instances), 'extra_purple');
       }
     }
   }
