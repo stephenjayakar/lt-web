@@ -1631,8 +1631,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     DB: databaseProxy,
     RECORDS: recordsProxy,
     utils: {
-      clamp(value: number, minimum: number, maximum: number) {
-        return Math.max(minimum, Math.min(maximum, value));
+      // Python utils.clamp(i, bound_a, bound_b): the bounds may come in
+      // either order (EOtF writes utils.clamp(0, 10, x)).
+      clamp(value: number, boundA: number, boundB: number) {
+        const high = Math.max(boundA, boundB);
+        const low = Math.min(boundA, boundB);
+        return Math.min(high, Math.max(low, value));
       },
       calculate_distance(left: [number, number] | null, right: [number, number] | null) {
         if (!left || !right) return 0;
