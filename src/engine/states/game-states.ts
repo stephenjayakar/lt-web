@@ -39,6 +39,7 @@ import type {
 } from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
 import { getSkillAbilityOptions, type SkillAbilityOption } from '../../combat/skill-abilities';
+import { attackablePositions } from '../target-system';
 import { SkillObject } from '../../objects/skill';
 import {
   evaluateCondition,
@@ -2508,14 +2509,15 @@ export class OptionMenuState extends State {
           break;
         }
         case 'turnwheel': {
-          // Check if the player has uses remaining (or unlimited = -1)
-          const currentUses = game.gameVars.get('_current_turnwheel_uses') ?? -1;
-          if (currentUses > 0 || currentUses === -1) {
+          // Python OptionMenuState: open the turnwheel with uses left (an
+          // unset count reads as 1). Upstream also treats -1 as unlimited;
+          // EOtF's engine does not, so its default -1 shows Turnwheel_empty.
+          const currentUses = Number(game.gameVars.get('_current_turnwheel_uses') ?? 1);
+          if (currentUses > 0 || (currentUses === -1 && !isForkEngine())) {
             this.menu = null;
             game.state.change('turnwheel');
           } else {
-            // No uses remaining
-            game.audioManager?.playSfx?.('Error');
+            pushAlert(game, new Banner(game.db.translate('Turnwheel_empty')));
           }
           break;
         }
@@ -3003,6 +3005,8 @@ export class MoveState extends MapState {
             game.board,
             movementCost,
           );
+          // Python moves a unit that already attacked or traded as CantoMove.
+          moveAction.canto = unit.hasAttacked || unit.hasTraded;
           game.actionLog.doAction(moveAction);
           game._moveAction = moveAction;
 
@@ -6631,24 +6635,11 @@ export class WeaponChoiceState extends State {
   private showWeaponRange(unit: UnitObject, weapon: ItemObject): void {
     const game = getGame();
     game.highlight.clear();
-    const minRange = modifiedMinimumRange(unit, weapon, game);
-    const maxRange = modifiedMaximumRange(unit, weapon, game);
-    const ux = unit.position![0];
-    const uy = unit.position![1];
-    const attackTiles: [number, number][] = [];
-    for (let dx = -maxRange; dx <= maxRange; dx++) {
-      for (let dy = -maxRange; dy <= maxRange; dy++) {
-        const dist = Math.abs(dx) + Math.abs(dy);
-        if (dist >= minRange && dist <= maxRange) {
-          const tx = ux + dx;
-          const ty = uy + dy;
-          if (game.board.inBounds(tx, ty)) {
-            attackTiles.push([tx, ty]);
-          }
-        }
-      }
-    }
-    game.highlight.setAttackHighlights(attackTiles);
+    if (!unit.position) return;
+    // Python WeaponChoiceState: target_system.get_attackable_positions.
+    game.highlight.setAttackHighlights(
+      attackablePositions(unit, weapon, [[unit.position[0], unit.position[1]]], game.board, game),
+    );
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -6880,24 +6871,10 @@ export class TargetingState extends MapState {
     game.highlight.clear();
     const weapon = getEquippedWeapon(unit, game.db, game);
     if (weapon) {
-      const minRange = modifiedMinimumRange(unit, weapon, game);
-      const maxRange = modifiedMaximumRange(unit, weapon, game);
-      const attackTiles: [number, number][] = [];
-      const ux = unit.position[0];
-      const uy = unit.position[1];
-      for (let dx = -maxRange; dx <= maxRange; dx++) {
-        for (let dy = -maxRange; dy <= maxRange; dy++) {
-          const dist = Math.abs(dx) + Math.abs(dy);
-          if (dist >= minRange && dist <= maxRange) {
-            const tx = ux + dx;
-            const ty = uy + dy;
-            if (game.board.inBounds(tx, ty)) {
-              attackTiles.push([tx, ty]);
-            }
-          }
-        }
-      }
-      game.highlight.setAttackHighlights(attackTiles);
+      // Python CombatTargetingState: target_system.get_attackable_positions.
+      game.highlight.setAttackHighlights(
+        attackablePositions(unit, weapon, [[unit.position[0], unit.position[1]]], game.board, game),
+      );
     }
 
     // Python CombatTargetingState.begin: game.cursor.combat_show().
@@ -9204,7 +9181,10 @@ export class AIState extends MapState {
     if (origin[0] === target[0] && origin[1] === target[1]) return false;
     if (path?.length === 1 &&
         path[0][0] === target[0] && path[0][1] === target[1]) {
-      game.actionLog.doAction(new WarpUnitAction(unit, target, game.board));
+      // Python AIController.move: action.Move.
+      const warp = new WarpUnitAction(unit, target, game.board);
+      warp.turnwheelMove = true;
+      game.actionLog.doAction(warp);
       game.camera.focusTile(target[0], target[1]);
       return true;
     }
@@ -13110,7 +13090,10 @@ export class EventState extends State {
     }
     // Python Move with no path (event._move_unit) leaves the unit in place.
     if (!path || path.length === 0) return false;
-    game.actionLog.doAction(new WarpUnitAction(unit, target, game.board));
+    // Python event walks are action.Move(event=True).
+    const walk = new WarpUnitAction(unit, target, game.board);
+    walk.turnwheelMove = true;
+    game.actionLog.doAction(walk);
     if (path.length <= 1) {
       if (interrupted.surprise) game.audioManager?.playSfx?.('Surprise');
       return false;
@@ -13838,7 +13821,13 @@ export class EventState extends State {
       case 'if': {
         const condition = args[0] ?? 'True';
         const ctx = this.buildConditionContext();
-        if (evaluateCondition(condition, ctx)) {
+        // Python EventProcessor: a false `if` is evaluated a second time by
+        // _jump_conditional, and that second answer decides whether the body
+        // runs (a random condition such as `game.get_random(1, 2) == 1` draws
+        // twice and can still enter the body).
+        if (evaluateCondition(condition, ctx) ||
+            evaluateCondition(this.substituteEventArgs([cmd.args?.[0] ?? condition], game)[0] ?? condition,
+              this.buildConditionContext())) {
           // Condition true — advance into the if body
           this._jumpedToBranch = false;
           this.advancePointer();
@@ -14269,7 +14258,10 @@ export class EventState extends State {
           }
         }
         if (this.skipMode || movementType === 'immediate') {
-          game.actionLog.doAction(new WarpUnitAction(unit, targetPos, game.board));
+          // Python move_unit: action.Teleport.
+          const teleport = new WarpUnitAction(unit, targetPos, game.board);
+          teleport.turnwheelMove = true;
+          game.actionLog.doAction(teleport);
           this.advancePointer();
           return false;
         }
@@ -15723,7 +15715,10 @@ export class EventState extends State {
             // Python Event._move_unit has no swoosh branch: no move.
           } else if (this.skipMode || movementType !== 'normal') {
             const from: [number, number] = [unit.position[0], unit.position[1]];
-            game.actionLog.doAction(new WarpUnitAction(unit, finalPosition, game.board));
+            // Python Event._move_unit: Teleport when immediate or skipped.
+            const warp = new WarpUnitAction(unit, finalPosition, game.board);
+            warp.turnwheelMove = this.skipMode || movementType === 'immediate';
+            game.actionLog.doAction(warp);
             if (!this.skipMode) this.moveTransition(unit, movementType, from);
           } else {
             moves.push({ unit, target: finalPosition });
@@ -18690,21 +18685,29 @@ export class EventState extends State {
           void game.audioManager.playMusic(args[1]);
         }
         const otherOptions = prepList(args[2]).filter(Boolean);
+        // EOtF's engine has no option descriptions (no _prep_options_info_descs)
+        // and pads the enabled list by how many on-select events were given.
+        const forkPrep = isForkEngine();
         if (otherOptions.length) {
           const enabled = prepList(args[3]).map(prepBool);
-          while (enabled.length < otherOptions.length) enabled.push(false);
+          const givenEvents = prepList(args[4]).length;
+          if (forkPrep) for (let i = givenEvents; i < otherOptions.length; i++) enabled.push(false);
+          else while (enabled.length < otherOptions.length) enabled.push(false);
           const onSelect: (string | null)[] = prepList(args[4]).map((entry) => entry || null);
           while (onSelect.length < otherOptions.length) onSelect.push(null);
           const descs = prepList(args[5]);
           while (descs.length < otherOptions.length) descs.push('');
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled', enabled.slice(0, otherOptions.length)));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled',
+            forkPrep ? enabled : enabled.slice(0, otherOptions.length)));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_events', onSelect.slice(0, otherOptions.length)));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_additional_options', otherOptions));
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', descs.slice(0, otherOptions.length)));
+          if (!forkPrep) {
+            game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', descs.slice(0, otherOptions.length)));
+          }
         } else {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled', []));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_events', []));
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', []));
+          if (!forkPrep) game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', []));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_additional_options', []));
         }
 
