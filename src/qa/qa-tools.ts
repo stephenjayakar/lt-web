@@ -51,6 +51,15 @@ export interface FastOptions {
   drawEvery?: number;
 }
 
+export interface PerfSample { ms: number; phase: string; state: string; draw: boolean }
+export interface PerfStats {
+  frames: number; avg: number; p50: number; p95: number; p99: number; max: number;
+  /** Frames whose work alone exceeded one 60 Hz frame (16.7 ms). */
+  over16: number;
+  totalMs: number;
+}
+export type PerfReport = Record<string, PerfStats>;
+
 export interface QaDisplay {
   surface: () => Surface;
   canvas: HTMLCanvasElement;
@@ -73,6 +82,8 @@ export interface PlayOptions {
   policy?: Partial<PolicyOptions>;
   /** Run the player phase with the QA AI (default true). */
   autoplay?: boolean;
+  /** Without autoplay: move the cursor over a unit every 30 frames (HUD, HP bars). */
+  hover?: boolean;
 }
 
 export interface QaStatus {
@@ -206,6 +217,7 @@ class QaController {
    */
   private stepFrame(input: GameButton | null): void {
     const game = this.game;
+    const perfStart = this.perfSamples ? realNow() : 0;
     const draw = this.fast.drawEvery <= 1 || this.frames % this.fast.drawEvery === 0;
     const surface = this.display.surface();
     game.frameDeltaMs = FRAMETIME;
@@ -240,6 +252,59 @@ class QaController {
     }
     advanceVirtualClock(FRAMETIME);
     this.frames += 1;
+    if (this.perfSamples) {
+      this.perfSamples.push({
+        ms: realNow() - perfStart,
+        phase: String(game.phase?.getCurrent?.() ?? ''),
+        state: game.state.getCurrentState()?.name ?? '',
+        draw,
+      });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Frame-time sampling (scripts/perf-frames.mjs)
+  // -------------------------------------------------------------------------
+
+  private perfSamples: PerfSample[] | null = null;
+
+  perfStart(): void {
+    this.perfSamples = [];
+  }
+
+  /** Stop sampling; per-frame update+draw time, grouped by phase and top state. */
+  perfStop(): PerfReport {
+    const samples = this.perfSamples ?? [];
+    this.perfSamples = null;
+    const groups = new Map<string, number[]>();
+    const add = (key: string, ms: number) => {
+      const list = groups.get(key) ?? [];
+      list.push(ms);
+      groups.set(key, list);
+    };
+    for (const s of samples) {
+      add('all', s.ms);
+      add(`phase:${s.phase || '-'}`, s.ms);
+      add(`state:${s.state}`, s.ms);
+    }
+    const stats = (list: number[]): PerfStats => {
+      const sorted = [...list].sort((a, b) => a - b);
+      const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
+      const total = sorted.reduce((sum, ms) => sum + ms, 0);
+      return {
+        frames: sorted.length,
+        avg: total / Math.max(1, sorted.length),
+        p50: at(0.5),
+        p95: at(0.95),
+        p99: at(0.99),
+        max: sorted[sorted.length - 1] ?? 0,
+        over16: sorted.filter((ms) => ms > FRAMETIME).length,
+        totalMs: total,
+      };
+    };
+    const out: PerfReport = {};
+    for (const [key, list] of groups) out[key] = stats(list);
+    return out;
   }
 
   private resolveWaiters(): void {
@@ -348,6 +413,7 @@ class QaController {
       maxTurns: options.maxTurns ?? 40,
       forceWin: options.forceWin ?? false,
       autoplay: options.autoplay ?? true,
+      hover: options.hover ?? false,
     };
     this.result = null;
     this.reason = null;
@@ -497,6 +563,8 @@ export interface QaApi {
   step(count: number, input?: GameButton | null): void;
   virtualNow(): number;
   realNow(): number;
+  perfStart(): void;
+  perfStop(): PerfReport;
 }
 
 export function installQa(game: any, params: URLSearchParams, display: QaDisplay): QaApi {
@@ -515,6 +583,8 @@ export function installQa(game: any, params: URLSearchParams, display: QaDisplay
     step: (count, input) => controller.step(count, input ?? null),
     virtualNow,
     realNow,
+    perfStart: () => controller.perfStart(),
+    perfStop: () => controller.perfStop(),
   };
   (window as any).__qa = api;
   const speed = Number(params.get('qa'));
