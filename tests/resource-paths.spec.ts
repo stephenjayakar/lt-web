@@ -237,6 +237,48 @@ test.describe('Missing optional assets: graceful fallback', () => {
     expect(result.moveIsNull).toBe(true);
   });
 
+  test('scrolling backgrounds skip panoramas missing from panoramas.json', async ({ page }) => {
+    // Python create_background checks RESOURCES.panoramas: rune_background
+    // (absent from most projects) falls back to default_background unfetched.
+    const requested: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/panoramas/')) requested.push(request.url());
+    });
+    await page.goto('/?harness=true&project=default.ltproj&level=0&clean=true');
+    await waitForHarness(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ScrollingBackground } = await import('/src/ui/prep-ui.ts');
+      const listed = await game.resources.hasPanorama('default_background');
+      const unlisted = await game.resources.hasPanorama('rune_background');
+      new ScrollingBackground(game, 'rune_background');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return { listed, unlisted };
+    });
+    expect(result).toEqual({ listed: true, unlisted: false });
+    expect(requested.some((url) => url.includes('rune_background'))).toBe(false);
+    expect(requested.some((url) => url.endsWith('default_background.png'))).toBe(true);
+  });
+
+  test('tryLoadMapSprite only requests sprites listed in map_sprites.json', async ({ page }) => {
+    // Python resolves map sprites through RESOURCES.map_sprites, so an absent
+    // variant ("<Class>Female") is a silent miss rather than two 404s.
+    const requested: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/map_sprites/') && request.url().endsWith('.png')) requested.push(request.url());
+    });
+    await page.goto('/?harness=true&project=default.ltproj&level=0&clean=true');
+    await waitForHarness(page);
+    const result = await page.evaluate(async () => {
+      const rm = (window as any).__gameRef.resources;
+      const missing = await rm.tryLoadMapSprite('CitizenFemaleQaMissing');
+      const listed = await rm.tryLoadMapSprite('Citizen');
+      return { missing: missing.stand === null && missing.move === null, listed: !!listed.stand && !!listed.move };
+    });
+    expect(result).toEqual({ missing: true, listed: true });
+    expect(requested.filter((url) => url.includes('CitizenFemaleQaMissing'))).toEqual([]);
+  });
+
   test('combat-anim-loader: missing effect spritesheets return null', async ({ page }) => {
     await page.goto('/?harness=true&project=default.ltproj&level=0&clean=true');
     await waitForHarness(page);
