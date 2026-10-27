@@ -255,14 +255,14 @@ The release gate is green: build, all four audits, the full serial suite,
 `npm run oracle` (`tools/oracle/README.md`) replays scenarios on upstream
 lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
 
-- [ ] Unique units get their class `learned_skills` (Canto on Paladins).
+- [x] Unique units get their class `learned_skills` (Canto on Paladins).
 - [ ] `WaitAction` also sets has_moved/has_traded/has_attacked.
-- [ ] Every level unit gets the level's party (Python `level_setup`).
-- [ ] Generics raise wexp to their items' requirements.
-- [ ] Generic autolevels honour `enemy_leveling` and, for promoted classes,
+- [x] Every level unit gets the level's party (Python `level_setup`).
+- [x] Generics raise wexp to their items' requirements.
+- [x] Generic autolevels honour `enemy_leveling` and, for promoted classes,
   `promoted_autolevels_fraction`.
 - [ ] Combat level-ups leave current HP alone (only bonus exp raises it).
 - [ ] Item uses and staves draw the combat RNG like Python's solver.
 - [ ] `gba_poison`; `cannot_use_items` unequips; a unit whose stun ends at
   upkeep acts that phase.
-- [ ] EOtF fork: units on Fixed growths start with 50 growth points per stat.
+- [x] EOtF fork: units on Fixed growths start with 50 growth points per stat.
