@@ -28,7 +28,23 @@ Playwright Chromium (muted, headless) driven over a local command server.
 - Run 4: from Act 1 F2 on, a QA-only debug boost (temp/boost.js: raise party
   stats to ~60 HP / 18-22 offence and defence, applied through the page) so a
   scripted planner can reach the later acts; combats, AI and events still run
-  normally.
+  normally. Run 4 cleared Act 1 (Adrius trial, Bootes boss) and reached the
+  Act 2 F19 trial "Coalition" (13-turn limit), lost on the time limit.
+- Run 5 lost on Act 1 F8 (defend map: citizen died). Run 6 cleared Act 1 again
+  and Act 2 F11-F18 (arrive, visit-villages, destroy-monuments maps), lost the
+  Coalition trial on its turn limit again. Bar/Spirit Tether intro and a tether
+  talk at the hub table worked.
+- Run 7 (stronger boost, skipping the Coalition trial) reached Act 1 F8 when
+  the playtest was stopped on request. Furthest floor overall: Act 2 F19.
+  The Act 3 floor-29 Grigol trial was not reached.
+
+## Summary
+
+Eight bugs fixed (below). The scripted runs exercised hub systems, every Act 1
+and Act 2 node type seen (combat incl. rout/arrive/seize/defend/visit/destroy
+maps, events, shops, camps, trials, the Bootes boss), prep save/reload,
+suspend/resume, defeat flow and New Game with persistent records. No console
+errors from the current build beyond the authored-data warnings listed below.
 
 ## Bugs
 
@@ -59,6 +75,21 @@ Playwright Chromium (muted, headless) driven over a local command server.
 8. FIXED 1c72a70 — MoveState ignored SELECT on the unit's own tile when it had
    no valid moves (EOtF Chains of Thanatos leaves neighbours at MOV -99), so
    the unit could not even Wait. (`tests/movement-parity.spec.ts`)
+
+## Open findings (not fixed) with repro
+
+- Prep: once, while a script selected Fight in prep_main, Pick Units opened
+  instead and later Enters toggled the Lord out of the deployment (level 53,
+  Act 1 F6). Not reproduced; likely input timing in my driver, but worth a
+  look if prep_main can accept SELECT before its menu is ready.
+- Text entry (hub desk -> Enter Password): Enter toggles a web-only
+  keyboard-typing mode instead of acting as SELECT (Z works). Deliberate web
+  convenience, but it differs from Python's grid-only entry.
+- Headless Chromium logs `[Perf] Long frame` 50-90 ms (update, not draw)
+  during combat animations. Repro: any battle in a headless Playwright run.
+- Save failure `Cannot read properties of null (reading '0')` on level 91
+  (Fake_Arrive region with no position) was seen once on the pre-merge build;
+  current eotf already serializes position-less regions.
 
 ## Minor / not fixed
 
