@@ -798,7 +798,15 @@ test.describe('Rekka all-level compatibility', () => {
       lyn.items.push(ring);
       lyn.equippedAccessory = ring;
       lyn.skills = lyn.skills.filter((skill: any) => skill.nid !== 'Duel');
-      lyn.skills.push(new SkillObject(game.db.skills.get('Duel')));
+      // The ring's status_on_equip Duel (Python SourceType.ITEM): not
+      // displaceable, so give_skill's DEFAULT copy is refused at max stacks
+      // (`stax` is inert in Python; only `stack` raises the limit) and the
+      // existing Duel keeps the `stax` component the event added.
+      const duel = new SkillObject(game.db.skills.get('Duel'));
+      duel.data.set('itemSource', ring);
+      duel.data.set('itemSourceType', 'item');
+      duel.data.set('itemSourceNid', 'DuelRing');
+      lyn.skills.push(duel);
       game.eventManager.triggerSpecific('Global Ability_Resourceful', {
         type: 'Global Ability_Resourceful',
         unitNid: lyn.nid,
