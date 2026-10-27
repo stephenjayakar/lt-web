@@ -193,7 +193,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
         present: g.units.has('Eirika'),
         globalBonus: g.gameVars.get('_global_level_cap_bonus'),
       };
-      const actions = Array.from({ length: 4 }, () => g.actionLog.undo());
+      const actions = Array.from({ length: 5 }, () => g.actionLog.undo());
       const restored = g.units.get('Eirika');
       const undone = {
         sameIdentity: restored === original,
@@ -226,6 +226,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
     expect(result.redone).toEqual(result.changed);
     expect(result.actionNames).toEqual([
       'UnregisterUnitAction',
+      'LeaveMapAction',
       'SetUnitFieldAction',
       'SetGameVarAction',
       'HealAction',

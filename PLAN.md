@@ -219,6 +219,7 @@ The release gate is green: build, all four audits, the full serial suite,
   cancel undoes item-menu storage; the AI re-equips
   items[0], tries skill abilities (never combat arts) and no longer brings its
   weapon to the top.
+- [x] Fork events from the engine source (`tests/fork-events.spec.ts`): heal scaling, get_tile_units, baked objectives, choice/table rows and skin, interact_unit item, StyleNid cursor, skip drops tables, find_item.
 - [x] Strike timing (`tests/fork-followups.spec.ts` "Python strike timing"):
   on-hit shove/swap/pivot/draw_back destinations are fixed when their phase is
   solved; each phase is solved against the HP earlier phases left (HP

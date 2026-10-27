@@ -242,15 +242,22 @@ export class GameQueryEngine {
 
     return null;
   }
-  /** Find a runtime item by NID, optionally constrained by owner or party. */
-  findItem(itemNid: string, ownerOrParty?: string): ItemObject | null {
+  /**
+   * EOtF's find_item(item, party): walk the party's persistent player units
+   * (dead and off-map ones included) in unit order and return the first
+   * carried item whose uid or nid matches. The convoy is not searched.
+   */
+  findItem(item: unknown, party?: unknown): ItemObject | null {
     const game = getGame();
-    for (const item of new Set(game.items?.values?.() ?? [])) {
-      const candidate = item as ItemObject;
-      if (candidate.nid !== itemNid) continue;
-      if (!ownerOrParty) return candidate;
-      const owner = candidate.owner;
-      if (owner?.nid === ownerOrParty || owner?.party === ownerOrParty) return candidate;
+    const key = item && typeof item === 'object'
+      ? (item as any)._raw?.uid ?? (item as any).uid ?? (item as any)._raw?.nid ?? (item as any).nid
+      : item;
+    if (key === null || key === undefined || key === '') return null;
+    const partyNid = resolveNidArg(party) ?? game.currentParty;
+    for (const unit of game.units.values() as Iterable<UnitObject>) {
+      if (unit.team !== 'player' || !unit.persistent || unit.party !== partyNid) continue;
+      const found = unit.items.find((candidate) => candidate.uid === key || candidate.nid === key);
+      if (found) return found;
     }
     return null;
   }
