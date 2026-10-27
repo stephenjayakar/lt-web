@@ -2468,12 +2468,15 @@ export class OptionMenuState extends State {
           break;
         }
         case 'end_turn': {
-          // Python OptionMenuState 'End' (upstream and fork) changes to
-          // turn_change without waiting anyone: units keep their action
-          // flags, which the next ResetAll clears for living units only.
+          // Python OptionMenuState 'End' (upstream and fork) waits nobody
+          // and pushes turn_change, status_endstep and the player 'ai'
+          // phase: units with an AI act (and wait only if they did
+          // something), then AIState's completion pushes turn_change, whose
+          // begin runs status_endstep. The rest keep their action flags,
+          // which the next ResetAll clears for living units only.
           this.menu = null;
           game.state.back();
-          game.state.change('turn_change');
+          game.state.change('ai');
           break;
         }
         case 'turnwheel': {

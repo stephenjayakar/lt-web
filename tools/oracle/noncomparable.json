@@ -17,6 +17,7 @@
     "units.*.skill_data.*.sourceNid": "Web-only, see sourceType.",
     "units.*.skill_data.*.ability_item_uid": "Python stores the uid of a skill's ability item (engine-specific uid counter).",
     "units.*.skill_data.*.abilityItemKey:ability": "Web-only registry key of a skill's ability item (see ability_item_uid).",
+    "units.*.skill_data.*.abilityItemKey:*": "Web-only registry keys of a skill's component ability items (ability_attack_charge...).",
     "units.*.skill_data.*.auraSourceType": "Web-only bookkeeping on aura child skills (Python tracks auras in game.boundary / the aura registry).",
     "units.*.skill_data.*.auraOwnerNid": "Web-only aura bookkeeping, see auraSourceType.",
     "units.*.skill_data.*.auraParentSkillUid": "Web-only aura bookkeeping (engine-specific uid), see auraSourceType.",

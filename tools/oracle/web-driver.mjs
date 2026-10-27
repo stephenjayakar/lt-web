@@ -22,7 +22,7 @@ const BASE = `http://localhost:${PORT}`;
 
 async function reachable() {
   try {
-    const res = await fetch(BASE + '/', { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(BASE + '/', { signal: AbortSignal.timeout(15000) });
     return res.ok;
   } catch {
     return false;
