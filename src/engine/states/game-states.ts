@@ -8516,6 +8516,9 @@ export class CombatState extends State {
         return;
       }
     }
+    // Python DeathManager.miracle: a unit_death event that resurrected a
+    // dying unit (EOtF TakenPrisoner) took it off dying_units.
+    this.dyingUnits = this.dyingUnits.filter((unit) => isUnitDying(unit));
     if (this.dyingUnits.length > 0) {
       this.phase = 'death';
       this.phaseTimer = 0;
@@ -18951,6 +18954,11 @@ export class EventState extends State {
       case 'resurrect': {
         const unit = game.units.get(args[0]);
         if (unit) {
+          // Python: an is_dying unit (a unit_death event runs before the
+          // dying fade) gets game.death.miracle instead: it leaves the dying
+          // list and is never Die'd. ResurrectAction still heals it, as
+          // Python's SetHP(1000) does.
+          if (isUnitDying(unit)) clearUnitFx(unit);
           game.actionLog.doAction(new ResurrectAction(unit));
           // Python resurrect follows with action.Reset (on_refresh in EOtF's
           // engine, where Null Refresh waits the unit).
