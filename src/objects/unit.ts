@@ -392,7 +392,8 @@ export class UnitObject {
   }
 
   /** Return all items including multi_item subitems (Python `get_all_items`). */
-  private getAllItems(): ItemObject[] {
+  /** Python item_funcs.get_all_items: items with multi-items expanded. */
+  getAllItems(): ItemObject[] {
     const result: ItemObject[] = [];
     const visited = new Set<ItemObject>();
     const append = (item: ItemObject): void => {
