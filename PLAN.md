@@ -261,8 +261,11 @@ The release gate is green: build, all four audits, the full serial suite,
   queued combat, so canto runs. AI fuzz 116/116 (was 113), first-turn sweep
   146/147 turns (was 144; Boss_Hidden is a fork error), turn fuzz 153/160
   (was 133; 6 fork crashes left).
-- [ ] Turn fuzz 23-031: an aura child (`Protective_Gaze_Child`, range-99 enemy
-  aura) drops off the web a turn early.
+- [x] Aura links (`tests/fork-aura-links.spec.ts`): on the fork a refresh
+  re-decides only the links of the unit that arrived/left (and of an aura skill
+  added/removed, a team change, units on a changed terrain region); other
+  links stay even if alliances changed (turn fuzz 23-031). Turn fuzz 154/160:
+  the other six scenarios crash the fork engine itself.
 - [x] Strike timing (`tests/fork-followups.spec.ts` "Python strike timing"):
   on-hit shove/swap/pivot/draw_back destinations are fixed when their phase is
   solved; each phase is solved against the HP earlier phases left (HP

@@ -92,6 +92,9 @@ async function startCombat(
       });
       defenseItem.owner = defender;
       defender.items.push(defenseItem);
+      // Equip it as a real unit would be: EOtF's get_weapon only reads the
+      // equipped weapon, so an unequipped axe never counters.
+      defender.equip(defenseItem);
     }
     for (const nid of spec.attackerSkills ?? []) {
       attacker.skills.push(new SkillObject(game.db.skills.get(nid)));

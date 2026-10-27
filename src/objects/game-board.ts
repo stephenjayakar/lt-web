@@ -49,7 +49,7 @@ export class GameBoard {
    * `game.arrive`/`game.leave` calling `pull_auras`/`propagate_aura`/
    * `release_aura`).
    */
-  onUnitPositionChanged?: () => void;
+  onUnitPositionChanged?: (unit?: UnitObject) => void;
 
   /**
    * Live level regions. Terrain regions override the tilemap terrain under
@@ -116,7 +116,7 @@ export class GameBoard {
     unit.position = [x, y];
     if (!unit.previousPosition) unit.previousPosition = [x, y];
     this.markArrival(unit);
-    this.onUnitPositionChanged?.();
+    this.onUnitPositionChanged?.(unit);
   }
 
   /**
@@ -142,7 +142,7 @@ export class GameBoard {
   reArrive(unit: UnitObject): void {
     if (!unit.position) return;
     this.markArrival(unit);
-    this.onUnitPositionChanged?.();
+    this.onUnitPositionChanged?.(unit);
   }
 
   /** Remove a unit from the board. */
@@ -159,7 +159,7 @@ export class GameBoard {
       }
     }
     unit.position = null;
-    this.onUnitPositionChanged?.();
+    this.onUnitPositionChanged?.(unit);
   }
 
   /** Get unit at position. */
@@ -188,7 +188,7 @@ export class GameBoard {
     this.teamGrid[newY][newX] = unit.team;
     unit.position = [newX, newY];
     this.markArrival(unit);
-    this.onUnitPositionChanged?.();
+    this.onUnitPositionChanged?.(unit);
   }
 
   // ------------------------------------------------------------------
