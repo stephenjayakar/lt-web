@@ -720,6 +720,38 @@ function collectVisibleUnits(): {
   return result;
 }
 
+/**
+ * Python CombatState.draw passes AnimationCombat's viewbox to the map as
+ * map_view.draw's subsurface cull: units are drawn only inside the iris, and
+ * not at all once it has closed (width 0), so the map behind a battle scene
+ * shows terrain only.
+ */
+let animationViewbox: [number, number, number, number] | null = null;
+
+/** Whether a battle scene's viewbox currently culls the map's units. */
+export function animationViewboxActive(): boolean {
+  return animationViewbox !== null;
+}
+
+/**
+ * Draw the map with Python's viewbox unit cull: `drawMapWith(units)` renders
+ * the map with the given units. Outside a battle scene it is one call; with
+ * a closed viewbox units are left out; while the viewbox iris is open the
+ * unit-less map is drawn and the iris rectangle is copied from a second
+ * render with units (map_view.draw_units' subsurface).
+ */
+export function blitMapWithViewbox<T>(surf: Surface, units: T[], drawMapWith: (units: T[]) => Surface): void {
+  const viewbox = animationViewbox;
+  if (!viewbox) {
+    surf.blit(drawMapWith(units));
+    return;
+  }
+  surf.blit(drawMapWith([]));
+  if (viewbox[2] <= 0 || viewbox[3] <= 0) return;
+  const withUnits = drawMapWith(units);
+  surf.blitFrom(withUnits, viewbox[0], viewbox[1], viewbox[2], viewbox[3], viewbox[0], viewbox[1]);
+}
+
 /** Render the map through MapView and blit onto `surf`. */
 function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
   const game = getGame();
@@ -730,6 +762,7 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
 
   const cullRect = game.camera.getCullRect();
   const units = collectVisibleUnits();
+  const viewbox = animationViewbox;
   const highlights: Map<string, string> | null = showHighlights
     ? game.highlight.getHighlights()
     : null;
@@ -766,10 +799,10 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
     };
   }
 
-  const mapSurf = game.mapView.draw(
+  blitMapWithViewbox(surf, units, (drawn) => game.mapView.draw(
     game.tilemap,
     cullRect,
-    units,
+    drawn,
     highlights,
     cursorInfo,
     false, // showGrid
@@ -777,10 +810,8 @@ function drawMap(surf: Surface, showHighlights: boolean = true): Surface {
     fogConfig,
     game.unitMarkers,
     performance.now(),
-  );
-
-  surf.blit(mapSurf);
-  drawUnitMarkers(surf);
+  ));
+  if (!viewbox) drawUnitMarkers(surf);
   // UnitSprite damage numbers outlive the combat that spawned them.
   const damageNumberCamera = game.camera.getOffset();
   drawMapDamageNumbers(surf, damageNumberCamera[0], damageNumberCamera[1]);
@@ -6948,6 +6979,8 @@ export class CombatState extends State {
   // Level-up display
   private levelUpGains: Record<string, number> | null = null;
   private levelUpScreen: LevelUpScreenClass | null = null;
+  /** Frame clock for the combat level screen (Python ExpState current_time). */
+  private levelScreenClock = 0;
   private levelUpSoundPlayed: boolean = false;
   private darkFuzzAlpha: number = 0.34; // 66% translucent = 34% opaque black overlay
   /** Python ExpState.level_up_animation. */
@@ -7041,6 +7074,7 @@ export class CombatState extends State {
   }
 
   override finish(): void {
+    animationViewbox = null;
     const saved = this.suspendedCombats.pop();
     if (!saved) return;
     Object.assign(this, saved);
@@ -7772,6 +7806,7 @@ export class CombatState extends State {
 
   override update(): StateResult {
     const activeCombat = this.isAnimationCombat ? this.animCombat : this.combat;
+    animationViewbox = this.isAnimationCombat ? this.animCombat?.viewbox ?? null : null;
     if (!activeCombat) return;
     const game = getGame();
 
@@ -8092,15 +8127,19 @@ export class CombatState extends State {
           this.levelUpLogo = this.createLevelUpLogo();
         }
         this.phaseTimer += realDelta;
-        // Python ExpState 'level_up' waits for the LevelUpMap/LevelUpBattle
-        // logo (time-based); without one the 500 ms pause stands in.
+        // Python ExpState 'level_up' moves on once the LevelUpMap /
+        // LevelUpBattle logo finishes. ExpState.draw advances the logo as
+        // well, so it plays at twice its authored speed (see drawExpAndLevelUp).
+        // Without a logo the 500 ms pause stands in.
+        let logoDone = false;
         if (this.levelUpLogo) {
-          this.levelUpLogo.update();
-          if (this.phaseTimer < Math.min(4000, this.levelUpLogo.getDuration())) break;
+          logoDone = this.levelUpLogo.update() || this.phaseTimer >= 4000;
+          if (!logoDone) break;
         }
-        // Brief pause (500ms) to show the "Level Up" moment with dark overlay,
-        // then transition to level_screen
-        if (this.phaseTimer >= 500) {
+        if (logoDone || this.phaseTimer >= 500) {
+          this.levelScreenClock = 0;
+          // Python ExpState: combat_object.darken_ui() as the screen opens.
+          this.animCombat?.darkenUi();
           this.phase = 'level_screen';
           this.phaseTimer = 0;
           // Create the LevelUpScreen
@@ -8124,13 +8163,17 @@ export class CombatState extends State {
       }
 
       case 'level_screen': {
-        // Update the LevelUpScreen animation
-        const now = performance.now();
+        // Update the LevelUpScreen animation on frame time, like Python's
+        // ExpState (engine.get_time advances once per frame).
+        this.levelScreenClock += realDelta;
+        const now = this.levelScreenClock;
         if (this.levelUpScreen) {
           const result = this.levelUpScreen.update(now);
           if (result === 'entered_level_up_wait') {
             this.fireDuringUnitLevelUpTrigger();
           } else if (result === 'done') {
+            // Python ExpState: combat_object.lighten_ui() once it closes.
+            this.animCombat?.lightenUi();
             this.afterUnitLevelUp();
           }
         } else {
@@ -8577,6 +8620,7 @@ export class CombatState extends State {
   override end(): StateResult {
     // Always clear combat animation offsets when this state exits
     setActiveCombatOffsets(null);
+    animationViewbox = null;
     // Stop looping EXP SFX if still playing
     const game = getGame();
     game.audioManager?.stopSfx?.('Experience Gain');
@@ -8660,7 +8704,7 @@ export class CombatState extends State {
 
   /**
    * Render the battle scene. Python CombatState draws the map (the lower
-   * state) and the 75% fuzz outside the viewbox; AnimationCombat.draw adds
+   * state) and the fuzz (25% black) outside the viewbox; AnimationCombat.draw adds
    * the scene. Once its fade_out ends nothing is drawn, so the map shows
    * through for the dying fade and banners.
    */
@@ -8701,12 +8745,14 @@ export class CombatState extends State {
     // Dark overlay during level_up phase (before stat screen)
     if (this.phase === 'level_up') {
       surf.fillRect(0, 0, viewport.width, viewport.height, `rgba(0,0,0,${this.darkFuzzAlpha.toFixed(2)})`);
+      // Python ExpState.draw calls level_up_animation.update() again.
+      this.levelUpLogo?.update();
       this.levelUpLogo?.draw(surf, 0, 0);
     }
 
     // Level-up stat screen
     if (this.phase === 'level_screen' && this.levelUpScreen) {
-      this.levelUpScreen.draw(surf, performance.now());
+      this.levelUpScreen.draw(surf, this.levelScreenClock);
     }
 
     if (this.phase === 'rank_up' && this.rankUpBanner) {
