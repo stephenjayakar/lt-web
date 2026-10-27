@@ -12233,7 +12233,8 @@ export class EventState extends State {
    */
   private levelEnd(game: any): void {
     const currentLevelNid = game.currentLevel?.nid ?? '';
-    game.gameVars.set('_prev_level_nid', currentLevelNid);
+    // Python keeps this in game.memory, not in the (saved, event-visible) game vars.
+    game.memory.set('_prev_level_nid', currentLevelNid);
 
     // Find current level index in the ordered db.levels map
     const levelNids = Array.from(game.db.levels.keys()) as string[];
@@ -12249,6 +12250,13 @@ export class EventState extends State {
     // Determine the next level
     let nextLevelNid: string | null = null;
     const gotoLevel = game.gameVars.get('_goto_level') ?? null;
+
+    // Python level_end records whether the next level comes from the overworld.
+    if (currentIndex < levelNids.length - 1 || gotoLevel !== null) {
+      const levelPrefab = game.db.levels.get(currentLevelNid);
+      game.gameVars.set('_should_go_to_overworld',
+        !!levelPrefab?.go_to_overworld && !!game.db.getConstant?.('overworld', false) && gotoLevel === null);
+    }
 
     if (gotoLevel !== null) {
       if (gotoLevel === '_force_quit') {
@@ -15326,7 +15334,8 @@ export class EventState extends State {
         const deathPosition = unit.position
           ? [unit.position[0], unit.position[1]] as [number, number]
           : undefined;
-        game.actionLog.doAction(new SetCurrentHpAction(unit, 0));
+        // Python kill_unit marks the unit dead (Die / DyingState) and leaves
+        // its HP alone (upstream and the EOtF fork).
         // Python: an on-map unit goes through game.death.should_die and the
         // DyingState (Death sfx, white flicker, fade; Die after 400 ms) once
         // the UnitDeath events it triggers have run; `immediate` and off-map

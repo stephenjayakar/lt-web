@@ -5890,7 +5890,9 @@ test.describe('Event command parity', () => {
     if (setup!.hasCantoPrefab) expect(result.hasCanto).toBe(true);
   });
 
-  test('generic Feat selection uses LT growth RNG and survives save/load', async ({ page }) => {
+  // Python GameState.load re-seeds static_random and restores only the
+  // combat stream, so the growth stream (Feat picks) restarts at seed + 1.
+  test('generic Feat selection uses LT growth RNG and restarts it after a load', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
 
@@ -5958,11 +5960,11 @@ test.describe('Event command parity', () => {
     expect(result.first).toBe(result.featOrder[38 % result.featOrder.length]);
     expect(result.second).toBe(result.featOrder[58 % result.featOrder.length]);
     expect(result.loaded).toBe(true);
-    expect(result.restored).toBe(result.second);
+    expect(result.restored).toBe(result.first);
     expect(result.stateAfterFirst).toBe(1103527590);
     expect(result.stateAfterSecond).toBe(377401575);
-    expect(result.restoredState).toBe(result.stateAfterFirst);
-    expect(result.stateAfterRestored).toBe(result.stateAfterSecond);
+    expect(result.restoredState).toBeUndefined();
+    expect(result.stateAfterRestored).toBe(result.stateAfterFirst);
   });
 
   test('autolevel_to resolves distinct Feat entries with reversible skill actions', async ({ page }) => {

@@ -1,0 +1,23 @@
+{
+  "name": "eotf-growth-dynamic",
+  "description": "EOtF (Dynamic growths, seed 7): event-loaded units level up through give_exp, promote (promotion stat gains, class skills, wexp) and change class.",
+  "project": "eotf.ltproj",
+  "level": "EX_2",
+  "events": false,
+  "seed": 7,
+  "growths": "Dynamic",
+  "actions": [
+    {"do": "event", "script": [
+      "load_unit;Termina;player", "add_unit;Termina;7,8;immediate",
+      "load_unit;Aeilem;player", "add_unit;Aeilem;8,8;immediate",
+      "load_unit;Alphabet;player", "add_unit;Alphabet;9,8;immediate",
+      "load_unit;Amant;player", "add_unit;Amant;10,8;immediate"
+    ]},
+    {"do": "event", "script": ["give_exp;Termina;100", "give_exp;Aeilem;100", "give_exp;Alphabet;100", "give_exp;Amant;100"]},
+    {"do": "event", "script": ["give_exp;Termina;100", "give_exp;Aeilem;100", "give_exp;Alphabet;100", "give_exp;Amant;100"]},
+    {"do": "event", "script": ["autolevel_to;Termina;10", "autolevel_to;Alphabet;8"]},
+    {"do": "event", "script": ["promote;Termina;Paladin", "promote;Aeilem;Wyvern_Knight", "promote;Amant;Spartan"]},
+    {"do": "event", "script": ["change_class;Alphabet;Mage_Knight"]},
+    {"do": "event", "script": ["give_exp;Termina;100", "give_exp;Amant;100"]}
+  ]
+}

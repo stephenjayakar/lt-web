@@ -595,7 +595,7 @@ test.describe('Embrace of the Fog project compatibility', () => {
         ['free', 'free_roam', 'prep_main', 'base_main'],
       );
       return {
-        previous: game.gameVars.get('_prev_level_nid'),
+        previous: game.memory.get('_prev_level_nid'),
         level: game.currentLevel?.nid,
         state: harness.getState().currentStateName,
       };

@@ -615,7 +615,10 @@ test.describe('RNG-mode verification and deterministic replay', () => {
     expect(result.state).not.toBe('combat');
   });
 
-  test('event RNG resumes at the identical next draw after save/load', async ({ page }) => {
+  // Python GameState.load (upstream and the EOtF fork) re-seeds static_random
+  // from _random_seed and restores only the combat stream, so the "other"
+  // stream behind game.get_random restarts at seed + 2 after a load.
+  test('event RNG restarts from the seed after save/load, as Python does', async ({ page }) => {
     await page.goto('/?harness=true&level=0&clean=true&bundle=false');
     await waitForHarness(page);
 
@@ -658,8 +661,8 @@ test.describe('RNG-mode verification and deterministic replay', () => {
     expect(result.loaded).toBe(true);
     expect(result.first).toBeGreaterThanOrEqual(0);
     expect(result.first).toBeLessThanOrEqual(999);
-    expect(result.restoredState).toBe(result.savedState);
-    expect(result.replayedNext).toBe(result.expectedNext);
-    expect(result.replayedState).toBe(result.expectedState);
+    expect(result.restoredState).toBeUndefined();
+    expect(result.replayedNext).toBe(result.first);
+    expect(result.replayedState).toBe(result.savedState);
   });
 });

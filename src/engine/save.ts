@@ -116,6 +116,8 @@ export interface UnitSaveData {
     data?: [string, any][];
     initiatorNid?: string | null;
   }[];
+  /** Item-granted instances shadowed by a visible same-nid skill (UnitObject.shadowedSkills). */
+  shadowedSkillInstances?: { nid: string; skillKey?: string; initiatorNid?: string | null }[];
 }
 
 export interface ItemSaveData {
@@ -511,8 +513,14 @@ function serializeUnit(
     skillKey: skillKeyByObject.get(skill),
     initiatorNid: skill.initiatorNid ?? null,
   }));
+  const shadowedSkillInstances = (unit.shadowedSkills ?? []).map(skill => ({
+    nid: skill.nid,
+    skillKey: skillKeyByObject.get(skill),
+    initiatorNid: skill.initiatorNid ?? null,
+  }));
 
   return {
+    ...(shadowedSkillInstances.length ? { shadowedSkillInstances } : {}),
     nid: unit.nid,
     name: unit.name,
     desc: unit.desc,
@@ -783,6 +791,7 @@ export function buildSaveDict(game: any): SaveDict {
   };
   for (const unit of (game.units as Map<string, UnitObject>).values()) {
     unit.skills.forEach((skill, index) => registerSkill(skill, unit.nid, index));
+    (unit.shadowedSkills ?? []).forEach((skill, index) => registerSkill(skill, unit.nid, unit.skills.length + index));
   }
 
   // Serialize every skill instance (no NID dedupe). Python's skill_registry
@@ -790,7 +799,7 @@ export function buildSaveDict(game: any): SaveDict {
   // and severed subskill/source chains.
   const skills: SkillSaveData[] = [];
   for (const unit of (game.units as Map<string, UnitObject>).values()) {
-    for (const skill of unit.skills) {
+    for (const skill of [...unit.skills, ...(unit.shadowedSkills ?? [])]) {
       const skillKey = skillKeyByObject.get(skill);
       if (!skillKey) continue;
       skills.push(serializeSkill(skill, skillKey, unit.nid, itemKeyByObject));
@@ -1185,6 +1194,13 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   // 2. Restore game vars and level vars
   game.gameVars = new Map(s.gameVars);
   game.levelVars = new Map(s.levelVars);
+  // Python GameState.load re-seeds static_random from _random_seed and then
+  // restores only the combat stream (current_random_state): the growth and
+  // "other" streams restart from seed + 1 / seed + 2 after every load (the
+  // EOtF fork does the same).
+  for (const key of ['_growth_random_seed', '_growth_random_state', '_other_random_seed', '_other_random_state']) {
+    game.gameVars.delete(key);
+  }
 
   // 3. Restore difficulty mode
   if (s.currentMode) {
@@ -1476,6 +1492,20 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
           }
         } catch (err) {
           console.warn(`Unit "${unitData.nid}": failed to restore skill "${skillNid}":`, err);
+        }
+      }
+
+      // Item-granted instances hidden behind a visible same-nid skill.
+      unit.shadowedSkills = [];
+      for (const entry of unitData.shadowedSkillInstances ?? []) {
+        if (!entry.skillKey) continue;
+        try {
+          const restored = restoreSkillInstance(
+            entry.nid, skillsByKey.get(entry.skillKey), entry, game, SkillCtor, itemsByKey,
+          );
+          if (restored) unit.shadowedSkills.push(restored);
+        } catch (err) {
+          console.warn(`Unit "${unitData.nid}": failed to restore shadowed skill "${entry.nid}":`, err);
         }
       }
 

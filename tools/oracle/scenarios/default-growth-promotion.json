@@ -1,0 +1,16 @@
+{
+  "name": "default-growth-promotion",
+  "description": "Upstream (Random growths, seed 5): give_exp level-ups, autolevel_to, promotions with promote_level_reset (default.ltproj resets to level 1) and a class change.",
+  "project": "default.ltproj",
+  "level": "DEBUG",
+  "events": false,
+  "seed": 5,
+  "growths": "Random",
+  "actions": [
+    {"do": "event", "script": ["give_exp;Eirika;100", "give_exp;Vanessa;100", "give_exp;Moulder;100"]},
+    {"do": "event", "script": ["give_exp;Eirika;100", "autolevel_to;Vanessa;10", "autolevel_to;Moulder;10"]},
+    {"do": "event", "script": ["promote;Eirika;Eirika_Great_Lord", "promote;Vanessa;Falcoknight", "promote;Moulder;Bishop"]},
+    {"do": "event", "script": ["change_class;Seth;Great_Knight"]},
+    {"do": "event", "script": ["give_exp;Vanessa;100", "give_exp;Moulder;100"]}
+  ]
+}

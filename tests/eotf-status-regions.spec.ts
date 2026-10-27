@@ -71,13 +71,15 @@ test.describe('Embrace of the Fog status-region lifecycle', () => {
         sameObject: redoneStatus === appliedStatus,
       };
 
+      // GameState.arrive decides ignore_region_status when the unit arrives,
+      // so each skill change is followed by a (re-)arrival on the same tile.
       const flying = new SkillObject(game.db.skills.get('Flying'));
       unit.skills.push(flying);
-      game.refreshPositionSkills();
+      game.board.reArrive(unit);
       const ignored = sourced()?.nid ?? null;
       const gain = new SkillObject(game.db.skills.get('Ambush_Predator'));
       unit.skills.push(gain);
-      game.refreshPositionSkills();
+      game.board.reArrive(unit);
       const restored = sourced()?.nid ?? null;
 
       house.condition = 'False';
