@@ -547,7 +547,17 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
         const killed = kit.make('_FzKilled', 'enemy', { stats: { HP: 10 } });
         kit.place(killed, 1, 1);
         kit.fight(vicious, killed, ['hit1', 'end']);
+        game.removeUnit(vicious.nid);
+
+        // Fireheart (recoil 2) on a unit killed by the counter: Recoil has no
+        // HP check, so it is left at 1 HP, still dead.
+        const hothead = kit.make('_FzHothead', 'enemy', { klass: 'Myrmidon', items: ['Iron_Sword'], skills: ['Fireheart'], stats: { HP: 20 }, hp: 2 });
+        const wall = kit.make('_FzWall', 'player', { klass: 'Myrmidon', items: ['Iron_Sword'], stats: { HP: 40, STR: 40, SKL: 30 } });
+        kit.place(hothead, 3, 1);
+        kit.place(wall, 4, 1);
+        kit.fight(hothead, wall, ['miss1', 'hit2', 'end']);
         return {
+          killedDead: !!killed.dead, recoilHp: hothead.currentHp, recoilDead: !!hothead.dead,
           slowStrikes: slow.strikes.length,
           cleaveStrikes: cleave.strikes.length, oneProcRoll: after === oneRoll,
           missedHp, killedHp: killed.currentHp,
@@ -562,5 +572,45 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
     expect(result!.oneProcRoll).toBe(true);
     expect(result!.missedHp).toBe(8);
     expect(result!.killedHp).toBe(1);
+    expect(result!.killedDead).toBe(true);
+    expect(result!.recoilHp).toBe(1);
+    expect(result!.recoilDead).toBe(true);
+  });
+
+  test('AI scoring sees combat_condition skills off (no pre_combat in the AI)', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (kitSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const kit = await (new Function(`${kitSrc}; return makeKit;`)())(game);
+      if (!kit.origin) return null;
+      const ss = await import('/src/combat/skill-system.ts');
+      try {
+        // Protective_Gaze_Child (attack_speed -5 under a combat_condition):
+        // a forecast applies it, the AI's scoring does not, so the AI sees
+        // a double (attack speed 6 against 2).
+        const gazed = kit.make('_FzGazed', 'enemy', { klass: 'Mage', items: ['Scorch'], skills: ['Protective_Gaze_Child'], stats: { MAG: 8, SPD: 8, CON: 6 } });
+        const armor = kit.make('_FzArmor', 'player', { items: ['Iron_Axe'], stats: { HP: 40, SPD: 2, CON: 12 } });
+        // Holy_Guard (resist_multiplier 0.5 against Monsters, combat_condition).
+        const monster = kit.make('_FzMonster', 'enemy', { items: ['Wounding_Fang'], stats: { STR: 6 } });
+        monster.tags = [...(monster.tags ?? []), 'Monster'];
+        const cleric = kit.make('_FzCleric', 'player', { skills: ['Holy_Guard'], stats: { HP: 30, DEF: 4 } });
+        kit.place(gazed, 0, 0);
+        kit.place(armor, 1, 0);
+        kit.place(monster, 3, 0);
+        kit.place(cleric, 4, 0);
+        const probe = () => ({
+          double: kit.calcs.canDouble(gazed, gazed.items[0], armor, armor.items[0], kit.db, game),
+          fang: kit.calcs.computeDamage(monster, monster.items[0], cleric, kit.db, game.board, game, 'attack'),
+        });
+        return { forecast: probe(), ai: ss.withCombatConditionsOff(probe) };
+      } finally {
+        kit.cleanup();
+      }
+    }, KIT);
+    expect(result).not.toBeNull();
+    expect(result!.forecast.double).toBe(false);
+    expect(result!.ai.double).toBe(true);
+    expect(result!.ai.fang).toBe(2 * result!.forecast.fang);
   });
 });

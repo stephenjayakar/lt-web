@@ -52,6 +52,7 @@ import {
 import {
   checkAlly,
   checkEnemy,
+  combatConditionSnapshot,
   hasDrainingCharge,
   ignoreForcedMovement,
   modifiedHealAmount,
@@ -138,7 +139,7 @@ function combatSkillEnabled(
       Number.isFinite(charge) && charge <= 0) return false;
   const combatCondition = skill.getComponent<string>('combat_condition');
   if (combatCondition) {
-    const snapshot = skill.data.get('_combat_condition');
+    const snapshot = combatConditionSnapshot(skill);
     if (typeof snapshot === 'boolean') {
       if (!snapshot) return false;
     } else if (!evaluateCondition(combatCondition, {
@@ -1261,7 +1262,9 @@ export function applyCombatSkillEndHooks(
         );
       }
       const standardRecoil = skill.getComponent<unknown>('recoil');
-      if (standardRecoil !== undefined && isHookTarget && unit.currentHp > 0 &&
+      // EOtF's Recoil has no HP check: a unit already dying (its death is
+      // settled before end_combat) is set to 1 HP and still dies.
+      if (standardRecoil !== undefined && isHookTarget && (isForkEngine() || unit.currentHp > 0) &&
           (enemyHookTarget || foughtEnemy) &&
           !processedGlobalHooks.get(skill)?.has('recoil')) {
         const amount = Math.trunc(Number(standardRecoil));

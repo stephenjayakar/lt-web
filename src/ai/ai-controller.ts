@@ -48,6 +48,7 @@ import {
   unitHasTag,
   modifyCritDamage,
   noAttackAfterMove as skillNoAttackAfterMove,
+  withCombatConditionsOff,
 } from '../combat/skill-system';
 import { isForkEngine } from '../engine/engine-flavor';
 import { EquipItemAction } from '../engine/action';
@@ -106,6 +107,10 @@ export class AIController {
    * Iterates through behaviours in priority order, trying each until one succeeds.
    */
   getAction(unit: UnitObject): AIAction {
+    return withCombatConditionsOff(() => this.decideAction(unit));
+  }
+
+  private decideAction(unit: UnitObject): AIAction {
     const aiDef = this.db.ai.get(changeAi(unit, unit.ai, this.gameRef));
 
     // Default: just wait if no AI definition found
@@ -155,6 +160,10 @@ export class AIController {
    * from the average enemy position, breaking ties toward the current tile.
    */
   getCantoRetreatAction(unit: UnitObject): AIAction | null {
+    return withCombatConditionsOff(() => this.decideCantoRetreat(unit));
+  }
+
+  private decideCantoRetreat(unit: UnitObject): AIAction | null {
     if (!unit.position) return null;
     // Python canto_retreat uses get_true_valid_moves with the behaviour that
     // chose this turn's action (a guard of an inactive group stays put).
