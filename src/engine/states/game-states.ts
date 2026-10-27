@@ -241,7 +241,11 @@ import {
   playbackMarks,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
-import { applySkillTurnHooks } from '../skill-turn-lifecycle';
+import {
+  collectSkillTurnHooks,
+  finishSkillTurnHooks,
+  type CollectedSkillTurn,
+} from '../skill-turn-lifecycle';
 import {
   applyItemEndResourceHooks,
   applyItemStartResourceHooks,
@@ -2502,14 +2506,15 @@ export class OptionMenuState extends State {
           break;
         }
         case 'end_turn': {
-          // Mark all player units as finished and trigger turn change
-          const playerUnits: UnitObject[] = game.board?.getTeamUnits('player') ?? [];
-          for (const unit of playerUnits) {
-            game.actionLog.doAction(new WaitAction(unit));
-          }
+          // Python OptionMenuState 'End' (upstream and fork) waits nobody
+          // and pushes turn_change, status_endstep and the player 'ai'
+          // phase: units with an AI act (and wait only if they did
+          // something), then AIState's completion pushes turn_change, whose
+          // begin runs status_endstep. The rest keep their action flags,
+          // which the next ResetAll clears for living units only.
           this.menu = null;
           game.state.back();
-          game.state.change('turn_change');
+          game.state.change('ai');
           break;
         }
         case 'turnwheel': {
@@ -8649,8 +8654,12 @@ export class CombatState extends State {
         if (!wasEventCombat) {
           // Queue the post-combat continuation before EventState so the event
           // is layered above it and pops back to the correct state. Python's
-          // stack preserves menu/Canto/trade while combat events run.
-          if (tradePair) {
+          // stack preserves menu/Canto/trade while combat events run. An AI
+          // combat (a player unit's AI on End included) returns to the AI,
+          // which moves a Canto unit itself (handle_state_stack's ai branch).
+          if (aiCombat) {
+            // nothing: AIState continues
+          } else if (tradePair) {
             game.selectedUnit = tradePair.unit;
             if (tradePair.partner.position) {
               game.cursor.setPos(tradePair.partner.position[0], tradePair.partner.position[1]);
@@ -10122,6 +10131,7 @@ export class StatusUpkeepState extends State {
   override readonly transparent = true;
 
   private units: UnitObject[] = [];
+  private pendingFinish: CollectedSkillTurn | null = null;
 
   protected turnPhase(): 'upkeep' | 'endstep' {
     return 'upkeep';
@@ -10129,6 +10139,7 @@ export class StatusUpkeepState extends State {
 
   override start(): StateResult {
     const game = getGame();
+    this.pendingFinish = null;
     if (game.initiative) {
       const nid = game.initiative.getCurrentUnitNid();
       const unit = nid ? game.getUnit(nid) : null;
@@ -10150,10 +10161,21 @@ export class StatusUpkeepState extends State {
   override update(): StateResult {
     const game = getGame();
     const phase = this.turnPhase();
+    // A unit whose hooks produced playback: Python runs the events they
+    // queued (pushed over this state) before its pending actions.
+    if (this.pendingFinish) {
+      const collected = this.pendingFinish;
+      this.pendingFinish = null;
+      finishSkillTurnHooks(game, collected);
+      if (game.eventManager?.hasActiveEvents()) {
+        game.state.change('event');
+        return 'repeat';
+      }
+    }
     while (this.units.length > 0) {
       const unit = this.units.pop() as UnitObject;
       if (!unit.position || unit.isDead()) continue;
-      applySkillTurnHooks(game, [unit], phase);
+      const collected = collectSkillTurnHooks(game, unit, phase);
       if (phase === 'upkeep') {
         applyItemUpkeepResourceHooks(
           game,
@@ -10161,6 +10183,12 @@ export class StatusUpkeepState extends State {
           getSkillAbilityOptions(game, unit).map((ability) => ability.item),
         );
       }
+      if (collected.playback && unit.position && game.eventManager?.hasActiveEvents()) {
+        this.pendingFinish = collected;
+        game.state.change('event');
+        return 'repeat';
+      }
+      finishSkillTurnHooks(game, collected);
       if (game.eventManager?.hasActiveEvents()) {
         game.state.change('event');
         return 'repeat';

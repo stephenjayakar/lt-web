@@ -25,6 +25,7 @@ re-diffs two saved runs.
 | `run.mjs` | `npm run oracle`: runs both sides per scenario and diffs. |
 | `diff.mjs` | Field-level comparison and report. |
 | `noncomparable.json` | Fields ignored or normalised, each with its reason. |
+| `fuzz.mjs` | Random EOtF turn-lifecycle scenarios (`gen`) and diff buckets (`report`). |
 | `scenarios/*.json` | Scenarios. |
 
 ## Engines
@@ -179,6 +180,25 @@ Where the two UIs differ, the drivers adapt and say so in code: the web
 targeting states keep their own target index (cycled with RIGHT) where
 Python teleports the cursor; staves go through `item_targeting` on the web;
 several trade partners are a menu on the web instead of map targeting.
+
+## Turn-lifecycle fuzz (EOtF)
+
+```bash
+node tools/oracle/fuzz.mjs gen E:/BigData/lt-oracle/fuzz-a --count=60 --seed=11 --turns=3
+npm run oracle -- E:/BigData/lt-oracle/fuzz-a
+node tools/oracle/fuzz.mjs report E:/BigData/lt-oracle/fuzz-a [--json]
+```
+
+Keep generated scenarios outside the repo. Each one loads random unique
+units from EOtF's unit DB onto a room map's own unit tiles (both teams,
+enemies mostly with AI `None`), gives them explicit stats, random HP and
+statuses/skills drawn from the EOtF skills with turn-lifecycle components
+(`give_skill`, since the fork has no `add_skill` alias), then runs full turn
+cycles. `report` buckets every diff where it first appears or changes, by
+phase (`setup`, `load`, `turn`) and field, with the turn components of the
+affected unit's skills, and counts turn-clean scenarios (no diff appearing
+during the turn cycles) and fork crashes (EOtF skills used out of context
+can raise in the fork itself).
 
 ## Snapshot schema
 
