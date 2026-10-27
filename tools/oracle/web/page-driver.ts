@@ -9,8 +9,11 @@
  * the call site.
  */
 
-import { ItemObject, createItemTree } from '../../../src/objects/item';
-import { SkillObject } from '../../../src/objects/skill';
+import { ItemObject, createItemTree, setNextItemUid } from '../../../src/objects/item';
+import { SkillObject, setNextSkillUid } from '../../../src/objects/skill';
+import { UnitObject } from '../../../src/objects/unit';
+import { RECORDS } from '../../../src/engine/records';
+import { isCantoSkill } from '../../../src/combat/skill-system';
 import {
   AddSkillAction, ArriveOnMapAction, ChangeTeamAction, GiveItemAction, LeaveMapAction,
   RegisterItemTreeAction, RemoveItemFromUnitAction, RemoveSkillAction, SetCurrentHpAction,
@@ -38,6 +41,25 @@ export interface Scenario {
   start_frames?: number;
   startup_events?: boolean;
   start_game_vars?: Record<string, unknown>;
+  /** Level sweep: start each level from the same state, one snapshot each. */
+  levels?: string[];
+  /** Press Fight when a level settles in preparations. */
+  through_prep?: boolean;
+  /** Captured run state (capture_run_state.py), inlined by web-driver.mjs. */
+  run_state?: RunState;
+}
+
+/** tools/oracle/capture_run_state.py output (Python save dicts as JSON). */
+interface RunState {
+  game_vars?: Record<string, any>;
+  records?: Record<string, any>;
+  current_party?: string;
+  parties?: { nid: string; money: number; convoy: number[]; bexp?: number }[];
+  level_cap_modifier?: number;
+  already_triggered?: string[];
+  units?: any[];
+  items?: any[];
+  skills?: any[];
 }
 
 const REST_STATES = new Set([
@@ -487,6 +509,29 @@ function rngSnap(g: any): Json {
   };
 }
 
+/** The song on top of the music stack (as the Python side reports it). */
+function currentMusic(g: any): Json {
+  const am = g.audioManager;
+  const stack = am?.music?.songStack;
+  if (Array.isArray(stack)) return stack.length ? stack[stack.length - 1].nid : null;
+  // No music controller (no audio context in this page): replay the
+  // recorded music calls onto a song stack the way Python's sound thread
+  // keeps one.
+  const songs: string[] = [];
+  for (const call of am?.calls ?? []) {
+    if (['play', 'push', 'fadeIn', 'battleFadeIn'].includes(call.op) && call.nid) {
+      const at = songs.indexOf(call.nid);
+      if (at >= 0) songs.splice(at, 1);
+      songs.push(call.nid);
+    } else if (call.op === 'pop' || call.op === 'battleFadeBack') {
+      songs.pop();
+    } else if (call.op === 'stop') {
+      songs.length = 0;
+    }
+  }
+  return songs.length ? songs[songs.length - 1] : null;
+}
+
 export function snapshot(e: WebEngine): Json {
   const g = e.game;
   const units: Record<string, Json> = {};
@@ -504,7 +549,7 @@ export function snapshot(e: WebEngine): Json {
       position: pos(u.position),
       dead: !!u.dead,
       hp: u.currentHp,
-      max_hp: u.getMaxHp ? u.getMaxHp() : u.stats.HP,
+      max_hp: u.maxHp ?? u.stats.HP,
       level: u.level,
       exp: u.exp,
       klass: u.klass,
@@ -522,6 +567,7 @@ export function snapshot(e: WebEngine): Json {
       ai: u.ai ?? null,
       ai_group: u.aiGroup ?? null,
       traveler: u.traveler ?? null,
+      generic: !!u.generic,
     };
   }
   const regions = (g.currentLevel?.regions ?? []).map((r: any) => ({
@@ -546,10 +592,177 @@ export function snapshot(e: WebEngine): Json {
     game_vars: jsonable(g.gameVars),
     level_vars: jsonable(g.levelVars),
     regions,
+    objective: g.currentLevel?.objective ? jsonable(g.currentLevel.objective) : null,
+    music: currentMusic(g),
     events: (em?.eventQueue ?? []).map((ev: any) => ev.nid),
     already_triggered: [...(em?.getOnceTriggered?.() ?? [])].sort(),
     rng: rngSnap(g),
   };
+}
+
+/**
+ * Load a captured run state into a fresh game, as py_driver.apply_run_state
+ * does on the Python side: Python save dicts for the persistent units, their
+ * items and skills, plus game vars, records, parties and spent only_once
+ * events. Units start off the map without terrain statuses; loadLevel then
+ * carries them into the level like a real level transition.
+ */
+function applyRunState(g: any, state: RunState): void {
+  for (const [k, v] of Object.entries(state.game_vars ?? {})) {
+    if (k !== '_random_seed') g.gameVars.set(k, v);
+  }
+  for (const [nid, value] of Object.entries(state.records ?? {})) {
+    if (RECORDS.has(nid)) RECORDS.update(nid, value);
+    else RECORDS.create(nid, value);
+  }
+  const items = new Map<number, ItemObject>();
+  for (const d of state.items ?? []) {
+    const prefab = g.db.items.get(d.nid) ?? { nid: d.nid, name: d.name, desc: d.desc, components: d.components };
+    const item = new ItemObject(prefab);
+    item.uid = d.uid;
+    item.name = d.name ?? item.name;
+    item.desc = d.desc ?? item.desc;
+    item.droppable = !!d.droppable;
+    (item as any).components = new Map<string, any>(d.components ?? []);
+    item.data.clear();
+    for (const [k, v] of Object.entries(d.data ?? {})) item.data.set(k, v);
+    const uses = d.data?.uses ?? d.data?.c_uses;
+    if (typeof uses === 'number') item.uses = uses;
+    items.set(d.uid, item);
+  }
+  for (const d of state.items ?? []) {
+    const parent = items.get(d.uid)!;
+    parent.subitems = (d.subitems ?? []).map((uid: number) => items.get(uid)).filter(Boolean) as ItemObject[];
+    for (const child of parent.subitems) child.parentItem = parent;
+  }
+  const skills = new Map<number, any>();
+  for (const d of state.skills ?? []) skills.set(d.uid, d);
+  let maxItem = 99;
+  let maxSkill = 99;
+  for (const uid of items.keys()) maxItem = Math.max(maxItem, uid);
+  for (const uid of skills.keys()) maxSkill = Math.max(maxSkill, uid);
+  setNextItemUid(maxItem + 1);
+  setNextSkillUid(maxSkill + 1);
+  const persistent: Map<string, any> = g.persistentUnits;
+  for (const d of state.units ?? []) {
+    const klass = g.db.classes.get(d.klass);
+    if (!klass) throw new OracleError(`run state: unknown class ${d.klass} for ${d.nid}`);
+    const unit = new UnitObject({
+      nid: d.nid, name: d.name, desc: d.desc ?? '', variant: d.variant ?? null, level: d.level,
+      klass: d.klass, tags: d.tags ?? [], bases: d.stats, growths: d.growths, starting_items: [],
+      learned_skills: [], wexp_gain: {}, portrait_nid: d.portrait_nid, affinity: d.affinity,
+    } as any, klass);
+    unit.team = d.team;
+    unit.party = d.party ?? '';
+    unit.faction = d.faction ?? null;
+    unit.generic = !!d.generic;
+    unit.persistent = d.persistent ?? !d.generic;
+    unit.notes = (d.notes ?? []).map(([k, v]: [string, string]) => [k, v]);
+    unit.fields = new Map(Object.entries(d._fields ?? {}));
+    unit.level = d.level;
+    unit.exp = d.exp;
+    unit.stats = { ...d.stats };
+    unit.growths = { ...d.growths };
+    unit.growthPoints = { ...(d.growth_points ?? {}) };
+    unit.statCapModifiers = { ...unit.statCapModifiers, ...(d.stat_cap_modifiers ?? {}) };
+    unit.wexp = { ...d.wexp };
+    unit.ai = d.ai ?? 'None';
+    (unit as any).roamAi = d.roam_ai ?? null;
+    unit.aiGroup = d.ai_group ?? '';
+    unit.portraitNid = d.portrait_nid ?? '';
+    unit.affinity = d.affinity ?? '';
+    unit.startingPosition = d.starting_position ?? null;
+    unit.currentHp = d.current_hp;
+    if (typeof d.current_mana === 'number') (unit as any).currentMana = d.current_mana;
+    if (typeof d.current_fatigue === 'number') (unit as any).currentFatigue = d.current_fatigue;
+    unit.traveler = d.traveler ?? null;
+    unit.dead = !!d.dead;
+    unit.position = null;
+    unit.items = [];
+    for (const uid of d.items ?? []) {
+      const item = items.get(uid);
+      if (!item) continue;
+      item.owner = unit;
+      unit.items.push(item);
+    }
+    unit.skills = [];
+    for (const [uid, source, sourceType] of d.skills ?? []) {
+      if (sourceType === 'terrain') continue;
+      const sd = skills.get(uid);
+      if (!sd) continue;
+      const prefab = g.db.skills.get(sd.nid) ?? { nid: sd.nid, name: sd.nid, desc: '', components: sd.components };
+      const skill = new SkillObject(prefab);
+      skill.uid = uid;
+      (skill as any).components = new Map<string, any>(sd.components ?? []);
+      skill.data.clear();
+      for (const [k, v] of Object.entries(sd.data ?? {})) skill.data.set(k, v);
+      skill.data.set('sourceType', sourceType);
+      if (source !== null && source !== undefined) skill.data.set('sourceNid', source);
+      skill.ownerNid = unit.nid;
+      skill.initiatorNid = sd.initiator_nid ?? null;
+      unit.skills.push(skill);
+      if (isCantoSkill(skill)) unit.hasCanto = true;
+    }
+    unit.equippedWeapon = d.equipped_weapon != null ? items.get(d.equipped_weapon) ?? null : null;
+    unit.equippedAccessory = d.equipped_accessory != null ? items.get(d.equipped_accessory) ?? null : null;
+    persistent.set(unit.nid, unit);
+  }
+  for (const p of state.parties ?? []) {
+    const party = g.getParty(p.nid);
+    if (!party) continue;
+    party.money = p.money;
+    party.bexp = p.bexp ?? 0;
+    party.convoy = p.convoy.map((uid) => items.get(uid)).filter(Boolean);
+  }
+  if (state.current_party) g.currentParty = state.current_party;
+  if (state.level_cap_modifier) g.gameVars.set('_global_level_cap_bonus', state.level_cap_modifier);
+  g.eventManager?.restoreOnceTriggered(state.already_triggered ?? []);
+}
+
+/** Start one level the way py_driver.start_level does, then settle. */
+async function startLevel(e: WebEngine, scn: Scenario, level: string): Promise<void> {
+  const g = e.game;
+  if (scn.run_state) {
+    // Python build_new: a fresh game (registries, parties, spent events).
+    g.buildNew();
+    g.eventManager?.restoreOnceTriggered([]);
+  }
+  // Python build_new: fresh game vars holding only the seed.
+  g.gameVars.clear();
+  g.gameVars.set('_random_seed', scn.seed ?? 0);
+  // Fresh difficulty mode with the scenario overrides, set before the level
+  // builds so generic autolevels use them (loadLevel keeps an existing
+  // mode). Same defaults as py_driver.py: Python's own default mode object
+  // pins True Hit; growths default to Fixed so level-ups are seed independent.
+  g.currentMode = null;
+  g.initDifficulty();
+  if (g.currentMode) {
+    g.currentMode.rng_mode = scn.rng_mode ?? 'True Hit';
+    g.currentMode.growths = scn.growths ?? 'Fixed';
+  }
+  if (scn.run_state) applyRunState(g, scn.run_state);
+  // Run state a real playthrough would have set before this level.
+  for (const [k, v] of Object.entries(scn.start_game_vars ?? {})) g.gameVars.set(k, v);
+  await g.loadLevel(level);
+  if (scn.events === false) {
+    // loadLevel already queued (and once-marked) the level_start events;
+    // Python never triggers them at all in this mode.
+    while (g.eventManager?.hasActiveEvents()) g.eventManager.dequeueCurrentEvent();
+    g.eventManager.restoreOnceTriggered([]);
+    e.suppressEvents = true;
+    const real = g.eventManager.trigger.bind(g.eventManager);
+    g.eventManager.trigger = (t: any, c: any) => (e.suppressEvents ? false : real(t, c));
+  }
+  enterStartedLevel(g);
+  await e.settle({ skip: scn.skip, maxFrames: scn.start_frames ?? 20000 });
+  if (scn.through_prep && e.top() === 'prep_main') {
+    // Leave preparations like a player: the first player phase (turn 1
+    // events) only starts after Fight.
+    e.choose('Fight');
+    // prep_main fades out before it leaves (as in Python).
+    await e.settle({ until: (en) => en.top() !== 'prep_main', maxFrames: 600 });
+    await e.settle({ skip: scn.skip, maxFrames: scn.start_frames ?? 20000 });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -577,33 +790,31 @@ export async function runScenario(scn: Scenario): Promise<Json> {
         await e.settle({ until: (en) => !en.game.eventManager.hasActiveEvents() && en.top() !== 'event' });
       }
     }
-    // Python build_new: fresh game vars holding only the seed.
-    g.gameVars.clear();
-    g.gameVars.set('_random_seed', scn.seed ?? 0);
-    // Run state a real playthrough would have set before this level.
-    for (const [k, v] of Object.entries(scn.start_game_vars ?? {})) g.gameVars.set(k, v);
-    // Fresh difficulty mode with the scenario overrides, set before the level
-    // builds so generic autolevels use them (loadLevel keeps an existing
-    // mode). Same defaults as py_driver.py: Python's own default mode object
-    // pins True Hit; growths default to Fixed so level-ups are seed independent.
-    g.currentMode = null;
-    g.initDifficulty();
-    if (g.currentMode) {
-      g.currentMode.rng_mode = scn.rng_mode ?? 'True Hit';
-      g.currentMode.growths = scn.growths ?? 'Fixed';
+    if (scn.levels) {
+      // Level sweep: same run state for every level, failures per level.
+      const baseline = RECORDS.save();
+      for (const level of scn.levels) {
+        const step: any = { action: { do: 'level', level: String(level) } };
+        try {
+          RECORDS.restore(baseline);
+          await startLevel(e, scn, String(level));
+          new Runner(e).setup(scn.setup ?? []);
+        } catch (err: any) {
+          console.error(err);
+          step.error = `${err?.name ?? 'Error'}: ${err?.message ?? err}`;
+        }
+        try {
+          step.snapshot = snapshot(e);
+        } catch (err: any) {
+          step.error ??= `snapshot failed: ${err?.message ?? err}`;
+        }
+        out.steps.push(step);
+      }
+      const failed = out.steps.filter((st: any) => st.error).map((st: any) => st.action.level);
+      if (failed.length) out.level_errors = failed;
+      return out;
     }
-    await g.loadLevel(String(scn.level));
-    if (scn.events === false) {
-      // loadLevel already queued (and once-marked) the level_start events;
-      // Python never triggers them at all in this mode.
-      while (g.eventManager?.hasActiveEvents()) g.eventManager.dequeueCurrentEvent();
-      g.eventManager.restoreOnceTriggered([]);
-      e.suppressEvents = true;
-      const real = g.eventManager.trigger.bind(g.eventManager);
-      g.eventManager.trigger = (t: any, c: any) => (e.suppressEvents ? false : real(t, c));
-    }
-    enterStartedLevel(g);
-    await e.settle({ skip: scn.skip, maxFrames: scn.start_frames ?? 20000 });
+    await startLevel(e, scn, String(scn.level));
     const r = new Runner(e);
     r.setup(scn.setup ?? []);
     out.steps.push({ action: { do: 'start' }, snapshot: snapshot(e) });
