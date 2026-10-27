@@ -205,6 +205,10 @@ export function initializeSkillData(
         (typeof auraOwner === 'string' ? auraOwner : null),
     );
   }
+  // CombatArt.init (upstream and the EOtF fork): data['active'] = False.
+  if (skill.hasComponent('combat_art') && !skill.data.has('active')) {
+    skill.data.set('active', false);
+  }
   // EOtF's engine: WitchWarpExpression.init seeds data['arbitrary'] with ''
   // (Covetous Love's expression reads it before an event fills it in).
   if (isForkEngine() && skill.hasComponent('witch_warp_expression') && !skill.data.has('arbitrary')) {

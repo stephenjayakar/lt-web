@@ -94,6 +94,12 @@ export class UnitObject {
    * updater when the referenced AI def has roam behaviours. */
   roamAi: string | null = null;
   skills: SkillObject[];
+  /**
+   * Item-granted skill instances hidden behind a visible one of the same nid
+   * (Python keeps every UnitSkill in _skills, but unit.skills shows one per
+   * nid up to its stack). Promoted when the visible instance's source goes.
+   */
+  shadowedSkills: SkillObject[] = [];
   /** Max stat caps from class definition. */
   maxStats: Record<string, number>;
   statCapModifiers: Record<string, number>;

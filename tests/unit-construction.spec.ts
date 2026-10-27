@@ -111,4 +111,59 @@ test.describe('Unit construction (Python UnitObject.from_prefab)', () => {
       expect(Object.values(units[nid]!.growthPoints).every((v) => v === 50)).toBe(true);
     }
   });
+
+  test('EOtF: construction runs skill/item init and shows one instance per skill nid', async ({ page }) => {
+    test.skip(!projectInstalled('eotf.ltproj'), 'EOtF project not installed');
+    const probe = (level: string, fn: string) => boot(page, `project=eotf.ltproj&level=${level}`)
+      .then(() => page.evaluate(fn));
+    // CombatArt.init: data['active'] = False (Capture_Piece on EV_Chess pieces).
+    expect(await probe('EV_Chess', `(() => {
+      const u = window.__gameRef.units.get('101');
+      return u.skills.find((s) => s.nid === 'Capture_Piece')?.data.get('active');
+    })()`)).toBe(false);
+    // The fork's WitchWarpExpression.init: data['arbitrary'] = ''.
+    expect(await probe('EV_Prometheus', `(() => {
+      const u = window.__gameRef.units.get('Prometheus_E');
+      return u.skills.find((s) => s.nid === 'Nexus_Warp')?.data.get('arbitrary');
+    })()`)).toBe('');
+    // Deprecated Effective.init copies the value into the item data.
+    expect(await probe('Ilona', `(() => {
+      const u = window.__gameRef.units.get('106');
+      return u.items.map((i) => i.data.get('effective') ?? null);
+    })()`)).toContain(18);
+    // Demon's class and the generic's starting skills both grant HP_Double:
+    // Python's unit.skills shows it once, so HP doubles once (60 -> 120).
+    expect(await probe('Trial_Extra', `(() => {
+      const u = window.__gameRef.units.get('127');
+      return [u.skills.filter((s) => s.nid === 'HP_Double').length, u.maxHp, u.currentHp];
+    })()`)).toEqual([1, 120, 120]);
+    // Keyblade grants Locktouch_Keyblade on hold and on equip: one visible
+    // instance, and none once the item leaves.
+    expect(await probe('Serpens', `(async () => {
+      const g = window.__gameRef;
+      const { RemoveItemFromUnitAction } = await import('/src/engine/action.ts');
+      const u = g.units.get('132');
+      const before = u.skills.filter((s) => s.nid === 'Locktouch_Keyblade').length;
+      g.actionLog.doAction(new RemoveItemFromUnitAction(u, u.items.find((i) => i.nid === 'Keyblade')));
+      return [before, u.skills.filter((s) => s.nid === 'Locktouch_Keyblade').length];
+    })()`)).toEqual([1, 0]);
+  });
+
+  test('kill_unit leaves HP alone, as Python does', async ({ page }) => {
+    await boot(page, 'project=default.ltproj&level=DEBUG');
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const nid = 'TestKillKeepsHp';
+      g.db.events.set(nid, {
+        name: nid, nid, trigger: nid, level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0, _source: ['kill_unit;Vanessa;immediate'],
+      });
+      g.eventManager.triggerSpecific(nid, { type: nid }, true);
+      g.state.change('event');
+      await (window as any).__harness.settle(300);
+      const u = g.units.get('Vanessa');
+      return { dead: u.dead, hp: u.currentHp, position: u.position };
+    });
+    expect(result).toEqual({ dead: true, hp: 17, position: null });
+  });
 });

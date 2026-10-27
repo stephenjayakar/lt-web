@@ -52,6 +52,7 @@ import {
   activeUnitAnimations,
   changeVariant,
   isCantoSkill,
+  initializeSkillData,
   onRemoveRescue,
   unitHasTag,
 } from '../combat/skill-system';
@@ -1577,6 +1578,8 @@ export class GameState {
       skill.data.set('sourceType', 'global');
       skill.data.set('sourceNid', 'game');
       unit.skills.push(skill);
+      // Python item_funcs.create_skill runs every component's init().
+      initializeSkillData(skill, unit, this);
       if (isCantoSkill(skill)) unit.hasCanto = true;
     }
 
@@ -1584,7 +1587,15 @@ export class GameState {
       const skillPrefab = this.db.skills.get(skillNid);
       if (!skillPrefab) return;
       const skill = new SkillObject(skillPrefab);
+      // Python keeps every instance in _skills but unit.skills shows one per
+      // nid (up to `stack`); a generic whose class and starting skills both
+      // grant HP_Double gets one multiplier. Same limit as AddSkillAction.
+      const stack = Number(skill.getComponent<unknown>('stack') ?? skill.getComponent<unknown>('stax') ?? 1);
+      const limit = Number.isFinite(stack) ? Math.max(1, stack) : 1;
+      if (unit.skills.filter((existing) => existing.nid === skillNid).length >= limit) return;
       unit.skills.push(skill);
+      // Python item_funcs.create_skill runs every component's init().
+      initializeSkillData(skill, unit, this);
       if (isCantoSkill(skill)) unit.hasCanto = true;
     };
 
