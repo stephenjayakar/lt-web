@@ -213,6 +213,7 @@ The release gate is green: build, all four audits, the full serial suite,
   `choice;...;expression` re-evaluates every frame; battle animations draw no
   extra-damage digits (the fork's AnimationCombat has none).
 - [x] Fork events from the engine source (`tests/fork-events.spec.ts`): heal scaling, get_tile_units, baked objectives, choice/table rows and skin, interact_unit item, StyleNid cursor, skip drops tables, find_item.
+- [x] Level-start differential (`tools/oracle/level-sweep.mjs`, run state from a real run start): all 158 EOtF levels reach turn 1 on both engines; fixed false-`if` double evaluation, carried-unit order, item-sourced timed statuses; generic unit setup diffs remain (fix/oracle-units).
 - [x] Fork AI/flow (`tests/fork-ai-flow.spec.ts`): list-valued unit tags,
   Reset (on_refresh) after event moves/reset/resurrect and for a dying
   rescuer's traveler, Drop waits same-phase droppees, main-target

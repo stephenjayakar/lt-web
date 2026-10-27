@@ -788,6 +788,13 @@ export class GameState {
     // d. Spawn units -------------------------------------------------------
     // Track which persistent units were placed on the map in this level
     const placedPersistentUnits = new Set<string>();
+    // Python keeps one unit registry across levels: carried-over units keep
+    // their registration order, ahead of the units this level creates, so
+    // game.units (and every query iterating it) lists them first.
+    for (const [nid, unit] of this.persistentUnits) {
+      unit.position = null;
+      this.units.set(nid, unit);
+    }
 
     for (const unitData of levelPrefab.units) {
       if (isUniqueUnitData(unitData)) {
@@ -829,7 +836,7 @@ export class GameState {
     // d1b. Register remaining persistent units that aren't in this level's unit list
     // (they stay in the registry but off-map, e.g., for convoy access or future levels)
     for (const [nid, unit] of this.persistentUnits) {
-      if (!placedPersistentUnits.has(nid) && !this.units.has(nid)) {
+      if (!placedPersistentUnits.has(nid)) {
         unit.position = null;
         this.units.set(nid, unit);
         // Re-register items
