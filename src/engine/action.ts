@@ -4126,6 +4126,38 @@ export class AutoLevelAction extends Action {
   }
 }
 
+/** A unit's equipped slots and item order, for exact rewind of recalc_unit. */
+interface EquipState {
+  weapon: ItemObject | null;
+  accessory: ItemObject | null;
+  items: ItemObject[];
+}
+
+function captureEquipState(unit: UnitObject): EquipState {
+  return { weapon: unit.equippedWeapon, accessory: unit.equippedAccessory, items: [...unit.items] };
+}
+
+/**
+ * Python AddSkill/RemoveSkill are wrapped in @recalculate_unit, whose
+ * recalc_unit calls unit.autoequip(): a status that makes the weapon
+ * unavailable (cannot_use_items on Stunned/Sleep) unequips it, and losing it
+ * equips the first usable weapon again. Python's reverse autoequips too; the
+ * web restores the exact prior slots and order so the turnwheel replays.
+ */
+function restoreEquipState(unit: UnitObject, state: EquipState): void {
+  if (unit.equippedWeapon !== state.weapon) {
+    if (state.weapon) unit.equip(state.weapon);
+    else if (unit.equippedWeapon) unit.unequip(unit.equippedWeapon);
+  }
+  if (unit.equippedAccessory !== state.accessory) {
+    if (state.accessory) unit.equip(state.accessory);
+    else if (unit.equippedAccessory) unit.unequip(unit.equippedAccessory);
+  }
+  if (state.items.length === unit.items.length && state.items.every((item) => unit.items.includes(item))) {
+    unit.items.splice(0, unit.items.length, ...state.items);
+  }
+}
+
 /** Add an already-created skill object, avoiding duplicates, reversibly. */
 export class AddSkillAction extends Action {
   private unit: UnitObject;
@@ -4139,6 +4171,8 @@ export class AddSkillAction extends Action {
   private statusReactionActions: Action[] = [];
   private initializedStatusReactions = false;
 
+  private equipBefore: EquipState | null = null;
+
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
     this.unit = unit;
@@ -4147,6 +4181,12 @@ export class AddSkillAction extends Action {
   }
 
   execute(): void {
+    this.equipBefore = captureEquipState(this.unit);
+    this.addSkill();
+    this.unit.autoequip();
+  }
+
+  private addSkill(): void {
     const sameNid = this.unit.skills.filter((skill) => skill.nid === this.skill.nid);
     const hasStackComponent = this.skill.hasComponent('stack') || this.skill.hasComponent('stax');
     const configuredStack = Number(
@@ -4319,6 +4359,11 @@ export class AddSkillAction extends Action {
   }
 
   reverse(): void {
+    this.removeAddedSkill();
+    if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
+  }
+
+  private removeAddedSkill(): void {
     if (this.added) {
       for (const action of [...this.statusReactionActions].reverse()) action.reverse();
       const index = this.unit.skills.indexOf(this.skill);
@@ -4376,6 +4421,14 @@ export class RemoveSkillAction extends Action {
     });
   }
   execute(): void {
+    this.equipBefore = captureEquipState(this.unit);
+    this.removeSkill();
+    this.unit.autoequip();
+  }
+
+  private equipBefore: EquipState | null = null;
+
+  private removeSkill(): void {
     this.index = this.unit.skills.indexOf(this.skill);
     if (this.index >= 0) this.unit.skills.splice(this.index, 1);
     if (this.index >= 0) this.skill.ownerNid = null;
@@ -4400,6 +4453,7 @@ export class RemoveSkillAction extends Action {
     for (const action of [...this.multiSkillActions].reverse()) action.reverse();
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
     this.refreshVariantSprite();
+    if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
   }
 
   private refreshVariantSprite(): void {

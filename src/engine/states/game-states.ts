@@ -12755,6 +12755,11 @@ export class EventState extends State {
       () => {
         unit.hasMoved = previousHasMoved;
         unit.movementLeft = previousMovementLeft;
+        // Python arrives the unit when its move finishes (terrain and region
+        // statuses). The board already holds the destination, but a refresh
+        // from another unit moving meanwhile (move_group) saw this one
+        // mid-path and dropped them; re-derive now that it has arrived.
+        game.refreshPositionSkills?.();
         onComplete();
       },
       // Python MovementSystem.update: a following event move puts the
