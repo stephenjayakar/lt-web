@@ -404,8 +404,10 @@ test.describe('Embrace of the Fog final standard skill components', () => {
     expect(result.preCombat).toEqual(['Spiked_Helm_Child']);
     expect(result.preCombatReversed).toEqual([]);
     expect(result.removePresent).toBe(false);
+    // EOtF's engine also runs the weaponless defender's end_combat: after
+    // Warabe Asobi's 4, its Burning recoils 4 more (20 -> 16 -> 12).
     expect(result.splash).toEqual({
-      target: 16,
+      target: 12,
       nearby: 18,
       distant: 20,
     });

@@ -2,6 +2,7 @@ import type { NID, UnitPrefab, KlassDef, AlliancePair } from '../data/types';
 import type { ItemObject } from './item';
 import type { SkillObject } from './skill';
 import type { Database } from '../data/database';
+import { isForkEngine } from '../engine/engine-flavor';
 import {
   available as itemAvailable,
   canUnlock as itemCanUnlock,
@@ -457,7 +458,8 @@ export class UnitObject {
       this.equippedWeapon = item;
     }
     dispatchEquipHooks(this, item, true, this.equipDb());
-    this.currentHp = Math.min(this.currentHp, this.getMaxHP());
+    // EOtF's engine never clamps HP on equip/unequip (only set_hp clamps).
+    if (!isForkEngine()) this.currentHp = Math.min(this.currentHp, this.getMaxHP());
   }
 
   /**
@@ -472,7 +474,7 @@ export class UnitObject {
       this.equippedWeapon = swapTo;
     }
     dispatchEquipHooks(this, item, false, this.equipDb());
-    this.currentHp = Math.min(this.currentHp, this.getMaxHP());
+    if (!isForkEngine()) this.currentHp = Math.min(this.currentHp, this.getMaxHP());
   }
 
   /**

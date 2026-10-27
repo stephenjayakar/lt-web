@@ -432,8 +432,10 @@ test.describe('Embrace of the Fog status-grant combat hooks', () => {
       };
     });
 
+    // The seventh effect: the defender's own end_combat (EOtF runs it even
+    // without a weapon) fires the Burning it was just given (better_recoil).
     expect(result.standard).toEqual({
-      applied: 6,
+      applied: 7,
       state: {
         statuses: [
           { nid: 'Toxin', initiator: 'Player' },
@@ -448,8 +450,10 @@ test.describe('Embrace of the Fog status-grant combat hooks', () => {
       rewound: { statuses: [], charge: 10 },
       redone: ['Toxin', 'Chilled', 'Dazzled', 'Blunted', 'Exposed', 'Burning'],
     });
+    // Plus both burnt units' own end_combat recoil (EOtF runs it for the
+    // defender and every splash unit).
     expect(result.area).toEqual({
-      applied: 2,
+      applied: 4,
       state: {
         defender: ['Burning'],
         splash: ['Burning'],
