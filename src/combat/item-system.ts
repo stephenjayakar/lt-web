@@ -356,6 +356,26 @@ function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][n
   }
   if (hasDrainingCharge(skill) &&
       Number(skill.data.get('charge') ?? 0) <= 0) return false;
+  // EOtF's engine: skill_system.condition() includes CombatCondition, whose
+  // value is the start-of-combat snapshot (False outside combat). Without a
+  // snapshot (forecasts) evaluate it against the item with no target.
+  const combatCondition = skill.getComponent<string>('combat_condition');
+  if (combatCondition && isForkEngine()) {
+    const snapshot = skill.data.get('_combat_condition');
+    if (typeof snapshot === 'boolean') {
+      if (!snapshot) return false;
+    } else if (!evaluateCondition(combatCondition, {
+      game,
+      unit1: unit,
+      item,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map<string, unknown>([['item', item], ['mode', 'attack'], ['skill', skill]]),
+    })) {
+      return false;
+    }
+  }
   return skillConditionActive(skill, unit, { game, item });
 }
 
@@ -966,7 +986,14 @@ function resolveCleave(
   position: TargetPosition,
   context: SplashContext,
 ): SplashResult {
-  const nearby = adjacentToUnit(unit, context.board).filter((candidate) => !samePosition(candidate, position));
+  // EOtF's engine builds the eight neighbours as a Python set (listed NW,
+  // N, NE, W, E, SW, S, SE), filters it into another set: CPython set order.
+  const neighbours = isForkEngine() && unit.position
+    ? pySetOrder(pySetOrder(([[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const)
+      .map(([dx, dy]) => [unit.position![0] + dx, unit.position![1] + dy] as [number, number]))
+      .filter(([x, y]) => context.board.inBounds(x, y)))
+    : adjacentToUnit(unit, context.board);
+  const nearby = neighbours.filter((candidate) => !samePosition(candidate, position));
   return {
     mainTarget: context.board.getUnit(position[0], position[1]) ? position : null,
     splash: affectedUnits(nearby, unit, context, 'enemy'),
@@ -1319,7 +1346,13 @@ export function usesConsumedByStrikes(
 ): number {
   const ownStrikes = strikes.filter((strike) => strike.attacker === unit && strike.item === item);
   const qualifying = ownStrikes.filter((strike) => strike.hit || loseUsesOnMiss(unit, item));
-  const baseLoss = oneLossPerCombat(unit, item) ? (qualifying.length > 0 ? 1 : 0) : qualifying.length;
+  // EOtF's engine queues `uses = uses - 1` with the value read when the
+  // phase began, so every strike of one phase (an AOE's splash, a doubled
+  // multi-target) costs a single use between them.
+  const phaseLosses = isForkEngine()
+    ? new Set(qualifying.map((strike) => (strike.attackInfo ?? [0, 0]).join(','))).size
+    : qualifying.length;
+  const baseLoss = oneLossPerCombat(unit, item) ? (qualifying.length > 0 ? 1 : 0) : phaseLosses;
   const persistentRestoration = armsthriftRestoration(unit, item);
   const restored = qualifying.reduce((total, strike) => {
     const procRestoration = item.hasComponent('unrepairable')

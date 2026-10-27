@@ -8166,7 +8166,9 @@ export class CombatState extends State {
             game,
             activeCombat.strikes,
             activeCombat.attacker,
-            activeCombat.defender,
+            // EOtF's engine passes solver.defender, None for a combat with no
+            // main target (line/all-enemy AOE, merged multi-target).
+            isForkEngine() && !this.getPrimaryCombatDefender() ? null : activeCombat.defender,
             activeCombat.procPlayback,
           );
           const itemEndEvents = this.captureEvents(() =>

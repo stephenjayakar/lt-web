@@ -170,8 +170,41 @@ test.describe('EOtF engine fork: HP within a combat phase', () => {
           applied: strike.damage + (strike.extraDamage ?? 0), hp: solver.simulatedHp(foe),
         };
       };
+      // Miracle: TrueMiracle with a drain charge. Its charge is a queued
+      // action, so it still protects the phase's second strike.
+      const charged = () => {
+        const miracle = new SkillObject(game.db.skills.get('Miracle'));
+        miracle.data.set('charge', 1);
+        miracle.data.set('total_charge', 1);
+        foe.skills = [miracle];
+        const result = duplicate(1);
+        foe.skills = [new SkillObject(game.db.skills.get('True_Miracle'))];
+        return result;
+      };
+      // Pendulum Power Helper (x4 stacks): Thee hits for 6 plus 2 extra damage.
+      const extraDuplicate = (hp: number) => {
+        user.skills = [
+          new SkillObject(game.db.skills.get('Pendulum_Power_Helper')),
+          ...[0, 1, 2, 3].map(() => new SkillObject(game.db.skills.get('Pendulum_Power'))),
+        ];
+        foe.currentHp = hp;
+        let roll = 0;
+        // Hit rolls 0, crit rolls 99 (the stacks give crit).
+        const solver: any = new CombatPhaseSolver(() => (roll++ % 2 === 0 ? 0 : 99), game);
+        const strikes = solver.resolveGroup(user, thee, null, null, [foe, foe], game.db, 'classic', game.board);
+        user.skills = [];
+        return {
+          procs: strikes.filter((strike: any) => strike.survivalProc).length,
+          shown: strikes.map((strike: any) =>
+            `${strike.shownDamage ?? strike.damage}+${strike.shownExtraDamage ?? strike.extraDamage ?? 0}`),
+          hp: solver.simulatedHp(foe),
+        };
+      };
       try {
-        return { three: duplicate(3), six: duplicate(6), nine: duplicate(9), single: single() };
+        return {
+          three: duplicate(3), six: duplicate(6), nine: duplicate(9), single: single(),
+          charged: charged(), extra8: extraDuplicate(8), extra9: extraDuplicate(9),
+        };
       } finally {
         arena.cleanup();
       }
@@ -184,6 +217,12 @@ test.describe('EOtF engine fork: HP within a combat phase', () => {
     expect(result!.nine).toEqual({ procs: 0, shown: [4, 4], hp: 1 });
     // Aqua Knife into 5 HP: the digits stay 6 and 3, the unit ends at 1.
     expect(result!.single).toEqual({ shownDamage: 6, shownExtra: 3, applied: 4, hp: 1 });
+    // Fork engine: a 1 HP Miracle unit survives both strikes (charge 1 -> -1).
+    expect(result!.charged).toEqual({ procs: 2, shown: [4, 4], hp: 1 });
+    // 6 + 2 against 8 HP: both strikes become -(8 - 1) + 2 + 1 = -5 then -2,
+    // so 8 -> 3 -> 1 -> 0 -> 0 (fork engine: 8 -> 0, two procs).
+    expect(result!.extra8).toEqual({ procs: 2, shown: ['6+2', '6+2'], hp: 0 });
+    expect(result!.extra9).toEqual({ procs: 0, shown: ['6+2', '6+2'], hp: 0 });
   });
 
   test('line AOE strikes in the engine\'s set order', async ({ page }) => {

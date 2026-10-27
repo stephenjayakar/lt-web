@@ -18,7 +18,7 @@ import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 import { RECORDS, isFavorited, setFavorited } from '../engine/records';
 import { itemIsMagic, pythonCombatCalcsModule } from '../combat/combat-calcs';
-import { inventoryCapacityOffsets, movementType, unitHasTag, unitTags } from '../combat/skill-system';
+import { inventoryCapacityOffsets, isSkillActive, movementType, unitHasTag, unitTags } from '../combat/skill-system';
 import { inventoryFull } from '../combat/item-system';
 import { isForkEngine } from '../engine/engine-flavor';
 import {
@@ -1479,9 +1479,16 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     check_enemy(left: any, right: any) {
       return !skillSystem.check_ally(left, right);
     },
-    hidden(candidate: any) {
+    hidden(candidate: any, owner?: any) {
       const raw = candidate?._raw ?? candidate;
-      return componentValue(raw, 'hidden') !== undefined;
+      if (componentValue(raw, 'hidden') !== undefined) return true;
+      if (!isForkEngine()) return false;
+      // EOtF's engine: skill.hidden or skill.is_terrain or
+      // (skill.hidden_if_inactive and not condition(skill, unit)).
+      if (componentValue(raw, 'is_terrain') !== undefined) return true;
+      if (componentValue(raw, 'hidden_if_inactive') === undefined) return false;
+      const unit = unwrapUnit(owner) ?? (raw?.ownerNid ? game.units?.get?.(raw.ownerNid) : null);
+      return !!unit && !isSkillActive(raw, unit, game);
     },
     empower_heal(candidate: any) {
       const raw = unwrapUnit(candidate);
@@ -1624,8 +1631,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     DB: databaseProxy,
     RECORDS: recordsProxy,
     utils: {
-      clamp(value: number, minimum: number, maximum: number) {
-        return Math.max(minimum, Math.min(maximum, value));
+      // Python utils.clamp(i, bound_a, bound_b): the bounds may come in
+      // either order (EOtF writes utils.clamp(0, 10, x)).
+      clamp(value: number, boundA: number, boundB: number) {
+        const high = Math.max(boundA, boundB);
+        const low = Math.min(boundA, boundB);
+        return Math.min(high, Math.max(low, value));
       },
       calculate_distance(left: [number, number] | null, right: [number, number] | null) {
         if (!left || !right) return 0;
