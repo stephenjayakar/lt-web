@@ -832,7 +832,9 @@ class PyUnitView {
     this.klass = u.klass;
     this.affinity = u.affinity ?? null;
     this.traveler = u.traveler ?? u.rescuing ?? null;
-    this.dead = u.isDead?.() ?? u.dead ?? false;
+    // Python's plain `dead` attribute: a unit at 0 HP reads False until Die
+    // (is_dying while its UnitDeath events run).
+    this.dead = !!u.dead;
     this._finished = u._finished ?? false;
     this.is_dying = u.isDying ?? u.is_dying ?? false;
     this.level = u.level;

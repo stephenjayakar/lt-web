@@ -265,14 +265,16 @@ test.describe('Embrace of the Fog final project-local item components', () => {
       };
     });
 
+    // Resolving the combat kills the defender (resultDead) but, as in Python,
+    // leaves `dead` to the Die action at the end of the dying fade.
     expect(result.damaged).toEqual({
       strikeDamage: 15,
       hp: 0,
-      dead: true,
+      dead: false,
       resultDead: true,
     });
     expect(result.damageReversed).toEqual({ hp: 10, dead: false, uses: 3 });
-    expect(result.damageRedone).toEqual({ hp: 0, dead: true, uses: 2 });
+    expect(result.damageRedone).toEqual({ hp: 0, dead: false, uses: 2 });
     expect(result.healed.strikeDamage).toBe(-8);
     expect(result.healed.hp).toBe(result.healed.maxHp);
     expect(result.healed.dead).toBe(false);

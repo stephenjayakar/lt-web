@@ -7327,6 +7327,13 @@ export class CombatState extends State {
   private heldRankUpEvents: GameEvent[] = [];
   private heldEndEvents: GameEvent[] = [];
   /**
+   * CombatEnd's events, triggered before end_combat and handle_death (the
+   * fork's clean_up, upstream's clean_up2). They stay queued (EventStates
+   * under 'dying') behind the UnitDeath events and run at cleanup; null
+   * until triggered.
+   */
+  private pendingCombatEndEvents: GameEvent[] | null = null;
+  /**
    * EOtF's engine fork (v1.90 simple_combat.clean_up / animation_combat
    * clean_up2) ends combat in one pass instead of upstream's clean_up0/1/2:
    * no combat_death trigger and no unit_weapon_rank_up trigger; wexp, exp and
@@ -7477,6 +7484,36 @@ export class CombatState extends State {
     return runEventsBeforeWaiting(game, events, true);
   }
 
+  /**
+   * Trigger CombatEnd for the active combat. `capture` takes its events back
+   * out of the queue for the caller to run; otherwise they stay queued.
+   */
+  private triggerCombatEnd(capture: boolean): GameEvent[] {
+    const game = getGame();
+    const active = this.getActiveCombat();
+    if (!game.eventManager || !active) return [];
+    const attacker = active.attacker;
+    const defender = this.getPrimaryCombatDefender() ?? active.defender;
+    const ctx = { game, unit1: attacker, unit2: defender, gameVars: game.gameVars, levelVars: game.levelVars };
+    const trigger = () => game.eventManager.trigger(
+      {
+        type: 'combat_end', unit1: attacker, unit2: defender, levelNid: game.currentLevel?.nid,
+        position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
+        item: active.attackItem,
+        isAnimationCombat: this.isAnimationCombat,
+        // Python CombatEnd(..., self.full_playback): brush objects
+        // (p.nid, p.attacker, p.main_attacker), not raw strikes.
+        playback: playbackMarks(active.strikes, attacker, defender ?? null),
+      },
+      { ...ctx, position: attacker.position, item: active.attackItem },
+    );
+    if (capture) return this.captureEvents(trigger);
+    const queue = game.eventManager.eventQueue as GameEvent[];
+    const before = queue.length;
+    trigger();
+    return queue.slice(before);
+  }
+
   /** One trigger thunk per dying unit (defenders, then the attacker). */
   private deathTriggers(type: 'combat_death' | 'unit_death'): Array<() => unknown> {
     const game = getGame();
@@ -7514,6 +7551,11 @@ export class CombatState extends State {
   private queuePostExpEvents(): boolean {
     const game = getGame();
     if (!game.eventManager) return false;
+    // Upstream clean_up2 triggers CombatEnd before end_combat and
+    // handle_death, so its events wait queued under the UnitDeath ones.
+    if (!this.forkCleanup && !this.pendingCombatEndEvents) {
+      this.pendingCombatEndEvents = this.triggerCombatEnd(false);
+    }
     const unitDeath = this.captureEvents(() => queueInStackOrder(game, this.deathTriggers('unit_death')));
     const events = [...this.heldRankUpEvents, ...this.heldBreakEvents, ...unitDeath];
     this.heldRankUpEvents = [];
@@ -7711,6 +7753,7 @@ export class CombatState extends State {
     this.heldBreakEvents = [];
     this.heldRankUpEvents = [];
     this.heldEndEvents = [];
+    this.pendingCombatEndEvents = null;
     this.forkCleanup = isForkEngine();
     this.deferredExp = false;
     this.endEventsRun = false;
@@ -8248,9 +8291,17 @@ export class CombatState extends State {
             ...this.getDefenderDeaths(),
             ...(this.results.attackerDead ? [activeCombat.attacker] : []),
           ].filter((unit, index, all) => all.indexOf(unit) === index);
+          // EOtF's engine (simple_combat.clean_up) triggers CombatEnd right
+          // after should_die and handle_state_stack, before end_combat and
+          // handle_death: its events wait under the dying and UnitDeath
+          // states, so a game over from a UnitDeath event leaves them queued.
+          if (this.forkCleanup) this.pendingCombatEndEvents = this.triggerCombatEnd(false);
           for (const unit of this.combatPresentationUnits()) {
             if (this.dyingUnits.includes(unit)) markDying(unit);
-            else if (isUnitDying(unit)) clearUnitFx(unit); // miracle
+            else if (isUnitDying(unit)) { // miracle: DeathManager.miracle
+              clearUnitFx(unit);
+              unit.isDying = false;
+            }
           }
           this.deathStarted = false;
           // clean_up0: combat_death runs over the combat before the exp
@@ -8554,20 +8605,11 @@ export class CombatState extends State {
         // the newest first, so the hooks run before combat_end.
         let cleanupEvents: GameEvent[] = [];
         if (game.eventManager) {
-          const levelNid = game.currentLevel?.nid;
-          const ctx = { game, unit1: attacker, unit2: defender, gameVars: game.gameVars, levelVars: game.levelVars };
-          const combatEnd = this.captureEvents(() => game.eventManager.trigger(
-            {
-              type: 'combat_end', unit1: attacker, unit2: defender, levelNid,
-              position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
-              item: activeCombat!.attackItem,
-              isAnimationCombat: this.isAnimationCombat,
-              // Python CombatEnd(..., self.full_playback): brush objects
-              // (p.nid, p.attacker, p.main_attacker), not raw strikes.
-              playback: playbackMarks(activeCombat!.strikes, attacker, defender ?? null),
-            },
-            { ...ctx, position: attacker.position, item: activeCombat!.attackItem },
-          ));
+          const queue = game.eventManager.eventQueue as GameEvent[];
+          const combatEnd = this.pendingCombatEndEvents
+            ? this.pendingCombatEndEvents.filter((event) => queue.includes(event))
+            : this.triggerCombatEnd(true);
+          this.pendingCombatEndEvents = null;
           cleanupEvents = [...this.heldEndEvents, ...combatEnd];
           this.heldEndEvents = [];
         }
@@ -10208,6 +10250,7 @@ export class DyingState extends State {
     if ((getFrameCount() - this.startFrame) * FRAMETIME < DEFAULT_TRANSITION_TIME - 50) return;
     for (const unit of this.units) {
       clearUnitFx(unit);
+      unit.isDying = false;
       if (unit.position) game.actionLog.doAction(new DeathAction(unit, game.board, game.initiative));
     }
     this.units = [];
@@ -10991,6 +11034,8 @@ export class EventState extends State {
   private choiceValues: string[] = [];
   /** Parent choices paused while their EventNid selection event runs. */
   /** Presentation of events paused by a nested trigger_script/choice event. */
+  /** Events this state has started running (resumable when paused). */
+  private begunEvents = new WeakSet<GameEvent>();
   private parkedEventPresentation: WeakMap<GameEvent, {
     eventTables: Map<string, EventTable>;
     eventTextboxes: Map<string, EventTextbox>;
@@ -11148,6 +11193,7 @@ export class EventState extends State {
     const isNewEvent = nextEvent !== this.currentEvent;
     if (isNewEvent) this.parkPresentation(nextEvent);
     this.currentEvent = nextEvent;
+    this.begunEvents.add(nextEvent);
     if (isNewEvent) {
       this.dialogBlocksCommands = true;
       // Full reset for a new event
@@ -12285,6 +12331,16 @@ export class EventState extends State {
   private loadNextEvent(game: any): void {
     const next = game.eventManager?.getCurrentEvent() ?? null;
     const barrier = next ? eventResumeBarriers.lastIndexOf(next) : -1;
+    if (barrier >= 0 && next && !this.begunEvents.has(next)) {
+      // A queued event that has not started (a combat's CombatEnd events,
+      // which wait under its dying and UnitDeath states): return to the
+      // state above; it starts fresh when that state runs it.
+      eventResumeBarriers.splice(barrier, 1);
+      this.parkPresentation(next);
+      this.currentEvent = null;
+      game.state.back();
+      return;
+    }
     if (barrier >= 0 && next) {
       // Events that interrupted a state above this paused event (e.g. a
       // combat run by its interact_unit) are done: return to that state.
@@ -12306,6 +12362,7 @@ export class EventState extends State {
     this.parkPresentation(next);
     if (next) {
       this.currentEvent = next;
+      this.begunEvents.add(next);
       this.dialog = null;
       this.endingCard = null;
       this.creditCards = [];

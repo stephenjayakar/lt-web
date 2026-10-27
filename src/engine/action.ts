@@ -3512,7 +3512,10 @@ export class DeathAction extends Action {
       this.initiativeIndex = this.initiative.currentIdx;
       this.initiative.removeUnit(this.unit);
     }
+    // Python Die.do: `dead = True`, `is_dying = False` (reverse leaves
+    // is_dying False).
     this.unit.dead = true;
+    this.unit.isDying = false;
     this.board.removeUnit(this.unit);
     if (this.dropActions === null) {
       // Python Die.do: a dying rescuer sets its traveler down on its own tile

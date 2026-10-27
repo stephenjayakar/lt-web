@@ -127,7 +127,14 @@ export class UnitObject {
   hasMoved: boolean;
   hasTraded: boolean;
   finished: boolean;
+  /** Python `unit.dead`: set by the Die action once the dying fade ends. */
   dead: boolean;
+  /**
+   * Python `unit.is_dying`: set by game.death.should_die (end of combat,
+   * kill_unit) and cleared by Die or a miracle. Between the two the unit is
+   * still on the map with `dead` False while its UnitDeath events run.
+   */
+  isDying = false;
 
   // -- Rescue / pair-up state --------------------------------------------
   /** The unit currently being carried or guarded by this unit, if any. */

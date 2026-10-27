@@ -12,7 +12,11 @@ async function waitForHarness(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as any).__harness?.ready === true, undefined, { timeout: 60_000 });
 }
 
-type Entry = { label: string; combat: boolean; phase: string | null; onMap: boolean };
+type Entry = {
+  label: string; combat: boolean; phase: string | null; onMap: boolean;
+  /** The defender's Python `dead` / `is_dying` and the queued event nids. */
+  dead: boolean; dying: boolean; queued: string[];
+};
 
 async function runHookCombat(page: Page, fork: boolean, extras = false): Promise<Entry[]> {
   await page.goto('/?harness=true&level=0&clean=true&bundle=false');
@@ -60,6 +64,9 @@ async function runHookCombat(page: Page, fork: boolean, extras = false): Promise
     define('_ForkCombatDeath', 'combat_death', 'combat_death', "unit1.nid == '_ForkDefender'");
     define('_ForkUnitDeath', 'unit_death', 'unit_death', "unit1.nid == '_ForkDefender'");
     define('_ForkCombatEnd', 'combat_end', 'combat_end', "unit2.nid == '_ForkDefender'");
+    // What UnitDeath's events see: Python sets `dead` only in Die.
+    game.db.events.get('_ForkUnitDeath')._source.push(
+      "level_var;_fork_dead;[unit1.dead, unit1.is_dying, game.check_dead('_ForkDefender')]");
     // CombatEnd's playback: brush objects with attributes (p.nid, ...).
     game.db.events.get('_ForkCombatEnd')._source.push(
       'level_var;_fork_playback;[(p.nid, p.attacker.nid, p.defender.nid, p.main_attacker.nid) for p in playback]');
@@ -104,6 +111,11 @@ async function runHookCombat(page: Page, fork: boolean, extras = false): Promise
     const harness = (window as any).__harness;
     const { attacker, defender } = (window as any).__forkOrderTest;
     const seen: Entry[] = [];
+    const probe = () => ({
+      dead: !!defender.dead,
+      dying: !!defender.isDying,
+      queued: (game.eventManager.eventQueue as any[]).map((event) => event.nid),
+    });
     const combatState = (game.state as any).allStates.get('combat');
     let last = '';
     let sawExp = false;
@@ -116,11 +128,14 @@ async function runHookCombat(page: Page, fork: boolean, extras = false): Promise
       if (!sawExp && inCombat && game.state.getCurrentState()?.name === 'combat' &&
           String(combatState.phase).startsWith('exp')) {
         sawExp = true;
-        seen.push({ label: 'exp', combat: true, phase: combatState.phase, onMap: !!defender.position });
+        seen.push({ label: 'exp', combat: true, phase: combatState.phase, onMap: !!defender.position, ...probe() });
       }
       if (!sawBroken && inCombat && combatState.phase === 'broken_item') {
         sawBroken = true;
-        seen.push({ label: `broken:${combatState.brokenBanner?.text}`, combat: true, phase: 'broken_item', onMap: !!defender.position });
+        seen.push({
+          label: `broken:${combatState.brokenBanner?.text}`, combat: true, phase: 'broken_item',
+          onMap: !!defender.position, ...probe(),
+        });
       }
       const order = String(game.levelVars.get('_fork_order') ?? '');
       if (order !== last) {
@@ -129,6 +144,7 @@ async function runHookCombat(page: Page, fork: boolean, extras = false): Promise
           combat: inCombat,
           phase: inCombat ? combatState.phase : null,
           onMap: !!defender.position,
+          ...probe(),
         });
         last = order;
       }
@@ -137,6 +153,7 @@ async function runHookCombat(page: Page, fork: boolean, extras = false): Promise
     }
     const { setForkEngine } = await import('/src/engine/engine-flavor.ts');
     setForkEngine(false);
+    (window as any).__forkDeathEnd = probe();
     if (attacker.position) game.board.removeUnit(attacker);
     game.units.delete(attacker.nid);
     game.units.delete(defender.nid);
@@ -160,6 +177,26 @@ test.describe('EOtF engine fork combat cleanup order', () => {
     expect(timeline[4]).toMatchObject({ combat: true, onMap: false });
     expect(timeline[5]).toMatchObject({ combat: false });
   });
+
+  // Python: clean_up's should_die only marks is_dying; UnitDeath's events
+  // see `dead` False (check_dead True) with the unit still on the map, and
+  // Die sets `dead` when the fade ends. CombatEnd was triggered first (the
+  // fork's clean_up, upstream's clean_up2), so its events wait in the queue
+  // under the UnitDeath ones.
+  for (const fork of [true, false]) {
+    test(`${fork ? 'fork' : 'upstream'}: UnitDeath events see is_dying, not dead; Die sets dead after the fade`, async ({ page }) => {
+      const timeline = await runHookCombat(page, fork);
+      const unitDeath = timeline.find((entry) => entry.label === 'unit_death');
+      expect(unitDeath).toMatchObject({ onMap: true, dead: false, dying: true });
+      expect(unitDeath?.queued).toContain('_ForkCombatEnd');
+      const seenByEvent = await page.evaluate(() =>
+        JSON.parse(JSON.stringify((window as any).__gameRef.levelVars.get('_fork_dead'))));
+      expect(seenByEvent).toEqual([false, true, true]);
+      const after = timeline.find((entry) => entry.label === 'item_after_combat');
+      expect(after).toMatchObject({ onMap: false, dead: true, dying: false });
+      expect(await page.evaluate(() => (window as any).__forkDeathEnd)).toMatchObject({ dead: true, dying: false });
+    });
+  }
 
   test('combat_end playback holds mark brushes read by attribute (p.nid, p.attacker)', async ({ page }) => {
     const timeline = await runHookCombat(page, true);

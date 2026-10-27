@@ -219,6 +219,7 @@ export function setCombatPoseOffset(unit: UnitObject, offset: [number, number]):
 
 /** game.death.should_die: the unit stays on the map until its fade ends. */
 export function markDying(unit: UnitObject): void {
+  unit.isDying = true;
   stateFor(unit).dying = true;
 }
 
