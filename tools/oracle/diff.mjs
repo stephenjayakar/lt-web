@@ -119,6 +119,14 @@ export function diffRuns(py, web, scenario = {}) {
         (known(d.path) ? entry.known : entry.diffs).push(d);
       }
     }
+    // save_load steps: what each engine's own suspend/reload changed.
+    for (const [side, st] of [['python', ps], ['web', ws]]) {
+      if (!st?.pre_snapshot) continue;
+      const raw = [];
+      walk(structuredClone(st.pre_snapshot), structuredClone(st.snapshot), '', raw, { eq, unordered });
+      const changed = raw.filter((d) => !ignored(d.path));
+      if (changed.length) (entry.roundtrip ??= {})[side] = changed;
+    }
     if (entry.diffs.length || entry.errors.length) report.ok = false;
     report.steps.push(entry);
   }
@@ -149,7 +157,7 @@ export function formatReport(name, report, { all = false, full = false } = {}) {
     const persisting = s.diffs.length - shown.length;
     const resolved = full ? [] : [...prev.keys()].filter((p) => !cur.has(p));
     prev = cur;
-    if (!all && !shown.length && !s.errors.length && !s.known.length && !resolved.length) continue;
+    if (!all && !shown.length && !s.errors.length && !s.known.length && !resolved.length && !s.roundtrip) continue;
     const act = { ...s.action };
     const label = act.do + (act.unit ? ` ${act.unit}` : '') + (act.target ? ` -> ${act.target}` : '');
     lines.push(`  [${s.index}] ${label}${persisting ? `  (+${persisting} persisting)` : ''}`);
@@ -157,6 +165,11 @@ export function formatReport(name, report, { all = false, full = false } = {}) {
     for (const d of shown) lines.push(`      ${fmtDiff(d)}`);
     for (const p of resolved) lines.push(`      (now equal) ${p}`);
     for (const d of s.known) lines.push(`      (known) ${fmtDiff(d)}`);
+    for (const [side, changed] of Object.entries(s.roundtrip ?? {})) {
+      for (const d of changed) {
+        lines.push(`      (${side} reload changed) ${d.path}: ${fmt(d.py)} -> ${fmt(d.web)}`);
+      }
+    }
   }
   return lines.join('\n');
 }

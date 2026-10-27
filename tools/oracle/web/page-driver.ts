@@ -20,6 +20,7 @@ import { enterStartedLevel } from '../../../src/engine/states/game-states';
 import { setSetting } from '../../../src/engine/states/settings-state';
 import { GameEvent } from '../../../src/events/event-manager';
 import { getCombatRandomState, getGrowthRandomState } from '../../../src/engine/static-random';
+import { loadSuspend, suspendGame } from '../../../src/engine/save';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 type Action = { do: string; [k: string]: any };
@@ -65,6 +66,15 @@ class WebEngine {
   h: any = w.__harness;
   frame = 0;
   suppressEvents = false;
+  eventsOff = false;
+
+  /** With events off, trigger-based events never fire; re-run after a load (new EventManager). */
+  hookEvents(): void {
+    if (!this.eventsOff) return;
+    const manager = this.game.eventManager;
+    const real = manager.trigger.bind(manager);
+    manager.trigger = (t: any, c: any) => (this.suppressEvents ? false : real(t, c));
+  }
 
   step(button: string | null = null): void {
     this.frame++;
@@ -438,6 +448,21 @@ class Runner {
     await this.e.settle({ skip: a.skip, maxFrames: a.max_frames });
   }
 
+  /** Python counterpart: suspend through the save store, load it back, settle. */
+  preSnapshot: Json | null = null;
+
+  async do_save_load(a: Action): Promise<void> {
+    const e = this.e;
+    e.expect(...(a.states ?? ['free']));
+    this.preSnapshot = snapshot(e);
+    const g = e.game;
+    // The real suspend and title Continue paths: save store write, then read.
+    await suspendGame(g);
+    if (!(await loadSuspend(g))) throw new OracleError('loadSuspend failed');
+    e.hookEvents();
+    await e.settle({ skip: a.skip, maxFrames: a.max_frames });
+  }
+
   async do_frames(a: Action): Promise<void> {
     for (let i = 0; i < Number(a.n ?? 1); i++) this.e.step(null);
   }
@@ -486,6 +511,7 @@ function itemSnap(it: any): Json {
     uses: hasUses ? it.uses : (it.data?.get?.('uses') ?? null),
     c_uses: hasCUses ? it.uses : (it.data?.get?.('c_uses') ?? null),
     droppable: !!it.droppable,
+    data: it.data instanceof Map ? jsonable(it.data) : {},
   };
 }
 
@@ -556,6 +582,8 @@ export function snapshot(e: WebEngine): Json {
     state: e.top() ?? null,
     stack: e.stack(),
     money: g.getParty?.()?.money ?? null,
+    bexp: g.getParty?.()?.bexp ?? null,
+    convoy: (g.getParty?.()?.convoy ?? []).map((it: any) => ({ nid: it.nid, data: it.data instanceof Map ? jsonable(it.data) : {} })),
     units,
     game_vars: jsonable(g.gameVars),
     level_vars: jsonable(g.levelVars),
@@ -614,8 +642,8 @@ export async function runScenario(scn: Scenario): Promise<Json> {
       while (g.eventManager?.hasActiveEvents()) g.eventManager.dequeueCurrentEvent();
       g.eventManager.restoreOnceTriggered([]);
       e.suppressEvents = true;
-      const real = g.eventManager.trigger.bind(g.eventManager);
-      g.eventManager.trigger = (t: any, c: any) => (e.suppressEvents ? false : real(t, c));
+      e.eventsOff = true;
+      e.hookEvents();
     }
     enterStartedLevel(g);
     await e.settle({ skip: scn.skip, maxFrames: scn.start_frames ?? 20000 });
@@ -631,7 +659,12 @@ export async function runScenario(scn: Scenario): Promise<Json> {
         console.error(err);
         break;
       }
-      out.steps.push({ action: a, snapshot: snapshot(e) });
+      const step: any = { action: a, snapshot: snapshot(e) };
+      if (r.preSnapshot) {
+        step.pre_snapshot = r.preSnapshot;
+        r.preSnapshot = null;
+      }
+      out.steps.push(step);
     }
   } catch (err: any) {
     console.error(err);

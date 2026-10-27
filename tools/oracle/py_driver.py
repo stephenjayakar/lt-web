@@ -356,18 +356,36 @@ class Engine:
             self.game.game_vars[k] = v
         self.game.start_level(level_nid)
         self.static_random = static_random
-        if not events:
-            self._suppress_events = True
-            real_trigger = self.game.events.trigger
-            oracle = self
+        self._events_off = not events
+        self._suppress_events = not events
+        self._hook_events()
 
-            def trigger(trig, level_nid=None):
-                if oracle._suppress_events:
-                    return False
-                return real_trigger(trig, level_nid)
-            self.game.events.trigger = trigger
-        else:
-            self._suppress_events = False
+    def _hook_events(self) -> None:
+        """With events off, trigger-based events never fire. Re-run after a
+        load: game.load() builds a new EventManager."""
+        if not self._events_off:
+            return
+        real_trigger = self.game.events.trigger
+        oracle = self
+
+        def trigger(trig, level_nid=None):
+            if oracle._suppress_events:
+                return False
+            return real_trigger(trig, level_nid)
+        self.game.events.trigger = trigger
+
+    def save_and_reload(self) -> None:
+        """Suspend and continue through the engine's own save code: what
+        save.suspend_game() writes (game.save(), pickled as on disk) is read
+        back the way save.load_game() does (build_new, load, set_next_uids)."""
+        import pickle
+        from app.engine import save
+        s_dict, _meta = self.game.save()
+        blob = pickle.dumps(s_dict)
+        self.game.build_new()
+        self.game.load(pickle.loads(blob))
+        save.set_next_uids(self.game)
+        self._hook_events()
 
     def apply_mode(self, rng_mode: str | None, growths: str | None) -> None:
         from app.data.database.difficulty_modes import RNGOption, GrowthOption
@@ -759,6 +777,15 @@ class Runner:
         self.e.choose(a['option'])
         self.e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
 
+    def do_save_load(self, a) -> None:
+        """Suspend in the current resting state, reload, and settle. The step
+        records the snapshot from before the save as pre_snapshot."""
+        e = self.e
+        e.expect(*a.get('states', ['free']))
+        self.pre_snapshot = snapshot(e)
+        e.save_and_reload()
+        e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
+
     def do_frames(self, a) -> None:
         for _ in range(int(a.get('n', 1))):
             self.e.step(None)
@@ -782,6 +809,11 @@ class Runner:
 # Snapshot
 # --------------------------------------------------------------------------
 
+def _item_data(it) -> dict:
+    """Runtime item data (uses, cooldowns, counters) without engine bookkeeping."""
+    return {k: _jsonable(v) for k, v in it.data.items()}
+
+
 def snapshot(e: Engine) -> dict:
     g = e.game
     units = {}
@@ -793,6 +825,7 @@ def snapshot(e: Engine) -> dict:
                 'uses': it.data.get('uses'),
                 'c_uses': it.data.get('c_uses'),
                 'droppable': bool(it.droppable),
+                'data': _item_data(it),
             })
         skills = [s.nid for s in u.skills]
         skill_data = {}
@@ -847,6 +880,8 @@ def snapshot(e: Engine) -> dict:
         'state': e.top(),
         'stack': e.stack(),
         'money': party.money if party else None,
+        'bexp': party.bexp if party else None,
+        'convoy': [{'nid': it.nid, 'data': _item_data(it)} for it in party.convoy] if party else [],
         'units': units,
         'game_vars': _jsonable(dict(g.game_vars)),
         'level_vars': _jsonable(dict(g.level_vars)),
@@ -903,7 +938,11 @@ def run_scenario(scn: dict, backend: str = 'upstream') -> dict:
                 out['error'] = 'step %d (%s) failed' % (len(out['steps']) - 1, a.get('do'))
                 traceback.print_exc()
                 break
-            out['steps'].append({'action': a, 'snapshot': snapshot(e)})
+            step = {'action': a, 'snapshot': snapshot(e)}
+            if getattr(r, 'pre_snapshot', None) is not None:
+                step['pre_snapshot'] = r.pre_snapshot
+                r.pre_snapshot = None
+            out['steps'].append(step)
     except Exception as exc:
         traceback.print_exc()
         out['error'] = '%s: %s' % (type(exc).__name__, exc)
