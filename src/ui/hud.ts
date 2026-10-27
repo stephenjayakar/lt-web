@@ -30,7 +30,7 @@ import { createBaseSurf, getMenuBgSpriteSync } from './base-surf';
 import { drawItemIcon, getIconSheet } from './icons';
 import { getSetting } from '../engine/states/settings-state';
 import { getTerrainBonuses } from '../combat/terrain-bonuses';
-import { evaluateTextTag } from '../events/event-manager';
+import { evaluateTextTag, pythonStr } from '../events/event-manager';
 import {
   canCounterattack, canDefenderDouble, canDouble, computeAssistDamage, computeBlitzPhases,
   computeCrit, computeDamage, computeExtraAttackPhases, computeHit, computeStrikeCount,
@@ -159,25 +159,87 @@ function itemUses(item: ItemObject): number {
   return item.hasComponent('uses') ? item.uses : 100;
 }
 
-/**
- * Python TextEvaluator._evaluate_all for objective strings: {v:var},
- * {var:var}, {e:expr} and {eval:expr}. Python stores the objective as an
- * unevaluated EvaluableString and runs this on every draw (ui_view) and when
- * the objective menu opens, so variable changes show up live.
- */
-export function evaluateText(text: string, game: Game): string {
-  return text.replace(/\{(v|var|e|eval):([^{}]*)\}/g, (_m, kind: string, body: string) => {
-    if (kind === 'v' || kind === 'var') {
-      if (game.levelVars?.has(body)) return String(game.levelVars.get(body));
-      if (game.gameVars?.has(body)) return String(game.gameVars.get(body));
-      return '??';
+/** Top-level balanced `{...}` blocks of `text`, braces included (str_utils.matched_expr). */
+function topLevelBlocks(text: string): string[] {
+  const blocks: string[] = [];
+  let depth = 0;
+  let start = -1;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '{') {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (character === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0) blocks.push(text.slice(start, index + 1));
     }
+  }
+  return blocks;
+}
+
+/**
+ * TextEvaluator._evaluate_phrase for the tags objectives use: `{v:}`/`{var:}`
+ * and `{e:}`/`{eval:}`. Like Python's `re.match(r'\{e:[^{}]*\}')`, a phrase
+ * that still holds braces after its inner blocks were evaluated (a variable
+ * whose text contains braces) is passed back unevaluated; anything else is
+ * left as it is.
+ */
+function evaluatePhrase(phrase: string, game: Game): string {
+  const tag = phrase.match(/^\{(v|var|e|eval):([^{}]*)\}/);
+  if (!tag) return phrase;
+  const pattern = tag[1] === 'v' || tag[1] === 'var'
+    ? /\{(?:v|var):([^{}]*)\}/g
+    : /\{(?:e|eval):([^{}]*)\}/g;
+  if (tag[1] === 'v' || tag[1] === 'var') {
+    return phrase.replace(pattern, (_match, key: string) => {
+      if (game.levelVars?.has(key)) return pythonStr(game.levelVars.get(key));
+      if (game.gameVars?.has(key)) return pythonStr(game.gameVars.get(key));
+      return '??';
+    });
+  }
+  return phrase.replace(pattern, (_match, body: string) => {
     try {
       return evaluateTextTag(body, { game, gameVars: game.gameVars, levelVars: game.levelVars });
     } catch {
       return '??';
     }
   });
+}
+
+/** One balanced block: evaluate its inner blocks first, then the block itself. */
+function evaluateBlock(block: string, game: Game): string {
+  const inner = block.slice(1, -1);
+  let resolved = '';
+  let depth = 0;
+  let start = -1;
+  for (let index = 0; index < inner.length; index += 1) {
+    const character = inner[index];
+    if (character === '{') {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (character === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0) resolved += evaluateBlock(inner.slice(start, index + 1), game);
+    } else if (depth === 0) {
+      resolved += character;
+    }
+  }
+  return evaluatePhrase(`{${resolved}}`, game);
+}
+
+/**
+ * Python TextEvaluator._evaluate_all for objective strings: each top-level
+ * `{...}` block is resolved innermost-first, then substituted (longest
+ * first, every occurrence). Python stores an upstream objective unevaluated
+ * and runs this on every draw (ui_view) and when the objective menu opens,
+ * so variable changes show up live.
+ */
+export function evaluateText(text: string, game: Game): string {
+  const pairs = topLevelBlocks(text).map((block) => [block, evaluateBlock(block, game)] as const);
+  pairs.sort((left, right) => right[0].length - left[0].length);
+  let result = text;
+  for (const [block, value] of pairs) result = result.split(block).join(value);
+  return result;
 }
 
 export class HUD {
