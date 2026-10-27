@@ -305,7 +305,12 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
           ['weapon', null], ['weapon_type', 'Sword'], ['weapon_rank', 'S'],
           ['damage', 10], ['weight', 6], ['item_tags', ['Gun', 'Blade']],
           ['status_on_equip', 'Iustitae'],
-          ['effective_damage', { tags: ['Dragon'] }],
+          // The project's value shape; skills read it through the
+          // EffectiveDamage @property accessors (.tags, .multiplier).
+          ['effective_damage', {
+            effective_tags: ['Dragon'], effective_multiplier: 3,
+            effective_bonus_damage: 0, show_effectiveness_flash: true,
+          }],
         ],
       });
       item.subitems = [new ItemObject({
@@ -474,5 +479,40 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
     expect(result.raised).toEqual([...pythonErrors].sort());
     expect(result.raisedEngineValues).toEqual([0]);
     expect(result.invalid).toEqual([]);
+  });
+
+  test('effective_damage exposes the EffectiveDamage properties (tags, multiplier, ...)', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { evaluatePythonInContext } = await import('/src/events/event-manager.ts');
+      const item = new ItemObject(game.db.items.get('Armorslayer'));
+      const target = game.units.get('Keeper');
+      const oldTags = target.tags;
+      target.tags = ['Armor'];
+      const ctx = { game, item, unit2: target, gameVars: game.gameVars, levelVars: game.levelVars };
+      const out: Record<string, unknown> = {};
+      for (const expression of [
+        'item.effective_damage.tags',
+        'item.effective_damage.multiplier',
+        'item.effective_damage.bonus_damage',
+        'item.effective_damage.show_flash',
+        // The_Right_Tools / Effective_Retreat combat_condition
+        'item.effective_damage and any([tag in item.effective_damage.tags for tag in target.tags])',
+      ]) {
+        const outcome = evaluatePythonInContext(expression, ctx);
+        out[expression] = outcome.ok ? JSON.parse(JSON.stringify(outcome.value)) : String((outcome.error as any)?.message ?? outcome.error);
+      }
+      target.tags = oldTags;
+      return out;
+    });
+    expect(result).toEqual({
+      'item.effective_damage.tags': ['Armor'],
+      'item.effective_damage.multiplier': 3,
+      'item.effective_damage.bonus_damage': 0,
+      'item.effective_damage.show_flash': true,
+      'item.effective_damage and any([tag in item.effective_damage.tags for tag in target.tags])': true,
+    });
   });
 });

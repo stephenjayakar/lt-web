@@ -30,7 +30,7 @@ import { qaDraw } from '../engine/state-machine';
 import { advanceVirtualClock, installVirtualClock, realDate, realNow, virtualNow } from './qa-clock';
 import { QaLog, type QaContext, type QaLogEntry } from './qa-log';
 import { Policy, type PolicyOptions } from './qa-policy';
-import { QaDriver, registerQaAiPresets, type FloorRecord } from './qa-driver';
+import { QaDriver, registerQaAiPresets, type FloorRecord, type HubTourOptions } from './qa-driver';
 import { jumpEotf, type JumpResult, type JumpSpec } from './qa-jump';
 
 export interface FastOptions {
@@ -82,6 +82,10 @@ export interface PlayOptions {
   policy?: Partial<PolicyOptions>;
   /** Run the player phase with the QA AI (default true). */
   autoplay?: boolean;
+  /** QA: enemies get the 'None' AI each player phase (walk a boss's event script). */
+  passiveEnemies?: boolean;
+  /** In the hub (X): visit every NPC and event region, then stop. */
+  hubTour?: Partial<HubTourOptions>;
   /** Without autoplay: move the cursor over a unit every 30 frames (HUD, HP bars). */
   hover?: boolean;
 }
@@ -413,11 +417,16 @@ class QaController {
       maxTurns: options.maxTurns ?? 40,
       forceWin: options.forceWin ?? false,
       autoplay: options.autoplay ?? true,
+      passiveEnemies: options.passiveEnemies ?? false,
       hover: options.hover ?? false,
     };
     this.result = null;
     this.reason = null;
     this.phase = 'playing';
+    this.driver.hubTour = options.hubTour
+      ? { passes: options.hubTour.passes ?? 1, skip: options.hubTour.skip ?? ['Keeper'], only: options.hubTour.only }
+      : null;
+    this.driver.hubDone = false;
     this.driver.mode = 'play';
     this.playStartReal = realNow();
     this.oneLevelNid = null;
@@ -443,6 +452,10 @@ class QaController {
       const lost = /game over|title/.test(reason);
       if (lost) this.driver.markLoss('lost');
       this.finish(lost ? 'defeat' : 'stuck', reason);
+      return true;
+    }
+    if (options.hubTour && this.driver.hubDone && settled) {
+      this.finish('ok', 'hub tour complete');
       return true;
     }
     if (options.oneLevel) {

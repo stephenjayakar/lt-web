@@ -68,6 +68,47 @@ test.describe('EVNT/PYEV1 nested flow control', () => {
     await stepFrames(page, 5);
   });
 
+  test('EVNT: win_game still ends the level when an event is queued mid-outro', async ({ page }) => {
+    // Python keeps is_handling_end_event on the EventState that ran win_game
+    // and resumes it after the LevelEnd events. EOtF's elite outros run
+    // interact_unit combats whose events are queued ahead of the paused
+    // outro; when the EventState begins again on them, the level end must
+    // not be forgotten (the Gemini elite softlocked here).
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const { GameEvent } = await import('/src/events/event-manager.ts');
+      const levelNid = g.currentLevel?.nid ?? null;
+      const eventState = (g.state as any).allStates.get('event');
+      let levelEnded = 0;
+      eventState.levelEnd = function () {
+        levelEnded += 1;
+        this.currentEvent = null;
+        g.state.back();
+      };
+      const define = (nid: string, trigger: string, source: string[]) => g.db.events.set(nid, {
+        name: nid, nid, trigger, level_nid: levelNid, condition: 'True', only_once: false, priority: 0, _source: source,
+      });
+      define('QaOutroMid', 'level_end', ['game_var;qa_outro_a;1', 'wait;300', 'game_var;qa_outro_b;1']);
+      define('QaMidQueued', 'QaMidQueued', ['game_var;qa_mid;1']);
+      define('QaWinMid', 'QaWinMid', ['win_game']);
+      g.eventManager.triggerSpecific('QaWinMid', { type: 'QaWinMid' }, true);
+      g.state.change('event');
+      for (let i = 0; i < 120 && g.gameVars.get('qa_outro_a') !== 1; i++) harness.stepFrames(1, null);
+      // A state above the outro popped and the EventState begins again with
+      // an event queued ahead of the outro.
+      const mid = new GameEvent(g.db.events.get('QaMidQueued'), { type: 'QaMidQueued' } as any, () => g);
+      g.eventManager.eventQueue.unshift(mid);
+      eventState.begin();
+      for (let i = 0; i < 200 && levelEnded === 0; i++) harness.stepFrames(1, null);
+      return {
+        outroA: g.gameVars.get('qa_outro_a'), mid: g.gameVars.get('qa_mid'),
+        outroB: g.gameVars.get('qa_outro_b'), levelEnded,
+      };
+    });
+    expect(result).toEqual({ outroA: 1, mid: 1, outroB: 1, levelEnded: 1 });
+  });
+
   test('EVNT: 3-deep if/elif/else picks the correct nested branch', async ({ page }) => {
     // level_var/game_var used here as markers: only the executed leaf sets
     // `flow_result`. Structure:

@@ -40,6 +40,8 @@ export interface PolicyOptions {
   sortie: string[];
   /** Answer a choice nid at most this many times per level, then leave it. */
   repeatLimit: number;
+  /** Text entries by variable nid, typed in turn (e.g. password: [...]). */
+  texts: Record<string, string[]>;
 }
 
 export const DEFAULT_POLICY: PolicyOptions = {
@@ -51,6 +53,8 @@ export const DEFAULT_POLICY: PolicyOptions = {
   answers: {},
   sortie: [],
   repeatLimit: 4,
+  // EOtF's Hallway riddle ("Who sent you here?", force_entry).
+  texts: { answer: ['TACITA'] },
 };
 
 /** mulberry32: small deterministic PRNG for policy decisions. */
@@ -155,10 +159,19 @@ export class Policy {
     if (rooms.length === 0) return null;
     const standard = new Set(['Combat', 'Event', 'Shop', 'Respite', 'Elite']);
     const special = rooms.filter((room) => !standard.has(room.kind) && !/^room(Ophie|Aqua)$/.test(room.nid));
-    // Boss and trial floors offer only those rooms.
-    if (special.length > 0) return this.rng.pick(special).nid;
-    const normal = rooms.filter((room) => standard.has(room.kind));
     const prefs = this.options.rooms;
+    // Boss and trial floors offer only those rooms; a preference naming one
+    // (e.g. --rooms UE, Horologium, Libra) picks it.
+    if (special.length > 0) {
+      if (prefs !== 'random') {
+        for (const kind of prefs) {
+          const match = special.find((room) => room.kind.toLowerCase() === kind.toLowerCase());
+          if (match) return match.nid;
+        }
+      }
+      return this.rng.pick(special).nid;
+    }
+    const normal = rooms.filter((room) => standard.has(room.kind));
     if (prefs === 'random') {
       const pool = normal.filter((room) => room.kind !== 'Elite');
       return (pool.length > 0 ? this.rng.pick(pool) : this.rng.pick(normal.length ? normal : rooms)).nid;

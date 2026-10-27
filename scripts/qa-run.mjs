@@ -41,6 +41,9 @@ Where to start (jump):
   --vars k=v,k=v       game vars
   --tutorials          keep EOtF tutorial popups
   --boost N            QA stat boost: +N to every stat (+2N HP) for the party
+  --hub                stop in the hub (X) after the party setup (no Run_Start)
+  --passive-enemies    enemies get the 'None' AI each player phase (walk a boss's event script)
+  --miracle            give the party True_Miracle (lethal damage leaves 1 HP) to reach late boss turns
 
 What to play:
   --floors N           play N floors (default 1); --to-floor N; --one-level
@@ -51,6 +54,11 @@ What to play:
   --services all|none|a,b  sub-room NPCs to visit (default all)
   --shop buy|leave     in shop screens buy one random item (default) or leave
   --policy-seed N      seed for the policy's own RNG (default = --seed or 1)
+  --answers k=v,...    fixed answers by choice nid (option value or index)
+  --texts var=A|B,...  text entries by variable nid, typed in turn (e.g. password=HETJASQUEST)
+  --script "a|b"       event commands to run after the jump ('|' separates lines)
+  --hub-tour N         in the hub: visit every NPC and event region N times, then stop
+                       (implies --hub); --hub-skip a,b (default Keeper), --hub-only a,b
   --no-autoplay        do not play the player phase (inspect only)
 
 Speed:
@@ -149,7 +157,20 @@ const jumpSpec = {
   gameVars: parseMap(args.vars),
   tutorials: !!args.tutorials,
   boost: args.boost !== undefined ? num(args.boost) : undefined,
+  hub: args.hub || args.hubTour !== undefined ? true : undefined,
+  miracle: args.miracle ? true : undefined,
 };
+// --texts password=HETJASQUEST|ILLUSION,other=...
+const parseTexts = (text) => {
+  if (!text || text === true) return undefined;
+  const map = {};
+  for (const part of String(text).split(',')) {
+    const eq = part.indexOf('=');
+    if (eq > 0) map[part.slice(0, eq).trim()] = part.slice(eq + 1).split('|').map((t) => t.trim()).filter(Boolean);
+  }
+  return map;
+};
+const csv = (value) => (typeof value === 'string' ? value.split(',').map((s) => s.trim()).filter(Boolean) : undefined);
 
 const listOrMode = (value, modes) => {
   if (value === undefined || value === true) return undefined;
@@ -166,11 +187,17 @@ const playOptions = {
   forceWin: !!args.forceWin,
   maxRealMs: timeoutMs,
   autoplay: !args.noAutoplay,
+  passiveEnemies: !!args.passiveEnemies,
+  hubTour: args.hubTour !== undefined
+    ? { passes: num(args.hubTour, 1), skip: csv(args.hubSkip), only: csv(args.hubOnly) }
+    : undefined,
   policy: {
     rooms: listOrMode(args.rooms, ['random']) ?? 'random',
     choices: args.choices === 'first' ? 'first' : 'random',
     services: listOrMode(args.services, ['all', 'none']) ?? 'all',
     shop: args.shop === 'leave' ? 'leave' : 'buy',
+    ...(args.texts ? { texts: parseTexts(args.texts) } : {}),
+    ...(args.answers ? { answers: parseMap(args.answers) } : {}),
   },
 };
 const fast = {
@@ -274,6 +301,10 @@ async function runOne(browser, index) {
     timings.jumpMs = Date.now() - t1;
     console.log(`${tag} jumped to ${jump.level} floor ${jump.floor} (${jump.state}) in ${fmtMs(timings.jumpMs)}: ${jump.party.map((u) => `${u.nid} ${u.klass} L${u.level}`).join(', ')}`);
     await screenshot(page, path.join(dir, 'jump.png'));
+    if (typeof args.script === 'string') {
+      // Ad-hoc event commands after the jump, e.g. "trigger_script;Boss_Hidden Outro".
+      await page.evaluate((lines) => window.__qa.runScript(lines, 'QA_Run_Script'), args.script.split('|'));
+    }
     if (!args.noPlay) {
       const t2 = Date.now();
       const policySeed = num(args.policySeed, runSeed ?? 1);
