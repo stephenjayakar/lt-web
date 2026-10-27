@@ -161,6 +161,11 @@ export class MovementSystem {
     return this.components.length > 0;
   }
 
+  /** Whether `unit` is walking a path right now. */
+  isUnitMoving(unit: UnitObject): boolean {
+    return this.components.some((c) => c.unit === unit && !c.done);
+  }
+
   /**
    * Get the sub-tile visual offset for a unit that is currently being moved.
    *

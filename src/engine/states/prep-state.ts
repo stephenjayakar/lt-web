@@ -9,6 +9,7 @@
  */
 
 import { State, type StateResult } from '../state';
+import { runEventsBeforeWaiting } from './game-states';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import type { UnitObject } from '../../objects/unit';
@@ -321,11 +322,16 @@ export class PrepMainState extends State {
     const matches = [...game.db.events.values()].filter((candidate: any) =>
       (candidate.nid === evName || candidate.name === evName) &&
       (!candidate.level_nid || candidate.level_nid === levelNid));
-    let queued = false;
+    const queue: unknown[] = game.eventManager?.eventQueue ?? [];
+    const before = queue.length;
     for (const prefab of matches) {
-      if (game.eventManager?.triggerSpecific(prefab.nid, { type: evName, levelNid }, true)) queued = true;
+      game.eventManager?.triggerSpecific(prefab.nid, { type: evName, levelNid }, true);
     }
-    if (queued) game.state.change('event');
+    // Python pushes a fresh EventState for the option's event, which runs
+    // now and pops back to prep. The event that opened prep is paused below
+    // and must not resume until prep ends (EOtF boss prep "Check Seals").
+    const added = queue.slice(before) as any[];
+    if (added.length) runEventsBeforeWaiting(game, added, true);
   }
 
   override update(): StateResult {

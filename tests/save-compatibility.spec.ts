@@ -31,7 +31,8 @@ test.describe('save compatibility and failure reporting', () => {
       accepts: ['unversioned', '0.9.0', '1.7.3'],
       errors: [
         'Save has an invalid version "future"',
-        'Save version 2.0.0 is newer than supported version 1.0.0',
+        // Save format 1.1.0 added the turnwheel action log (was 1.0.0).
+        'Save version 2.0.0 is newer than supported version 1.1.0',
       ],
     });
   });
@@ -140,8 +141,8 @@ test.describe('save compatibility and failure reporting', () => {
 
     expect(result).toEqual({
       state: 'load_menu',
-      message: 'Load failed: Save version 99.0.0 is newer than supported version 1.0.0',
-      lastError: 'Save version 99.0.0 is newer than supported version 1.0.0',
+      message: 'Load failed: Save version 99.0.0 is newer than supported version 1.1.0',
+      lastError: 'Save version 99.0.0 is newer than supported version 1.1.0',
     });
   });
 });

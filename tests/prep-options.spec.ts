@@ -24,7 +24,7 @@ test.describe('Prep main menu options', () => {
       g.db.events.set('QaPrep', {
         name: 'QaPrep', nid: 'QaPrep', trigger: 'QaPrep', level_nid: null,
         condition: 'True', only_once: false, priority: 0,
-        _source: ['prep;t;;Check Seals,Locked;true,false;QaSealCheck'],
+        _source: ['prep;t;;Check Seals,Locked;true,false;QaSealCheck', 'game_var;qa_after_prep;1'],
       });
       g.eventManager.triggerSpecific('QaPrep', { type: 'QaPrep' }, true);
       g.state.change('event');
@@ -52,10 +52,23 @@ test.describe('Prep main menu options', () => {
       for (let frame = 0; frame < 30 && !g.gameVars.get('qa_seals_checked'); frame += 1) {
         (window as any).__harness.stepFrames(1, null);
       }
-      return { afterLocked, checked: g.gameVars.get('qa_seals_checked') };
+      // Python runs the option's event in its own EventState over prep; the
+      // event that opened prep stays paused until prep ends.
+      const afterPrepRan = g.gameVars.get('qa_after_prep') ?? null;
+      (window as any).__harness.stepFrames(20, null);
+      return {
+        afterLocked,
+        checked: g.gameVars.get('qa_seals_checked'),
+        afterPrepRan,
+        afterPrepLater: g.gameVars.get('qa_after_prep') ?? null,
+        top: g.state.getCurrentState()?.name,
+      };
     });
     expect(result.afterLocked).toBe('prep_main');
     expect(result.checked).toBe(1);
+    expect(result.afterPrepRan).toBeNull();
+    expect(result.afterPrepLater).toBeNull();
+    expect(result.top).toBe('prep_main');
   });
 
   test('Pick Units requires the prep flag and party queries exclude non-persistent units', async ({ page }) => {

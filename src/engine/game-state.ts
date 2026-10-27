@@ -1679,6 +1679,7 @@ export class GameState {
     }
     const unit = this.spawnUnit(prefab, data.team, data.starting_position, data.ai);
     if (data.ai_group) unit.aiGroup = data.ai_group;
+    if ((data as any).roam_ai) unit.roamAi = (data as any).roam_ai;
 
     // Apply difficulty base bonuses
     this.applyDifficultyBaseBonuses(unit);
@@ -1740,6 +1741,7 @@ export class GameState {
     const unitFaction = data.faction ? this.db.factions.get(data.faction) : null;
     if (unitFaction) unit.desc = unitFaction.desc ?? '';
     if (data.ai_group) unit.aiGroup = data.ai_group;
+    if ((data as any).roam_ai) unit.roamAi = (data as any).roam_ai;
 
     // Generic units are NOT persistent across levels (Python: self.persistent = False)
     unit.persistent = false;

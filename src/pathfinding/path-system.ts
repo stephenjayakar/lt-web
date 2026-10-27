@@ -138,6 +138,8 @@ export class PathSystem {
       adjGoodEnough?: boolean;
       limit?: number;
       maxMovementLimit?: number;
+      /** Python free_movement (free roam): ThetaStar, nothing blocks. */
+      freeMovement?: boolean;
     },
   ): [number, number][] | null {
     const pos = unit.position;
@@ -146,6 +148,7 @@ export class PathSystem {
     const { width, height } = board;
     const movementGroup = this.getMovementGroup(unit);
     const astar = new AStar(width, height);
+    astar.thetaStar = !!options?.freeMovement;
 
     // Populate terrain costs
     for (let y = 0; y < height; y++) {
@@ -154,7 +157,8 @@ export class PathSystem {
       }
     }
 
-    const canMoveThrough = options?.canMoveThrough ?? this.buildCanMoveThrough(unit, board);
+    const canMoveThrough = options?.canMoveThrough ??
+      (options?.freeMovement ? () => true : this.buildCanMoveThrough(unit, board));
 
     const path = astar.process(
       pos[0],

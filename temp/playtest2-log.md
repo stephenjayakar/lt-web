@@ -59,33 +59,63 @@ driven by a local command server on 5195. Fresh browser profile.
   (Revival Magic: Moudrost, Fragile Memory: Milly), F13 map 41, F14 healer
   + trial "The Wolf" (escort): Loreia died -> second GAME OVER (Global_Loss
   delete_save;0 / suspend, matches the data).
+- Run 3 (long, stats boosted via eval for coverage): sortie Filters
+  (Infantry) and selection, bar skill shop (Reposition), ferry (record
+  `ferry_unlocked` set) -> Act 1A. Floors 2-13: combat maps, events (actor
+  troupe, pods, skill merchant, factions, Yusha recruit), "Unlock" map 92
+  (Key Point command on the three chests; item_discard to storage), trial
+  "The Attendant" (Adrius) won, boss prep Check Seals (bug 7), boss "The
+  Herdsman" (Bootes) won with the long post-boss dialogue, boss reward
+  bundle -> Act 2. Act 2 floors 16-20 (two combat maps, events, shop
+  strategist), then Abandon from the option menu -> currencies banked
+  (Essence +350, Flame +80, Master Seals +5) -> title.
+- Title Extras: Credits roll, Options. Run 4: mid-map Suspend on turn 2 ->
+  Continue on the rebuilt dist -> turn 2 kept, next turn is 3 (bug 4/5 fixes).
+
+## Tests
+
+- Focused per fix: event-choice-bg, eotf-event-expression-data,
+  eotf-event-unit-query-expressions, eotf-project-smoke, fork-combat-math,
+  eotf-evaluated-combat-calcs, weapon-rank-bonus, ai-parity,
+  event-commands-3, objective-dialog-ui, key-remap, fork-ui-flow, ui-menus,
+  event-region-save, save-fields, save-compatibility, turnwheel-breadth,
+  event-flow, prep-options, prep-screens (all green; each new regression
+  checked to fail without its fix).
+- `npm test` (2 workers, after fixes 1-6): 1066 passed, 3 failed:
+  key-remap (passes alone; timing under load), and two platform-lifecycle
+  dist/ checks (this worktree builds to E:, so no dist/).
 
 ## Bugs
 
-1. FIXED f872105 - no floor rooms in any Act: `{e:'room' + '{v:counter}' + '_reward'}`
+1. FIXED 23dada1 (superseded on eotf by playtest-1's identical pythonStr fix) - no floor rooms in any Act: `{e:'room' + '{v:counter}' + '_reward'}`
    raised TypeError under the Python evaluator because a quoted `{v:}` inside
    `{e:}` became a typed literal (int 1, quotes dropped). Python substitutes the
    var text inside the quotes. (`tests/event-choice-bg.spec.ts`)
-2. FIXED 4701a90 - weapons without a `hit` component (Vortex, Spark, Ragnarok,
+2. FIXED aa71cc6 - weapons without a `hit` component (Vortex, Spark, Ragnarok,
    20 EOtF weapons) forecast 0-11% hit and the AI treated them as useless;
    Python compute_hit returns 10000 (always hit). (`tests/fork-combat-math.spec.ts`)
-3. FIXED e8fd25a - Objective/Options/Guide and custom option events (Codex,
+3. FIXED 2ad015d - Objective/Options/Guide and custom option events (Codex,
    Gallery, Stratagems) popped the option menu, so closing them returned to the
    map; Python keeps the option menu beneath (transition_to pops only itself).
    (`tests/event-commands-3.spec.ts`)
-4. FIXED a6ae576 - Suspend on map 91 failed ("Failed to suspend game") and
+4. FIXED 56d0090 - Suspend on map 91 failed ("Failed to suspend game") and
    dumped to the title, losing the mid-map state: authored region Fake_Arrive
    has position None and serializeLevel read position[0].
    (`tests/event-region-save.spec.ts`)
-5. FIXED f3e2be7 - the turnwheel could not restore the turn number: turning
+5. FIXED 164efcb - the turnwheel could not restore the turn number: turning
    back into turn 1 still showed/kept "Turn 2" (Python logs IncrementTurn as
    an action). Also a loaded mid-map save rebuilt the phase controller at 1
    and copied that back at the next wrap, resetting the turn counter.
    (`tests/turnwheel-breadth.spec.ts`)
-6. FIXED e802eab - reopening a text_entry (desk password) left the previous
+6. FIXED 609c9f7 - reopening a text_entry (desk password) left the previous
    keydown listener attached (web pops call finish(), not end()): typed keys
    landed once per stale listener and Enter's keyboard-mode toggle cancelled
    out on even counts. (`tests/event-commands-3.spec.ts`)
+7. FIXED 8c90283 - boss prep "Check Seals" (prep custom option) resumed the
+   paused chapter intro under prep (Bootes dialogue, Global_End_Preps, battle
+   music) before showing the seals: the option event was appended behind the
+   paused event in the FIFO queue; Python pushes a fresh EventState (LIFO).
+   (`tests/prep-options.spec.ts`)
 
 ## Minor / not fixed
 
@@ -96,5 +126,11 @@ driven by a local command server on 5195. Fresh browser profile.
   upstream prints `str(None)`; the fork's page is unknown here, so left as is.
 - `console.warn('VICTORY — seize condition met')` / `GAME OVER — loss
   condition met` are debug logs at warning level (noise only).
+- `Blessings_of_the_Tides` / `Staff_Range_Plus` conditions read `item.weapon`;
+  a Cleric with no weapon makes Python's condition() fall back to
+  unit.equipped_weapon = None and raise too, so the warnings match Python
+  (they repeat every frame, as Python's would).
+- The planner in temp/pt2 is weak; two long runs were lost (Act 1 F7 wipe,
+  F14 escort trial). Run 3 used stat boosts to reach Act 2.
 - Turnwheel is unreachable in normal EOtF play (`_turnwheel` only set by the
   DEBUG level), same as Python.

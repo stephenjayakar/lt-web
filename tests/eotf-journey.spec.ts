@@ -124,6 +124,18 @@ test.describe('Embrace of the Fog end-to-end journey', () => {
       (window as any).__gameRef.getUnit('Keeper')?.position ?? null);
     expect(keeper, 'Keeper should be on the hub map').not.toBeNull();
     await placeRoamUnit(page, keeper![0] - 1, keeper![1]);
+    // EOtF's fork talks only inside 1.0 tiles of the sprite, so (as in the
+    // game) walk into Keeper: the roam unit passes through allied units.
+    const nudged = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      const roam = game.state.stack.find((state: any) => state.name === 'free_roam');
+      game.input.keysDown.add('KeyD');
+      for (let frame = 0; frame < 4; frame += 1) (window as any).__harness.stepFrames(1, null);
+      game.input.keysDown.delete('KeyD');
+      for (let frame = 0; frame < 6; frame += 1) (window as any).__harness.stepFrames(1, null);
+      return roam.movementComponent.roamPosition.x;
+    });
+    expect(nudged, 'walking right must move the roam unit toward Keeper').toBeGreaterThan(keeper![0] - 1);
     await stepFrames(page, 3, 'SELECT');
     await stepFrames(page, 5);
     expect(await stateName(page), 'SELECT beside Keeper must start the talk').toBe('event');

@@ -305,6 +305,30 @@ export class AIController {
    * Get target units based on behaviour's target type and spec.
    */
   /** Python get_targets for target == 'Position' (Starting or a literal point). */
+  /**
+   * Python ai_controller.get_targets(unit, behaviour) as a position list,
+   * used by the free-roam AI. Unit/Enemy/Ally read every placed unit (a
+   * roaming unit may share a tile and be absent from the board grid).
+   */
+  targetPositions(unit: UnitObject, behaviour: AiBehavior, allUnits?: Iterable<UnitObject>): [number, number][] {
+    const target = String(behaviour.target);
+    if (target === 'Event' || target === 'Terrain') return this.getTargetPositions(unit, behaviour);
+    if (target === 'Position') return this.getPositionTargets(unit, behaviour);
+    if (!['Unit', 'Enemy', 'Ally'].includes(target)) return [];
+    const placed = [...(allUnits ?? this.board.getAllUnits())].filter((u) => u.position && !u.isDead());
+    let candidates = placed;
+    if (target === 'Enemy') candidates = placed.filter((u) => checkEnemy(unit, u, this.db, this.gameRef));
+    else if (target === 'Ally') candidates = placed.filter((u) => checkAlly(unit, u, this.db, this.gameRef));
+    candidates = this.filterByTargetSpec(candidates, behaviour);
+    if (this.db.getConstant('ai_fog_of_war', false)) {
+      const fogInfo = this.gameRef?.getCurrentFogInfo?.();
+      const all = this.gameRef?.getAllUnits?.() ?? this.board.getAllUnits();
+      candidates = candidates.filter((t) => unitHasTag(t, 'Tile', this.gameRef) ||
+        this.board.inVision(t.position!, unit.team, fogInfo, this.db, all));
+    }
+    return this.unitPositions(candidates);
+  }
+
   private getPositionTargets(unit: UnitObject, behaviour: AiBehavior): [number, number][] {
     if (behaviour.target_spec === 'Starting') {
       return unit.startingPosition ? [[unit.startingPosition[0], unit.startingPosition[1]]] : [];

@@ -193,6 +193,7 @@ export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
 import { getSprite, preloadSprites } from '../../ui/sprites';
+import { roamVisualOffset } from '../../movement/roam-movement';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
@@ -589,10 +590,13 @@ function collectVisibleUnits(): {
     // Update sprite state: gray for finished units on the active team only.
     // Units from other teams should never appear greyed out.
     // In initiative mode, non-current-initiative units appear greyed.
-    // (moving state is set by the movement system)
+    // Only a unit the movement system is walking keeps 'moving'. Combat
+    // poses set 'moving' on the sprite every drawn frame (poseOverride), so a
+    // left-over 'moving' must not block the state update: it used to keep
+    // every unit that had fought (player and AI alike) out of its gray image.
     if (u.sprite && typeof u.sprite === 'object' && 'state' in u.sprite) {
       const spr = u.sprite as { state: string };
-      if (spr.state !== 'moving') {
+      if (!game.movementSystem.isUnitMoving(u)) {
         let showGray = u.finished && u.team === currentTeam;
         // Initiative mode: grey out units that aren't the current initiative unit
         if (game.initiative) {
@@ -819,8 +823,8 @@ export function drawUnitMarkers(surf: Surface): void {
     const sprites = markers.map((name) => getSprite(`marker_${name}`)).filter((sprite): sprite is Surface => !!sprite);
     if (!sprites.length) continue;
     const icon = sprites[Math.floor(now / 500) % sprites.length];
-    // The roam unit's sprite sits at its sub-tile roam position.
-    const roamOffset = unit === curUnit ? roamState?.movementComponent?.getVisualOffset?.() : null;
+    // Roaming sprites sit at their sub-tile roam position.
+    const roamOffset = roamState ? roamVisualOffset(unit) : null;
     const left = (unit.position[0] + (roamOffset?.[0] ?? 0)) * TILEWIDTH - camX;
     const top = (unit.position[1] + (roamOffset?.[1] ?? 0)) * TILEHEIGHT - camY;
     surf.blit(icon, left - 2, top - 14 + offset);

@@ -5,6 +5,8 @@
 // Both operate on a grid of PathNodes with cardinal-direction movement only.
 // ---------------------------------------------------------------------------
 
+import { getLine } from '../engine/line-of-sight';
+
 export interface PathNode {
   x: number;
   y: number;
@@ -250,6 +252,12 @@ export class AStar {
   private grid: PathNode[][];
   private width: number;
   private height: number;
+  /**
+   * Python ThetaStar (free-roam paths): a node whose grandparent has line of
+   * sight to it hangs off the grandparent, so the path is a list of
+   * straight-line waypoints rather than adjacent tiles.
+   */
+  thetaStar = false;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -400,17 +408,25 @@ export class AStar {
         const newG = current.g + neighbor.cost;
 
         if (newG < neighbor.g) {
-          neighbor.g = newG;
+          const viaParent = this.thetaStar && current.parent !== null &&
+            this.lineOfSight(current.parent, neighbor);
+          const parent = viaParent ? current.parent! : current;
+          neighbor.g = parent.g + neighbor.cost;
           neighbor.h = this.heuristic(nx, ny, goalX, goalY, startX, startY);
           neighbor.f = neighbor.g + neighbor.h;
           neighbor.true_f = neighbor.g + this.trueHeuristic(neighbor.x, neighbor.y, goalX, goalY);
-          neighbor.parent = current;
+          neighbor.parent = parent;
           open.push(neighbor);
         }
       }
     }
 
     return null; // no path found
+  }
+
+  /** Python ThetaStar._line_of_sight: Bresenham over unreachable tiles. */
+  private lineOfSight(a: PathNode, b: PathNode): boolean {
+    return getLine([a.x, a.y], [b.x, b.y], ([x, y]) => !this.grid[y]?.[x]?.reachable);
   }
 
   /** Reconstruct the path from goal node back to start via parent links. */

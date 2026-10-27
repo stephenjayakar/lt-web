@@ -72,8 +72,8 @@ Verified baseline:
   engine fonts, menu sprites, and platforms staged into `dist/game-data/`;
 - every EOtF item component NID the engine did not reference has been resolved:
   `no_equip` (37 authored ability weapons) now vetoes equip and auto-equip,
-  `never_use_battle_animation` forces map combat, and `item_icon_flash` plus the
-  deprecated `text_color` are recorded in `README.md` as cosmetic deviations;
+  `never_use_battle_animation` forces map combat, and `item_icon_flash` and the
+  fork's `text_color` were later implemented too (2026-10-26 sweep);
 - all 185 item and 270 skill component NIDs are read against their Lex Talionis
   Python definitions, so the audit reports zero unverified NIDs. That pass fixed
   ten semantic divergences, the largest being `weight`: it never reached attack
@@ -154,7 +154,11 @@ The release gate is green: build, all four audits, the full serial suite,
   subset of unit/target/position/local args; the web still passes all of them.
 - [ ] `item_funcs.has_damage` (combat conditions of Hurricane_Onslaught_Child,
   Rumbling_Earth_Child_Helper and Critical_Zone_Aura_Helper/Child) does not exist in the lt-maker reference, so those conditions raise
-  and stay False there and here; confirm against EOtF's shipped engine.
+  and stay False there and here; confirm against EOtF's shipped engine (its
+  v1.90 source is only on the Mac, so this is still open).
+- [x] Save the action log so the turnwheel can rewind past a suspend/reload,
+  as Python's `game_state.save` does (`src/engine/action-serialization.ts`,
+  save version 1.1.0; `tests/turnwheel-save-restore.spec.ts`).
 
 ### P8.3 — Roguelite systems and campaign proof
 
@@ -230,6 +234,14 @@ The release gate is green: build, all four audits, the full serial suite,
   end-of-combat events (`tests/fork-combat-cleanup.spec.ts`).
 - [x] Broken-item alert (`handle_broken_items` → AlertState, "X broke.") in
   combat, on ally-targeted item uses, and before a crest's promotion choice.
+- [x] Partial/deviation sweep (2026-10-26; `docs/parity/PARITY-REPORT.md`
+  registry and "Remaining Gaps"): map footsteps (`UnitSound`,
+  `tests/unit-footsteps.spec.ts`); the fork's hub SELECT/INFO sounds and
+  check_select order; free-roam movement, rationalize slide, roam AI and the
+  fork's 1.0 talk range (`tests/roam-movement.spec.ts`); item icon white flash
+  and target markers for effective weapons and the fork's eval_warning
+  (`tests/item-icon-flash.spec.ts`); the fork's `text_color`
+  (`tests/fork-text-color.spec.ts`); movement arrows at a constant 0.9 alpha.
 - [x] Unit entry/exit transitions (`tests/unit-transitions.spec.ts`): fade (edge
   slide), warp (anim, flicker, petals, sounds) and swoosh for add_unit,
   create_unit, add_group, remove_unit/group, move_unit/group and spawn_group,
