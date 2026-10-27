@@ -205,6 +205,10 @@ import { initNativePlatform, onAppPause, onAppResume } from './native';
 import { PerfMonitor } from './engine/perf-monitor';
 import { SurfacePool } from './engine/surface-pool';
 import { installHarness } from './harness';
+import {
+  TransitionDoublePopState, TransitionInState, TransitionOutState, TransitionPopState,
+  TransitionToState, TransitionToWithPopState, setTransitionGameRef,
+} from './engine/states/transition-states';
 import { configureUnitSounds, updateUnitSounds } from './audio/unit-sound';
 
 // ---------------------------------------------------------------------------
@@ -834,7 +838,14 @@ async function main(): Promise<void> {
     new SaveMenuState(),
     new LoadMenuState(),
     new TitleSaveState(),
+    new TransitionInState(),
+    new TransitionOutState(),
+    new TransitionPopState(),
+    new TransitionDoublePopState(),
+    new TransitionToState(),
+    new TransitionToWithPopState(),
   ];
+  setTransitionGameRef(() => gameState);
   for (const state of states) {
     gameState.state.register(state);
   }

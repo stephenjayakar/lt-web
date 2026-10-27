@@ -189,6 +189,8 @@ export class MapCombatInfo {
     return this.truePosition;
   }
 
+  private windowSurf: Surface | null = null;
+
   /** MapCombatInfo.draw. `camera` is the camera position in tiles. */
   draw(surf: Surface, camera: [number, number]): void {
     const color = teamColor(this.unit, this.db);
@@ -204,7 +206,15 @@ export class MapCombatInfo {
     if (grd !== null && guardSprite) statHeight = height + guardSprite.height;
     else if ((hit !== null || mt !== null) && statsSprite) statHeight = height + statsSprite.height;
 
-    const window = new Surface(width, statHeight);
+    // Reused every frame (a fresh canvas per window per frame was the main
+    // allocation in map combat).
+    if (!this.windowSurf || this.windowSurf.width !== width || this.windowSurf.height !== statHeight) {
+      this.windowSurf = new Surface(width, statHeight);
+    } else {
+      this.windowSurf.clear();
+      this.windowSurf.setAlpha(1);
+    }
+    const window = this.windowSurf;
     window.blit(bg, 0, 0);
 
     // Name

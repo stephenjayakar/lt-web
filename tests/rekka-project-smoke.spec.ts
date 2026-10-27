@@ -1098,6 +1098,8 @@ test.describe('Rekka all-level compatibility', () => {
         state.cursor = state.options.indexOf(wanted);
       }, label);
       await page.evaluate(() => (window as any).__harness.stepFrames(1, 'SELECT'));
+      // Every option but Formation fades through Python's transition_to (8 frames).
+      if (label !== 'Formation') await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
     };
 
     await openPrepOption('Manage');
@@ -1324,6 +1326,8 @@ test.describe('Rekka all-level compatibility', () => {
     const step = (input: string | null) =>
       page.evaluate((i) => (window as any).__harness.stepFrames(1, i), input);
     await step('SELECT'); // Manage
+    // Python's transition_to fade before base_manage takes input.
+    await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
     await step('SELECT'); // first unit -> prep_manage_select
     await step('SELECT'); // Trade -> prep_trade_select
     await step('RIGHT'); // partner

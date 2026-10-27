@@ -54,7 +54,8 @@ test.describe('Supply/convoy and item_discard states', () => {
     // Python route: Prep -> Manage -> first unit -> Supply.
     await stepFrames(page, 1, 'DOWN');
     await stepFrames(page, 1, 'SELECT');
-    await stepFrames(page, 2);
+    // Manage opens through Python's transition_to fade (8 frames).
+    await stepFrames(page, 12);
     expect((await getState(page)).currentStateName).toBe('base_manage');
     await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 2);
