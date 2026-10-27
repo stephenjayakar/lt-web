@@ -697,7 +697,7 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1245
+          "line": 1252
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -707,7 +707,7 @@
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1245
+          "line": 1252
         }
       ],
       "matchingWebHooks": [],
@@ -732,13 +732,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1246
+          "line": 1253
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1246
+          "line": 1253
         }
       ],
       "matchingWebHooks": [],
@@ -767,7 +767,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1243
+          "line": 1250
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -781,7 +781,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1243
+          "line": 1250
         }
       ],
       "matchingWebHooks": [],
@@ -849,7 +849,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1168
+          "line": 1175
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -863,7 +863,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1168
+          "line": 1175
         }
       ],
       "matchingWebHooks": [],
@@ -890,13 +890,13 @@
       "webReferences": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1170
+          "line": 1177
         }
       ],
       "directReads": [
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1170
+          "line": 1177
         }
       ],
       "matchingWebHooks": [],
@@ -925,7 +925,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1035
+          "line": 1042
         }
       ],
       "directReads": [
@@ -935,7 +935,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1035
+          "line": 1042
         }
       ],
       "matchingWebHooks": [],
@@ -7592,7 +7592,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 839
+          "line": 846
         },
         {
           "source": "src/engine/action.ts",
@@ -7686,7 +7686,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 839
+          "line": 846
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -7755,7 +7755,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 839
+          "line": 846
         },
         {
           "source": "src/engine/action.ts",
@@ -7853,7 +7853,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 839
+          "line": 846
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -7981,7 +7981,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 844
+          "line": 851
         },
         {
           "source": "src/engine/states/game-states.ts",
@@ -8003,7 +8003,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 844
+          "line": 851
         },
         {
           "source": "src/engine/states/game-states.ts",
