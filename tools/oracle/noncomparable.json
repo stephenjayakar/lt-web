@@ -33,6 +33,7 @@
     "units.*.ai_group": "Python uses None for no AI group, the web an empty string."
   },
   "unordered": {
+    "events": "Compared as a multiset: Python lists all_events in trigger order while running events nest LIFO; the web queue puts the running event first.",
     "units.*.skills": "Compared as a multiset: the web applies terrain statuses before class skills at level load (see README, Known diffs)."
   },
   "state_aliases": {}

@@ -12016,7 +12016,8 @@ export class EventState extends State {
    */
   private levelEnd(game: any): void {
     const currentLevelNid = game.currentLevel?.nid ?? '';
-    game.gameVars.set('_prev_level_nid', currentLevelNid);
+    // Python keeps this in game.memory, not in the (saved, event-visible) game vars.
+    game.memory.set('_prev_level_nid', currentLevelNid);
 
     // Find current level index in the ordered db.levels map
     const levelNids = Array.from(game.db.levels.keys()) as string[];
@@ -12032,6 +12033,13 @@ export class EventState extends State {
     // Determine the next level
     let nextLevelNid: string | null = null;
     const gotoLevel = game.gameVars.get('_goto_level') ?? null;
+
+    // Python level_end records whether the next level comes from the overworld.
+    if (currentIndex < levelNids.length - 1 || gotoLevel !== null) {
+      const levelPrefab = game.db.levels.get(currentLevelNid);
+      game.gameVars.set('_should_go_to_overworld',
+        !!levelPrefab?.go_to_overworld && !!game.db.getConstant?.('overworld', false) && gotoLevel === null);
+    }
 
     if (gotoLevel !== null) {
       if (gotoLevel === '_force_quit') {
@@ -18335,11 +18343,14 @@ export class EventState extends State {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled', enabled.slice(0, otherOptions.length)));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_events', onSelect.slice(0, otherOptions.length)));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_additional_options', otherOptions));
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', descs.slice(0, otherOptions.length)));
+          // The EOtF fork's prep command has no option descriptions.
+          if (!isForkEngine()) {
+            game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', descs.slice(0, otherOptions.length)));
+          }
         } else {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled', []));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_events', []));
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', []));
+          if (!isForkEngine()) game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', []));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_additional_options', []));
         }
 

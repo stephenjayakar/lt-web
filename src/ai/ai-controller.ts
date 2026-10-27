@@ -236,6 +236,8 @@ export class AIController {
       // Try primary AI (attack)
       const primaryAction = this.primaryAI(unit, validMoves, enemies, offenseBias);
       this.applyPrimaryEquipState(unit, action);
+      // PrimaryAI.run ends with quick_move(orig_pos): the unit re-arrives.
+      this.board.reArrive(unit);
       if (primaryAction) return primaryAction;
 
       // Python falls back to SecondaryAI over every get_targets() position;
@@ -256,6 +258,8 @@ export class AIController {
       // Try primary AI: use a healing item/staff on an ally (or self)
       const primaryAction = this.supportPrimaryAI(unit, validMoves, inRange, selfDamaged);
       this.applyPrimaryEquipState(unit, action);
+      // PrimaryAI.run ends with quick_move(orig_pos): the unit re-arrives.
+      this.board.reArrive(unit);
       if (primaryAction) return primaryAction;
 
       // Python SecondaryAI over every allied target (help term 100).
@@ -269,6 +273,8 @@ export class AIController {
       const enemies = this.filterByViewRange(unit, targets, behaviour.view_range);
       const primaryAction = this.stealPrimaryAI(unit, validMoves, enemies);
       this.applyPrimaryEquipState(unit, action);
+      // PrimaryAI.run ends with quick_move(orig_pos): the unit re-arrives.
+      this.board.reArrive(unit);
       if (primaryAction) return primaryAction;
       // Python SecondaryAI scores every Steal target 0 (fork) / None
       // (upstream), so a thief with nothing to steal in reach never advances.

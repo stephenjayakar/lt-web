@@ -1443,7 +1443,7 @@ test.describe('Rekka all-level compatibility', () => {
       const lyn = game.units.get('Lyn');
       return {
         level: game.currentLevel?.nid,
-        previousLevel: game.gameVars.get('_prev_level_nid'),
+        previousLevel: game.memory.get('_prev_level_nid'),
         money: game.getParty().money,
         items: lyn?.items.map((item: any) => item.nid) ?? [],
         persistent: lyn?.persistent,
@@ -1598,7 +1598,7 @@ test.describe('Rekka all-level compatibility', () => {
       const legault = game.units.get('Legault');
       return {
         level: game.currentLevel?.nid,
-        previousLevel: game.gameVars.get('_prev_level_nid'),
+        previousLevel: game.memory.get('_prev_level_nid'),
         team: legault?.team,
         items: legault?.items.map((item: any) => item.nid) ?? [],
       };
@@ -1696,7 +1696,7 @@ test.describe('Rekka all-level compatibility', () => {
       const hector = game.units.get('Hector');
       return {
         level: game.currentLevel?.nid,
-        previousLevel: game.gameVars.get('_prev_level_nid'),
+        previousLevel: game.memory.get('_prev_level_nid'),
         state: game.state.getCurrentState()?.name,
         items: hector?.items.map((item: any) => item.nid) ?? [],
       };

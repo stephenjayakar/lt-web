@@ -1,0 +1,51 @@
+{
+  "name": "eotf-run-start",
+  "description": "EOtF hub to a run: a returning player's records, free roam to the Keeper, Depart, sortie with the Player, and on into the run's first map.",
+  "project": "eotf.ltproj",
+  "level": "X",
+  "events": true,
+  "seed": 0,
+  "start_records": {
+    "Progress": 3,
+    "watched_intro": 1,
+    "depart_first_time": 1
+  },
+  "actions": [
+    {
+      "do": "roam_talk",
+      "target": "Keeper"
+    },
+    {
+      "do": "choose",
+      "option": "Depart"
+    },
+    {
+      "do": "choose",
+      "option": "Player"
+    },
+    {
+      "do": "choose",
+      "option": "Yes",
+      "max_frames": 30000
+    },
+    {
+      "do": "roam_talk",
+      "target": "room2",
+      "max_frames": 30000
+    },
+    {
+      "do": "choose",
+      "option": "Yes",
+      "max_frames": 40000
+    },
+    {
+      "do": "choose",
+      "option": "Fight",
+      "max_frames": 20000
+    },
+    {
+      "do": "end_turn",
+      "max_frames": 40000
+    }
+  ]
+}

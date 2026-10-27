@@ -18,6 +18,23 @@ const TERRAIN_SOURCE_TYPE = 'terrain';
 
 const regionSkillCaches = new WeakMap<object, Map<string, SkillObject>>();
 
+/**
+ * Python GameState.arrive evaluates ignore_terrain / ignore_region_status
+ * when the unit arrives; a skill gained while standing still (a class change
+ * to a flier, say) does not drop the tile's status until the unit next moves.
+ * Keep each unit's decision until the board records a new arrival.
+ */
+const arrivalDecisions = new WeakMap<UnitObject, { stamp: number; ignoreTerrain: boolean; ignoreRegion: boolean }>();
+
+function ignoresAtArrival(unit: UnitObject, board: GameBoard, game: any): { ignoreTerrain: boolean; ignoreRegion: boolean } {
+  const stamp = typeof board.arrivalStamp === 'function' ? board.arrivalStamp(unit) : -1;
+  const cached = arrivalDecisions.get(unit);
+  if (cached && stamp >= 0 && cached.stamp === stamp) return cached;
+  const decision = { stamp, ignoreTerrain: ignoreTerrain(unit, game), ignoreRegion: ignoreRegionStatus(unit, game) };
+  arrivalDecisions.set(unit, decision);
+  return decision;
+}
+
 function contains(region: RegionData, position: [number, number]): boolean {
   if (!region.position) return false;
   const width = region.size?.[0] ?? 1;
@@ -88,8 +105,9 @@ export function refreshPositionStatuses(
     const desired: DesiredStatus[] = [];
     const position = unit.position;
     if (position && board.getUnit(position[0], position[1]) === unit) {
+      const ignores = ignoresAtArrival(unit, board, game);
       // Tiles and terrain regions come first, as in Python arrive().
-      if (!ignoreTerrain(unit, game)) {
+      if (!ignores.ignoreTerrain) {
         const terrainNid = board.getTerrain(position[0], position[1]);
         const status = terrainNid ? (db.terrain.get(terrainNid) as any)?.status : null;
         if (typeof status === 'string' && status.length > 0) {
@@ -100,7 +118,7 @@ export function refreshPositionStatuses(
           });
         }
       }
-      if (!ignoreRegionStatus(unit, game)) {
+      if (!ignores.ignoreRegion) {
         for (const region of regions) {
           if (!contains(region, position)) continue;
           if (region.condition && !evaluateCondition(region.condition, {

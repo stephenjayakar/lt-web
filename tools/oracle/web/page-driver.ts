@@ -21,6 +21,7 @@ import { setSetting } from '../../../src/engine/states/settings-state';
 import { GameEvent } from '../../../src/events/event-manager';
 import { getCombatRandomState, getGrowthRandomState } from '../../../src/engine/static-random';
 import { loadSuspend, suspendGame } from '../../../src/engine/save';
+import { RECORDS } from '../../../src/engine/records';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 type Action = { do: string; [k: string]: any };
@@ -39,6 +40,7 @@ export interface Scenario {
   start_frames?: number;
   startup_events?: boolean;
   start_game_vars?: Record<string, unknown>;
+  start_records?: Record<string, unknown>;
 }
 
 const REST_STATES = new Set([
@@ -95,9 +97,17 @@ class WebEngine {
     return this.game.state.getStackNames();
   }
 
+  /** An event `choice` menu waiting for the player (Python's player_choice state). */
+  awaitingChoice(): boolean {
+    const st: any = this.game.state.getCurrentState();
+    return st?.name === 'event' && !!st.choiceMenu;
+  }
+
   busy(): boolean {
     const g = this.game;
     if ((g.state as any).tempState?.length) return true;
+    // Prep and similar screens fade out for a few hundred ms before leaving.
+    if ((g.state.getCurrentState() as any)?.fadeOut === true) return true;
     // Free roam keeps the roam unit's movement live (as in Python).
     if (g.movementSystem?.isMoving?.() && this.top() !== 'free_roam') return true;
     return false;
@@ -112,7 +122,7 @@ class WebEngine {
     for (let i = 0; i < maxFrames; i++) {
       if (i % 20 === 19) await new Promise<void>((r) => setTimeout(r, 0));
       const top = this.top();
-      const rest = opts.until ? opts.until(this) : (top !== undefined && REST_STATES.has(top));
+      const rest = opts.until ? opts.until(this) : (top !== undefined && REST_STATES.has(top)) || this.awaitingChoice();
       if (rest && !this.busy()) {
         stable++;
         if (stable >= 3) return;
@@ -150,6 +160,8 @@ class WebEngine {
     const st: any = this.game.state.getCurrentState();
     if (!st) throw new OracleError('no state');
     if (st.confirm) return { menu: st.confirm, items: null };
+    // EventState's `choice` command (Python player_choice).
+    if (st.choiceMenu && Array.isArray(st.choiceMenu.options)) return { menu: st.choiceMenu, items: null };
     if (st.child) return { menu: st.child, items: null };
     if (st.targetMenu) return { menu: st.targetMenu, items: null };
     if (st.menu && Array.isArray(st.menu.options)) {
@@ -171,15 +183,26 @@ class WebEngine {
     let idx = -1;
     if (items) idx = items.findIndex((it: any) => it?.nid === want);
     if (idx < 0) {
-      idx = opts.findIndex((o: any) => label(o).toLowerCase() === lw || value(o).toLowerCase() === lw);
+      // choice entries may be 'value|display text'
+      const keys = (o: any): string[] => [label(o), value(o)].flatMap((t) => [t, t.split('|')[0]]).map((t) => t.toLowerCase());
+      idx = opts.findIndex((o: any) => keys(o).includes(lw));
     }
     if (idx < 0) {
       throw new OracleError(`option ${want} not in ${this.top()} menu ${JSON.stringify(opts.map(label))}`);
     }
-    for (let n = 0; n < opts.length + 2 && index(menu) !== idx; n++) {
-      this.press(idx > index(menu) ? 'DOWN' : 'UP');
-      menu = this.activeMenu().menu;
+    // Grids: rows with DOWN/UP; on overshoot (or no move) go back and step sideways.
+    const current = (): number => index(this.activeMenu().menu);
+    for (let n = 0; n < 4 * opts.length + 4 && current() !== idx; n++) {
+      const cur = current();
+      const forward = idx > cur;
+      this.press(forward ? 'DOWN' : 'UP');
+      const moved = current();
+      if (moved === cur || (forward ? moved > idx : moved < idx)) {
+        if (moved !== cur) this.press(forward ? 'UP' : 'DOWN');
+        this.press(forward ? 'RIGHT' : 'LEFT');
+      }
     }
+    menu = this.activeMenu().menu;
     if (index(menu) !== idx) throw new OracleError(`could not reach option ${want} in ${this.top()}`);
     this.press('SELECT');
   }
@@ -448,6 +471,33 @@ class Runner {
     await this.e.settle({ skip: a.skip, maxFrames: a.max_frames });
   }
 
+  /** Python do_roam_talk: beside the target, half a tile in, SELECT. */
+  async do_roam_talk(a: Action): Promise<void> {
+    const e = this.e;
+    const g = e.game;
+    e.expect('free_roam');
+    const st: any = g.state.getCurrentState();
+    const ru = st.roamUnit;
+    const [tx, ty] = e.targetPos(a.target);
+    const from: [number, number] = a.from ?? this.freeNeighbour(tx, ty);
+    if (!ru.position || ru.position[0] !== from[0] || ru.position[1] !== from[1]) {
+      g.actionLog.doAction(new WarpUnitAction(ru, from, g.board));
+    }
+    st.movementComponent.roamPosition = { x: from[0] + (tx - from[0]) * 0.5, y: from[1] + (ty - from[1]) * 0.5 };
+    e.press('SELECT');
+    await e.settle({ skip: a.skip, maxFrames: a.max_frames });
+  }
+
+  private freeNeighbour(x: number, y: number): [number, number] {
+    const g = this.e.game;
+    for (const [dx, dy] of [[0, 1], [-1, 0], [1, 0], [0, -1]]) {
+      const px = x + dx;
+      const py = y + dy;
+      if (g.board.inBounds(px, py) && !g.board.getUnit(px, py)) return [px, py];
+    }
+    throw new OracleError(`no free tile next to ${x},${y}`);
+  }
+
   /** Python counterpart: suspend through the save store, load it back, settle. */
   preSnapshot: Json | null = null;
 
@@ -579,7 +629,8 @@ export function snapshot(e: WebEngine): Json {
     level: g.currentLevel?.nid ?? null,
     turn: g.turnCount,
     phase: g.phase?.getCurrent?.() ?? null,
-    state: e.top() ?? null,
+    // EventState's choice menu is Python's player_choice state.
+    state: e.awaitingChoice() ? 'player_choice' : (e.top() ?? null),
     stack: e.stack(),
     money: g.getParty?.()?.money ?? null,
     bexp: g.getParty?.()?.bexp ?? null,
@@ -620,6 +671,8 @@ export async function runScenario(scn: Scenario): Promise<Json> {
         await e.settle({ until: (en) => !en.game.eventManager.hasActiveEvents() && en.top() !== 'event' });
       }
     }
+    // Persistent records a returning player would have.
+    for (const [nid, value] of Object.entries(scn.start_records ?? {})) RECORDS.replace(nid, value);
     // Python build_new: fresh game vars holding only the seed.
     g.gameVars.clear();
     g.gameVars.set('_random_seed', scn.seed ?? 0);

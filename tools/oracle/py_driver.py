@@ -41,7 +41,7 @@ BUTTONS = ('UP', 'DOWN', 'LEFT', 'RIGHT', 'SELECT', 'BACK', 'INFO', 'AUX', 'STAR
 REST_STATES = {
     'free', 'menu', 'move', 'canto_wait', 'weapon_choice', 'spell_choice',
     'combat_targeting', 'targeting', 'item', 'item_child', 'item_targeting',
-    'trade', 'option_menu', 'option_child', 'free_roam', 'prep_main',
+    'trade', 'option_menu', 'option_child', 'free_roam', 'prep_main', 'player_choice',
 }
 
 
@@ -334,6 +334,12 @@ class Engine:
         self.game = game_state.start_game()
         self.settle(until=lambda en: en.top() == 'title_start', max_frames=6000)
 
+    def apply_records(self, records: dict) -> None:
+        """Persistent records a returning player would have (RECORDS.replace)."""
+        from app.engine.persistent_records import RECORDS
+        for nid, value in records.items():
+            RECORDS.replace(nid, value)
+
     def start_level(self, level_nid: str, seed: int, events: bool,
                     rng_mode: str | None = None, growths: str | None = None,
                     game_vars: dict | None = None) -> None:
@@ -439,6 +445,9 @@ class Engine:
         g = self.game
         if g.state.temp_state:
             return True
+        # Prep and similar screens fade out for a few hundred ms before leaving.
+        if getattr(g.state.current_state(), 'fade_out', False) is True:
+            return True
         # Free roam keeps a standing movement component for the roam unit.
         if g.movement is not None and len(g.movement) > 0 and self.top() != 'free_roam':
             return True
@@ -500,30 +509,53 @@ class Engine:
         menu = getattr(st, 'menu', None)
         if menu is None:
             raise OracleError('state %s has no menu' % self.top())
-        return menu, [o.get() for o in menu.options]
+        if hasattr(menu, '_data') and hasattr(menu, 'get_selected_idx'):
+            return menu, list(menu._data)  # player_choice GridChoiceMenu values
+        opts = getattr(menu, 'options', None) or []
+        return menu, [o.get() if hasattr(o, 'get') else o for o in opts]
+
+    @staticmethod
+    def menu_index(menu) -> int:
+        # menus.Choice keeps current_index; player_choice's GridChoiceMenu
+        # exposes get_selected_idx().
+        if hasattr(menu, 'get_selected_idx'):
+            return menu.get_selected_idx()
+        return menu.current_index
 
     def choose(self, want) -> None:
-        """Move the current menu's cursor to ``want`` with real UP/DOWN presses
-        (so on-hover side effects such as auto-equip run), then SELECT."""
+        """Move the current menu's cursor to ``want`` with real direction
+        presses (so on-hover side effects such as auto-equip run), then
+        SELECT. Grids are walked by rows (DOWN/UP) then columns (LEFT/RIGHT)."""
         menu, values = self.menu_values()
 
         def match(v):
             if callable(want):
                 return want(v)
             if isinstance(v, str):
-                return v.lower() == str(want).lower()
+                # choice entries may be 'value|display text'
+                return str(want).lower() in (v.lower(), v.split('|')[0].lower())
             return getattr(v, 'nid', None) == want
 
         idx = next((i for i, v in enumerate(values) if match(v)), None)
         if idx is None:
             raise OracleError('option %r not in %s menu %s' % (want, self.top(), [_label(v) for v in values]))
-        for _ in range(len(values) + 2):
-            cur = menu.current_index
+
+        def current():
+            m = getattr(self.game.state.current_state(), 'menu', None) or menu
+            return self.menu_index(m)
+        for _ in range(4 * len(values) + 4):
+            cur = current()
             if cur == idx:
                 break
-            self.press('DOWN' if idx > cur else 'UP')
-            menu = getattr(self.game.state.current_state(), 'menu', menu)
-        if menu.current_index != idx:
+            vertical, horizontal = ('DOWN', 'RIGHT') if idx > cur else ('UP', 'LEFT')
+            self.press(vertical)
+            moved = current()
+            # Overshot the target's row (or could not move): go back and step sideways.
+            if moved == cur or (moved > idx if idx > cur else moved < idx):
+                if moved != cur:
+                    self.press('UP' if vertical == 'DOWN' else 'DOWN')
+                self.press(horizontal)
+        if current() != idx:
             raise OracleError('could not reach option %r in %s' % (want, self.top()))
         self.press('SELECT')
 
@@ -777,6 +809,31 @@ class Runner:
         self.e.choose(a['option'])
         self.e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
 
+    def do_roam_talk(self, a) -> None:
+        """Free roam: put the roam unit beside ``target`` (tile ``from`` or the
+        first free neighbour), half a tile towards it so it is inside the talk
+        range, press SELECT and settle."""
+        from app.engine import action
+        e = self.e
+        e.expect('free_roam')
+        st = e.game.state.current_state()
+        ru = st.roam_unit
+        tx, ty = e.target_pos(a['target'])
+        fx, fy = a.get('from') or self._free_neighbour(tx, ty)
+        if tuple(ru.position) != (fx, fy):
+            action.do(action.Teleport(ru, (fx, fy)))
+        ru.sprite.set_roam_position((fx + (tx - fx) * 0.5, fy + (ty - fy) * 0.5))
+        e.press('SELECT')
+        e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
+
+    def _free_neighbour(self, x, y):
+        g = self.e.game
+        for dx, dy in ((0, 1), (-1, 0), (1, 0), (0, -1)):
+            p = (x + dx, y + dy)
+            if g.board.check_bounds(p) and not g.board.get_unit(p):
+                return p
+        raise OracleError('no free tile next to %s' % ((x, y),))
+
     def do_save_load(self, a) -> None:
         """Suspend in the current resting state, reload, and settle. The step
         records the snapshot from before the save as pre_snapshot."""
@@ -922,6 +979,7 @@ def run_scenario(scn: dict, backend: str = 'upstream') -> dict:
             out['shims'] = e.shims
         if scn.get('startup_events', True):
             e.run_startup()
+        e.apply_records(scn.get('start_records') or {})
         e.start_level(str(scn['level']), scn.get('seed', 0), scn.get('events', True),
                       scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'),
                       scn.get('start_game_vars'))
