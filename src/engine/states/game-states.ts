@@ -8858,10 +8858,20 @@ export class AIState extends MapState {
   }
 
   override begin(): StateResult {
-    const game = getGame();
-
     // Phase music (Python: AIState.begin() -> phase.fade_in_phase_music()).
-    fadeInPhaseMusic(game);
+    // begin() runs again whenever the AI resumes over a popped combat,
+    // event or movement state; the phase's bookkeeping lives in start().
+    fadeInPhaseMusic(getGame());
+  }
+
+  /**
+   * Python AIState.start: once per AI phase. has_run_ai (ranAi) must survive
+   * the combats and events of the phase: a unit an event resets after its
+   * combat (EOtF's Evened_Scales Striking_Again) has run its AI and is not
+   * picked again, or the AI attacks forever.
+   */
+  override start(): StateResult {
+    const game = getGame();
 
     // Initiative mode: only process the single current initiative unit
     if (game.initiative) {
