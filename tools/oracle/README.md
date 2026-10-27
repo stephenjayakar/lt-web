@@ -108,7 +108,8 @@ one released), and the state machine is updated exactly like `driver.run`.
   "known_diffs": ["units.Eirika.hp"], // reported as (known), do not fail the run
   "run_state": "run-state/eotf-run.json", // captured run state loaded before the level (see Run states)
   "levels": ["0", "1"],               // level sweep instead of "level": one snapshot per level
-  "through_prep": true                // press Fight when a level settles in preparations
+  "through_prep": true,               // press Fight when a level settles in preparations
+  "level_actions": [{"do": "end_turn"}] // sweep: actions run on every turn-based level after it starts
 }
 ```
 
@@ -155,7 +156,8 @@ pending state change or moving unit, pressing SELECT to advance dialog.
 | `{"do": "spell", "unit": "Moulder", "target": "Vanessa", "item": "Heal"}` | `Spells` -> spell -> target |
 | `{"do": "use_item", "unit": "Eirika", "item": "Vulnerary", "option": "Use", "target": ...}` | `Item` -> item -> option |
 | `{"do": "trade", "unit": "Vanessa", "with": "Moulder", "give": ["Javelin"], "take": ["Vulnerary"]}` | trade screen; each give/take lands in the first free slot |
-| `{"do": "end_turn"}` | option menu `End`, runs the AI phases until player phase |
+| `{"do": "end_turn"}` | option menu `End`, runs the AI phases until player phase (or free roam, or a game over) |
+| `{"do": "attack_or_wait", "unit": "Player"}` | attack the nearest valid target with the first weapon if the menu offers Attack, else Wait |
 | `{"do": "event", "script": ["give_money;100", "..."]}` | inline event (also `"nid"` for a DB event, `"trigger"` for a trigger class) |
 | `{"do": "choose", "option": "Fight"}` | pick an option in the top state's menu |
 | `{"do": "press", "button": "START"}`, `{"do": "frames", "n": 30}`, `{"do": "settle"}` | raw control |
@@ -277,6 +279,11 @@ per-level table and writes `report.md` and `diffs.json` under
 `$LT_ORACLE_OUT/<name>/`. Diffs on generic units' construction (stats, HP,
 weapon experience, equipped weapon, growth points, party, class skills) are
 counted in their own column, so level flow differences stand out.
+
+`sweeps/eotf-first-turn.json` adds one full turn per level (end the turn,
+AI phases, next upkeep); `sweeps/eotf-first-turn-act.json` first lets the
+Player attack the nearest enemy in range (else wait). The table then shows
+each step's result and how many diffs are new since the previous step.
 
 ## Writing a scenario
 
