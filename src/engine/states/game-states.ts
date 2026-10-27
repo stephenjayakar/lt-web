@@ -38,6 +38,7 @@ import type {
 } from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
 import { getSkillAbilityOptions, type SkillAbilityOption } from '../../combat/skill-abilities';
+import { attackablePositions } from '../target-system';
 import { SkillObject } from '../../objects/skill';
 import {
   evaluateCondition,
@@ -6291,24 +6292,11 @@ export class WeaponChoiceState extends State {
   private showWeaponRange(unit: UnitObject, weapon: ItemObject): void {
     const game = getGame();
     game.highlight.clear();
-    const minRange = modifiedMinimumRange(unit, weapon, game);
-    const maxRange = modifiedMaximumRange(unit, weapon, game);
-    const ux = unit.position![0];
-    const uy = unit.position![1];
-    const attackTiles: [number, number][] = [];
-    for (let dx = -maxRange; dx <= maxRange; dx++) {
-      for (let dy = -maxRange; dy <= maxRange; dy++) {
-        const dist = Math.abs(dx) + Math.abs(dy);
-        if (dist >= minRange && dist <= maxRange) {
-          const tx = ux + dx;
-          const ty = uy + dy;
-          if (game.board.inBounds(tx, ty)) {
-            attackTiles.push([tx, ty]);
-          }
-        }
-      }
-    }
-    game.highlight.setAttackHighlights(attackTiles);
+    if (!unit.position) return;
+    // Python WeaponChoiceState: target_system.get_attackable_positions.
+    game.highlight.setAttackHighlights(
+      attackablePositions(unit, weapon, [[unit.position[0], unit.position[1]]], game.board, game),
+    );
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -6529,24 +6517,10 @@ export class TargetingState extends MapState {
     game.highlight.clear();
     const weapon = getEquippedWeapon(unit, game.db, game);
     if (weapon) {
-      const minRange = modifiedMinimumRange(unit, weapon, game);
-      const maxRange = modifiedMaximumRange(unit, weapon, game);
-      const attackTiles: [number, number][] = [];
-      const ux = unit.position[0];
-      const uy = unit.position[1];
-      for (let dx = -maxRange; dx <= maxRange; dx++) {
-        for (let dy = -maxRange; dy <= maxRange; dy++) {
-          const dist = Math.abs(dx) + Math.abs(dy);
-          if (dist >= minRange && dist <= maxRange) {
-            const tx = ux + dx;
-            const ty = uy + dy;
-            if (game.board.inBounds(tx, ty)) {
-              attackTiles.push([tx, ty]);
-            }
-          }
-        }
-      }
-      game.highlight.setAttackHighlights(attackTiles);
+      // Python CombatTargetingState: target_system.get_attackable_positions.
+      game.highlight.setAttackHighlights(
+        attackablePositions(unit, weapon, [[unit.position[0], unit.position[1]]], game.board, game),
+      );
     }
 
     // Python CombatTargetingState.begin: game.cursor.combat_show().
