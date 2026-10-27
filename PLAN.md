@@ -284,3 +284,19 @@ lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
   autoequip); a unit whose stun ends at upkeep acts that phase (live
   `movement_left`); event-moved units keep terrain statuses.
 - [x] EOtF fork: units on Fixed growths start with 50 growth points per stat.
+- [ ] AI `Move_to` an occupied `Enemy_Seize` region picks a different stop
+  tile than the fork: level 24 with events off, Player/Gorbat/Pilus/Viran
+  (L14) on the formation tiles, three `end_turn`s; citizen 108 ends at (6,4)
+  on the web and (7,5) in the fork (A* or travel tie-break).
+
+### P8.7 — QA sweeps, Acts 1–2 (`npm run qa:run`)
+
+- [x] AIState kept has_run_ai only until the next pushed state popped (its
+  begin() reset the phase), and AI combats dropped a no_equip skill weapon
+  (Haymaker): one unit attacked forever; the AI canto step never ran.
+- [x] `item.effective_damage.tags` (EffectiveDamage property accessors).
+- [x] `resurrect` on a dying unit is DeathManager.miracle (TakenPrisoner).
+- [x] Level end survives an outro whose combat fires new events (Gemini and
+  Nikume elites cycled empty turns after winning).
+- [x] combat_end passes Mark* playback brushes (Renpet, Critical
+  Reinforcement conditions).
