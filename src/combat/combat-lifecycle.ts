@@ -835,6 +835,19 @@ export function applyCombatSkillEndHooks(
         equippedWeapon(primaryTarget),
     );
   }
+  if (isForkEngine() && initiator) {
+    // EOtF's engine also runs end_combat for every splash unit (main target
+    // or not), with the initiator as its target.
+    for (const defender of new Set(strikes.map((strike) => strike.defender))) {
+      if (defender === initiator) continue;
+      const key = `${defender.nid}:${initiator.nid}:passive`;
+      if (!pairs.has(key) && ![...pairs.values()].some(
+        (pair) => pair.unit === defender && pair.target === initiator,
+      )) {
+        pairs.set(key, { unit: defender, target: initiator, item: equippedWeapon(defender), strikes: [] });
+      }
+    }
+  }
 
   for (const { unit, target, item, strikes: pairStrikes } of pairs.values()) {
     const isAlly = checkAlly(unit, target, game.db);

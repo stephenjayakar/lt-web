@@ -1,3 +1,4 @@
+import { isForkEngine } from '../engine/engine-flavor';
 import type { UnitObject } from '../objects/unit';
 import type { ItemObject } from '../objects/item';
 import type { Database } from '../data/database';
@@ -833,7 +834,14 @@ export class MapCombat implements StrikeEventCombat {
         for (let index = 0; index < uses && item.uses > 0; index++) {
           broke = item.decrementUses() || broke;
         }
-        if (broke && !item.hasComponent('no_break_out_of_uses')) {
+        // EOtF's engine: chapter uses (c_uses) never break the item; at 0 it
+        // is only unusable (unequipped) until the chapter ends.
+        const chapterUsesOnly = isForkEngine() && item.hasComponent('c_uses') && !item.hasComponent('uses');
+        if (broke && chapterUsesOnly) {
+          if (unit.equippedWeapon === item || unit.equippedAccessory === item) unit.unequip(item);
+          unit.autoequip();
+          broke = false;
+        } else if (broke && !item.hasComponent('no_break_out_of_uses')) {
           const inventoryIndex = unit.items.indexOf(item);
           if (inventoryIndex !== -1) unit.items.splice(inventoryIndex, 1);
           if (unit.equippedWeapon === item || unit.equippedAccessory === item) unit.unequip(item);

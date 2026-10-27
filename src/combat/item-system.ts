@@ -1339,7 +1339,13 @@ export function usesConsumedByStrikes(
 ): number {
   const ownStrikes = strikes.filter((strike) => strike.attacker === unit && strike.item === item);
   const qualifying = ownStrikes.filter((strike) => strike.hit || loseUsesOnMiss(unit, item));
-  const baseLoss = oneLossPerCombat(unit, item) ? (qualifying.length > 0 ? 1 : 0) : qualifying.length;
+  // EOtF's engine queues `uses = uses - 1` with the value read when the
+  // phase began, so every strike of one phase (an AOE's splash, a doubled
+  // multi-target) costs a single use between them.
+  const phaseLosses = isForkEngine()
+    ? new Set(qualifying.map((strike) => (strike.attackInfo ?? [0, 0]).join(','))).size
+    : qualifying.length;
+  const baseLoss = oneLossPerCombat(unit, item) ? (qualifying.length > 0 ? 1 : 0) : phaseLosses;
   const persistentRestoration = armsthriftRestoration(unit, item);
   const restored = qualifying.reduce((total, strike) => {
     const procRestoration = item.hasComponent('unrepairable')
