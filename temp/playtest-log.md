@@ -48,31 +48,31 @@ errors from the current build beyond the authored-data warnings listed below.
 
 ## Bugs
 
-1. FIXED 9e93d83 — `npm run bundle` on Windows wrote `\`-separated zip entry
+1. FIXED 26b7657 — `npm run bundle` on Windows wrote `\`-separated zip entry
    names; the bundle loaded but every lookup missed, so the game booted with no
    data. (`tests/bundle-assets.spec.ts`)
-2. FIXED db03db6 — case-only filename mismatches (portraits Bishop, Haryld,
+2. FIXED f78cb48 — case-only filename mismatches (portraits Bishop, Haryld,
    Vance, Nikolas, Datura, Kolbane(+_promo); panorama `bedroom` -> Bedroom.png)
    were missing in the web build. Python on Windows resolves them; AssetBundle
    and hosted packs now fall back to a case-insensitive match.
 
-3. FIXED 24a0b5b — prep screen drew the calling event's held black transition
+3. FIXED a1d64a9 — prep screen drew the calling event's held black transition
    over the map (EOtF chapters reach `prep;t` transitioned out), so the prep
    menu sat on a black screen. Prep map states now draw only the map beneath
    them, as Python MapStates. (`tests/prep-screens.spec.ts`)
-4. FIXED e091ef1 — free roam drew no TALK/interact markers (hub NPCs, floor
+4. FIXED 1a0613d — free roam drew no TALK/interact markers (hub NPCs, floor
    node tents/wagons). (`tests/roam-overworld.spec.ts`)
-5. FIXED 7095278 — roam INFO/AUX/START and region interrupts carried no level,
+5. FIXED 1ddfcd5 — roam INFO/AUX/START and region interrupts carried no level,
    so EOtF's level-scoped Run_Info / Unit_Info (unit management) never fired on
    act maps; AUX opened the option menu instead. (`tests/roam-overworld.spec.ts`)
-6. FIXED dc0e8f8 — store/trade/convoy actions did not unequip the item leaving
+6. FIXED 83a9384 — store/trade/convoy actions did not unequip the item leaving
    the inventory; "Give all" left Gorbat with Killer Helm equipped from the
    convoy. (`tests/item-unequip.spec.ts`)
 
-7. FIXED d436dc8 — with the new Python evaluator, a quoted `{v:}` inside `{e:}`
+7. FIXED 77a1a07 — with the new Python evaluator, a quoted `{v:}` inside `{e:}`
    lost its quotes (`'room' + '{v:counter}'` -> `'room' + 1`, TypeError), so
    the Act intro never set room rewards. (`tests/qa-playtest.spec.ts`)
-8. FIXED 1c72a70 — MoveState ignored SELECT on the unit's own tile when it had
+8. FIXED 5f04380 — MoveState ignored SELECT on the unit's own tile when it had
    no valid moves (EOtF Chains of Thanatos leaves neighbours at MOV -99), so
    the unit could not even Wait. (`tests/movement-parity.spec.ts`)
 
@@ -104,7 +104,7 @@ errors from the current build beyond the authored-data warnings listed below.
   fork), while the combat banner shows their name ("Phantom").
 - Headless Chromium (no GPU) logs `[Perf] Long frame` 50-90 ms in combat
   update; environment-dependent, not investigated.
-- RESOLVED by the merged py-expr evaluator (eotf 623cf7b): hub `X` event "b. The Table":
+- RESOLVED by the merged py-expr evaluator (eotf): hub `X` event "b. The Table":
   `level_var;friend_pos;[(25,7),(23,5),(27,4),(23,12),(27,14)]` stores
   `[7,5,4,12,14]` (each tuple evaluates as a comma expression -> last value).
   The following `add_unit;{v:add_friend};{e:{v:friend_pos}[{friendos}]}` then
