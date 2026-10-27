@@ -1159,8 +1159,11 @@ export function applyCombatSkillEndHooks(
           Math.max(1, target.currentHp - amount),
         );
       }
+      // EOtF's post_combat_damage(_percent) sets max(1, HP - damage) with no
+      // HP check, so a target killed in the combat is left at 1 HP.
+      const postDamageHpOk = isForkEngine() || target.currentHp > 0;
       const standardDamage = skill.getComponent<unknown>('post_combat_damage');
-      if (standardDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
+      if (standardDamage !== undefined && enemyHookTarget && postDamageHpOk &&
           !processedGlobalHooks.get(skill)?.has('post_combat_damage')) {
         const amount = Math.trunc(Number(standardDamage));
         if (Number.isFinite(amount)) {
@@ -1172,14 +1175,17 @@ export function applyCombatSkillEndHooks(
         }
       }
       const percentDamage = skill.getComponent<unknown>('post_combat_damage_percent');
-      if (percentDamage !== undefined && enemyHookTarget && target.currentHp > 0 &&
+      if (percentDamage !== undefined && enemyHookTarget && postDamageHpOk &&
           !processedGlobalHooks.get(skill)?.has('post_combat_damage_percent')) {
-        const amount = Math.trunc(target.maxHp * Number(percentDamage));
-        if (Number.isFinite(amount)) {
+        // Python: int(hp - max_hp * value), truncating the difference.
+        const endHp = isForkEngine()
+          ? Math.trunc(target.currentHp - target.maxHp * Number(percentDamage))
+          : target.currentHp - Math.trunc(target.maxHp * Number(percentDamage));
+        if (Number.isFinite(endHp)) {
           activateHpHook(
             'post_combat_damage_percent',
             target,
-            Math.max(1, target.currentHp - amount),
+            Math.max(1, endHp),
           );
         }
       }

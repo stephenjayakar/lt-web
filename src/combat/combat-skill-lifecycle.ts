@@ -459,6 +459,15 @@ export class CombatSkillLifecycle {
     return { attack, defense };
   }
 
+  /** A struck unit's defense_proc alone (EOtF splash strikes). */
+  beginDefenseProcs(
+    striker: UnitObject,
+    target: UnitObject,
+    simulatedHp?: (unit: UnitObject) => number | undefined,
+  ): ActiveProc[] {
+    return this.activate('defense_proc', target, resolveWeapon(target), striker, undefined, simulatedHp);
+  }
+
   private withSimulatedHp<T>(
     unit: UnitObject,
     simulatedHp: ((unit: UnitObject) => number | undefined) | undefined,
