@@ -73,9 +73,10 @@ test('show_pokedex opens the unit dex and resumes the event on BACK', async ({ p
   await step(page, 1);
 
   const info = await dex(page);
-  // Every Playable unit except Libra_P and Samael_P before Density 10 is cleared.
+  // Every Playable or Gallery unit except Libra_P and Samael_P before Density 10 is cleared.
   const expected = await page.evaluate(() => [...(window as any).__gameRef.db.units.values()]
-    .filter((u: any) => u.tags.includes('Playable') && !['Libra_P', 'Samael_P'].includes(u.nid))
+    .filter((u: any) => (u.tags.includes('Playable') || u.tags.includes('Gallery')) &&
+      !['Libra_P', 'Samael_P'].includes(u.nid))
     .map((u: any) => u.nid));
   expect(info.count).toBe(expected.length);
   expect(info.unit).toBe(expected[0]);
@@ -192,11 +193,9 @@ test('Gallery alternates join the wheel with N/A and Samael_P waits for Density 
   const result = await page.evaluate(async () => {
     const g = (window as any).__gameRef;
     const { RECORDS } = await import('/src/engine/records.ts');
-    // The shipped 2.0.1 data tags these four Gallery.
-    for (const nid of ['Gemini_M', 'Ayaka', 'August', 'Lupus_P']) {
-      const prefab = g.db.units.get(nid);
-      prefab.tags = [...(prefab.tags ?? []), 'Gallery'];
-    }
+    // The 2.0.1 data tags these four Gallery.
+    const tagged = ['Gemini_M', 'Ayaka', 'August', 'Lupus_P'].every((nid) => g.db.units.get(nid)?.tags?.includes('Gallery'));
+    if (!tagged) throw new Error('expected the 2.0.1 Gallery tags');
     const open = () => {
       g.memory.set('curr_unit_info', null);
       const { DexMenuState } = (window as any).__dexModule;
