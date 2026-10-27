@@ -10839,7 +10839,13 @@ export class EventState extends State {
       this.chapterTitleTimer = 0;
       this.chapterTitleText = '';
       this.locationCard = null;
-      this.isHandlingLevelEnd = false;
+      // Python keeps is_handling_end_event on the EventState that ran
+      // win_game, which resumes once the LevelEnd events pushed above it
+      // finish. Here one EventState runs every queued event, so an event
+      // queued mid-outro (a combat's unit_death or item events from an
+      // interact_unit in the outro, as in EOtF's elite outros) must not
+      // clear it, or the level never ends.
+      if (!game.levelVars?.get?.('_level_end_triggered')) this.isHandlingLevelEnd = false;
       this.levelTransitionInProgress = false;
       const restoredBackground = this.restoreParkedPresentation(nextEvent);
       if (restoredBackground !== undefined) {
