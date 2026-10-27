@@ -27,6 +27,7 @@ import {
 } from '../combat/combat-calcs';
 import {
   available as itemAvailable,
+  damage as itemDamage,
   healAmount as itemHealAmount,
   isStealItem,
   noAttackAfterMove as itemNoAttackAfterMove,
@@ -65,6 +66,8 @@ export interface AIAction {
   unit: UnitObject;
   targetPosition?: [number, number]; // position to move to
   targetUnit?: UnitObject; // unit to attack/heal
+  /** PrimaryAI goal_target: the tile aimed at, which may hold no unit. */
+  targetTile?: [number, number];
   item?: ItemObject; // weapon or item to use
   targetItem?: ItemObject; // exact defender inventory item selected for Steal
   movePath?: [number, number][]; // path to follow
@@ -580,10 +583,18 @@ export class AIController {
     return result;
   }
 
-  /** Python skill_system.get_extra_abilities items, in skill order. */
+  /**
+   * Python skill_system.get_extra_abilities items, in skill order. Python
+   * keys them by item name in a dict: a later skill granting a same-named
+   * ability replaces the earlier item but keeps its place.
+   */
   private abilityItems(unit: UnitObject): ItemObject[] {
     if (!this.gameRef?.items) return [];
-    return getSkillAbilityOptions(this.gameRef, unit).map((option) => option.item);
+    const byName = new Map<string, ItemObject>();
+    for (const option of getSkillAbilityOptions(this.gameRef, unit)) {
+      byName.set(option.item.name, option.item);
+    }
+    return [...byName.values()];
   }
 
   private getTargets(unit: UnitObject, behaviour: AiBehavior): UnitObject[] {
@@ -885,13 +896,19 @@ export class AIController {
     const variants: { weapon: ItemObject; combatArt?: CombatArtOption }[] = [];
     // Python PrimaryAI tests the inventory and then the unit's extra
     // abilities (skill-granted items such as Self Destruct or Rush Pulse).
-    for (const item of [...this.allItems(unit), ...this.abilityItems(unit)]) {
+    // Only the inventory is filtered by item_funcs.available: the extra
+    // abilities are appended unchecked, so an ability whose stack cost is not
+    // met (EOtF's Thunderstruck) is still scored and used.
+    const abilities = new Set(this.abilityItems(unit));
+    for (const item of [...this.allItems(unit), ...abilities]) {
       // Python tests every available item, not only weapons and spells (a
       // usable damaging item such as a thrown bomb counts too); items that
       // reach no behaviour target simply score nothing.
       if (!isForkEngine() && !item.isWeapon() && !item.isSpell()) continue;
       if (item.hasComponent('sequence_item')) continue;
-      if (itemAvailable(unit, item, this.db, this.gameRef)) variants.push({ weapon: item });
+      if (abilities.has(item) || itemAvailable(unit, item, this.db, this.gameRef)) {
+        variants.push({ weapon: item });
+      }
     }
     // EOtF's engine never tries combat arts in the AI (neither does upstream
     // lt-maker); other projects keep the web's combat-art scoring.
@@ -916,12 +933,14 @@ export class AIController {
         const validFrom = new Map<string, Set<string>>();
         for (const [targetPos, possibleMoves] of candidates) {
           const targetUnit = this.board.getUnit(targetPos[0], targetPos[1]);
-          // The AI state can only start combat against a unit.
-          if (!targetUnit || targetUnit === unit || targetUnit.isDead()) continue;
+          // Python scores every target position, an empty tile included: a
+          // target_tile item (a thrown bomb) aimed there counts its splash.
+          if (targetUnit && (targetUnit === unit || targetUnit.isDead())) continue;
           // Python AIController.attack: an item that targets items steals the
           // target's most expensive legal item.
           let stealTarget: ItemObject | null = null;
           if (isStealItem(item)) {
+            if (!targetUnit) continue;
             const legal = targetUnit.items.filter((candidate) =>
               stealItemRestrict(unit, item, targetUnit, candidate, this.db));
             if (legal.length === 0) continue;
@@ -939,7 +958,7 @@ export class AIController {
               const key = `${move[0]},${move[1]}`;
               let valid = validFrom.get(key);
               if (!valid) {
-                valid = new Set(this.validTargetsFrom(unit, item, move)
+                valid = new Set(this.validTargetsFrom(unit, item, move, !abilities.has(item))
                   .map(([x, y]) => `${x},${y}`));
                 validFrom.set(key, valid);
               }
@@ -955,7 +974,8 @@ export class AIController {
                 type: stealTarget ? 'steal' : 'attack',
                 unit,
                 targetPosition: move,
-                targetUnit,
+                targetUnit: targetUnit ?? undefined,
+                targetTile: [targetPos[0], targetPos[1]],
                 item,
                 ...(stealTarget ? { targetItem: stealTarget } : {}),
                 movePath: path ?? [move],
@@ -1072,9 +1092,10 @@ export class AIController {
     unit: UnitObject,
     item: ItemObject,
     move: [number, number],
+    checkAvailable = true,
   ): [number, number][] {
     const targetSystem = this.gameRef?.targetSystem;
-    if (targetSystem) return targetSystem.getValidTargetsRecursive(unit, item, move);
+    if (targetSystem) return targetSystem.getValidTargetsRecursive(unit, item, move, checkAvailable);
     return this.getEnemies(unit)
       .map((enemy) => enemy.position!)
       .filter((position) => {
@@ -1124,7 +1145,10 @@ export class AIController {
       const aiPriority = this.itemAiPriority(unit, item, splashTarget, move);
       const multiplier = aiPriorityMultiplier(splashTarget, this.gameRef);
       if (aiPriority !== null) tp += aiPriority * multiplier;
-      if (!damaging) continue;
+      // Python tests `if item_system.damage(unit, item):` here, so a splash
+      // item with damage 0 (a status blast such as Eye of Judgment) adds no
+      // lethality term even when the unit's stats would make it hurt.
+      if (!itemDamage(unit, item, this.gameRef)) continue;
       const accuracy = clamp01(this.predictedHit(unit, item, splashTarget) / 100);
       const lethality = clamp01(
         this.predictedDamage(unit, item, splashTarget) / Math.max(1, splashTarget.currentHp),

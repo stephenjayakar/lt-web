@@ -807,8 +807,10 @@ function installAiTrace(g: any): void {
       move: did ? move : null,
       // Python's goal_target is set only by the PrimaryAI (attack, steal,
       // support use); a SecondaryAI move toward a unit has none.
-      target: did && ['attack', 'steal', 'use_item'].includes(action.type) && action.targetUnit?.position
-        ? pos(action.targetUnit.position) : null,
+      target: did && ['attack', 'steal', 'use_item'].includes(action.type)
+        ? action.targetTile ? pos(action.targetTile)
+          : action.targetUnit?.position ? pos(action.targetUnit.position) : null
+        : null,
       item: did ? action.item?.nid ?? null : null,
       hp,
     });

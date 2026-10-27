@@ -7356,7 +7356,11 @@ export class CombatState extends State {
     const active = this.getActiveCombat();
     if (!game.eventManager || !active) return [];
     const attacker = active.attacker;
-    const defender = this.getPrimaryCombatDefender() ?? active.defender;
+    // EOtF's SimpleCombat.defender is None unless the combat has exactly one
+    // main defender: a bomb thrown at an empty tile ends with no unit2.
+    const defender = isForkEngine()
+      ? this.getPrimaryCombatDefender()
+      : this.getPrimaryCombatDefender() ?? active.defender;
     const ctx = { game, unit1: attacker, unit2: defender, gameVars: game.gameVars, levelVars: game.levelVars };
     const trigger = () => game.eventManager.trigger(
       {
@@ -9045,6 +9049,7 @@ export class AIState extends MapState {
   private waitingForEvent: boolean = false;
   private pendingCombatTarget: UnitObject | null = null;
   private pendingCombatWeapon: ItemObject | null = null;
+  private pendingCombatTile: [number, number] | null = null;
   /** Python unit.has_run_ai for this AI phase. */
   private ranAi = new Set<UnitObject>();
   /** Python AIState.cur_group: the last picked unit's AI group. */
@@ -9161,6 +9166,7 @@ export class AIState extends MapState {
     this.waitingForEvent = false;
     this.pendingCombatTarget = null;
     this.pendingCombatWeapon = null;
+    this.pendingCombatTile = null;
     this.pendingWaitUnit = null;
 
     game.cursor.visible = false;
@@ -9371,7 +9377,7 @@ export class AIState extends MapState {
     switch (action.type) {
       case 'attack':
       case 'steal': {
-        if (action.targetPosition && action.targetUnit) {
+        if (action.targetPosition && (action.targetUnit || action.targetTile)) {
           if (action.combatArt &&
               !activateCombatArt(game, unit, action.combatArt)) {
             this.waitAfterAct(game, unit);
@@ -9396,15 +9402,18 @@ export class AIState extends MapState {
             this.moveWithAction(game, unit, action.targetPosition, action.movePath);
 
             this.waitingForMovement = true;
-            this.pendingCombatTarget = action.targetUnit!;
+            this.pendingCombatTarget = action.targetUnit ?? null;
             this.pendingCombatWeapon = action.item!;
+            this.pendingCombatTile = action.targetTile ?? null;
             game.movementSystem.beginMove(
               unit,
               action.movePath,
               undefined,
               () => {
                 // Movement done — now push CombatState for animated combat
-                this.beginAICombat(unit, this.pendingCombatTarget!, this.pendingCombatWeapon!);
+                this.beginAICombat(
+                  unit, this.pendingCombatTarget, this.pendingCombatWeapon!, this.pendingCombatTile,
+                );
               },
             );
           } else {
@@ -9412,8 +9421,9 @@ export class AIState extends MapState {
             this.moveWithAction(game, unit, action.targetPosition, action.movePath);
             this.beginAICombat(
               unit,
-              action.targetUnit!,
+              action.targetUnit ?? null,
               action.item!,
+              action.targetTile ?? null,
             );
           }
         } else {
@@ -9644,10 +9654,39 @@ export class AIState extends MapState {
    */
   private beginAICombat(
     attacker: UnitObject,
-    defender: UnitObject,
+    defender: UnitObject | null,
     weapon: ItemObject,
+    tile: [number, number] | null = null,
   ): void {
     const game = getGame();
+
+    // Python AIController.attack returns early for an item that is not
+    // available: PrimaryAI scores skill abilities without that check, so a
+    // unit can walk up for an ability whose cost it cannot pay (EOtF's
+    // Thunderstruck without three Thundersparks). It starts no combat and,
+    // having moved, waits.
+    if (!itemAvailable(attacker, weapon, game.db, game)) {
+      this.waitingForMovement = false;
+      this.waitAfterAct(game, attacker);
+      return;
+    }
+
+    // Python start_combat(unit, goal_target, ...) aims at the goal tile. A
+    // target_tile item aimed at an empty tile hits only its splash: the
+    // combat state takes the tile and the first unit it affects.
+    if (!defender && tile) {
+      const affected = game.targetSystem.getTargetFromPosition(attacker, weapon, tile);
+      defender = [affected.mainTarget, ...affected.splash]
+        .filter((position): position is [number, number] => !!position)
+        .map((position) => game.board.getUnit(position[0], position[1]) as UnitObject | null)
+        .find((candidate): candidate is UnitObject => !!candidate) ?? null;
+      if (defender) game.memory.set('combat_target_position', [tile[0], tile[1]]);
+    }
+    if (!defender) {
+      this.waitingForMovement = false;
+      this.waitAfterAct(game, attacker);
+      return;
+    }
 
     // Python AIController.attack: EquipItem the chosen item when it is one of
     // the unit's own items (not a skill ability) and can be equipped. The AI

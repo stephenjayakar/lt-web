@@ -173,6 +173,10 @@ const DIRS: [number, number][] = [
 // Helper: create a fresh grid of PathNodes
 // ---------------------------------------------------------------------------
 
+function inBounds(bounds: [number, number, number, number] | null, x: number, y: number): boolean {
+  return !bounds || (x >= bounds[0] && x <= bounds[2] && y >= bounds[1] && y <= bounds[3]);
+}
+
 function createGrid(width: number, height: number): PathNode[][] {
   const grid: PathNode[][] = [];
   for (let y = 0; y < height; y++) {
@@ -207,6 +211,11 @@ export class Dijkstra {
   private grid: PathNode[][];
   private width: number;
   private height: number;
+  /**
+   * Python BoundedGrid bounds ([minX, minY, maxX, maxY], game_board.bounds):
+   * a tile outside them is never a neighbour, so no path crosses it.
+   */
+  bounds: [number, number, number, number] | null = null;
 
   constructor(width: number, height: number) {
     this.width = width;
@@ -273,6 +282,7 @@ export class Dijkstra {
         const ny = current.y + dy;
 
         if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) continue;
+        if (!inBounds(this.bounds, nx, ny)) continue;
 
         const neighbor = this.grid[ny][nx];
         if (!neighbor.reachable) continue;
@@ -328,6 +338,8 @@ export class AStar {
   private grid: PathNode[][];
   private width: number;
   private height: number;
+  /** Python BoundedGrid bounds, as on Dijkstra. */
+  bounds: [number, number, number, number] | null = null;
   /**
    * Python ThetaStar (free-roam paths): a node whose grandparent has line of
    * sight to it hangs off the grandparent, so the path is a list of
@@ -461,6 +473,7 @@ export class AStar {
         const ny = current.y + dy;
 
         if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) continue;
+        if (!inBounds(this.bounds, nx, ny)) continue;
 
         const neighbor = this.grid[ny][nx];
 

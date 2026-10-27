@@ -313,6 +313,10 @@ test.describe('EOtF engine fork combat hooks', () => {
       const sear = new ItemObject(game.db.items.get('Sear'));
       sear.owner = caster;
       caster.items = [sear];
+      // A Mage with Anima rank C can cast Sear: AIController.attack drops an
+      // item the unit cannot use.
+      caster.klass = 'Mage';
+      caster.wexp = { ...caster.wexp, Anima: 999 };
       const base = game.units.get('Player').equippedWeapon;
       const sword = new ItemObject({
         nid: '_AiSearCounter', name: '_AiSearCounter', desc: '', icon_nid: '', icon_index: [0, 0],

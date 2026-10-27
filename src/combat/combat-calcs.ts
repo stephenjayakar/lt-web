@@ -1442,6 +1442,10 @@ export function getEquippedWeapon(
 ): ItemObject | null {
   // Tracked equipped weapon is authoritative (Python `unit.equipped_weapon`).
   if (unit.equippedWeapon) return unit.equippedWeapon;
+  // EOtF's get_weapon only reads equipped_weapon: asking for a defender's
+  // weapon (AI scoring, combat setup) never equips one, so a unit with
+  // nothing equipped dies with nothing equipped.
+  if (isForkEngine()) return null;
   // Fallback for units constructed before autoequip ran: derive and cache.
   if (db && typeof unit.autoequip === 'function') {
     unit.autoequip();

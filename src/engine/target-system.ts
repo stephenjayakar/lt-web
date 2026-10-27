@@ -58,8 +58,9 @@ export class TargetSystem {
     unit: UnitObject,
     item: ItemObject,
     origin: TargetPosition | null = unit.position,
+    checkAvailable = true,
   ): TargetPosition[] {
-    if (!origin || !available(unit, item, this.db, this.game)) return [];
+    if (!origin || (checkAvailable && !available(unit, item, this.db, this.game))) return [];
 
     const minRange = modifiedMinimumRange(unit, item, this.game);
     // `max_equation_range` resolves inside item_system.maximum_range, so the
@@ -155,13 +156,14 @@ export class TargetSystem {
     unit: UnitObject,
     item: ItemObject,
     origin: TargetPosition | null = unit.position,
+    checkAvailable = true,
   ): TargetPosition[] {
-    if (item.subitems.length === 0) return this.getValidTargets(unit, item, origin);
+    if (item.subitems.length === 0) return this.getValidTargets(unit, item, origin, checkAvailable);
 
     const merged = new Map<string, TargetPosition>();
     let requiredTargets = 0;
     for (const subitem of item.subitems) {
-      const childTargets = this.getValidTargetsRecursive(unit, subitem, origin);
+      const childTargets = this.getValidTargetsRecursive(unit, subitem, origin, checkAvailable);
       if (item.hasComponent('sequence_item') && childTargets.length === 0) return [];
       if (item.hasComponent('sequence_item')) {
         requiredTargets += allowLessThanMaxTargets(unit, subitem) ? 1 : numTargets(unit, subitem);
@@ -175,7 +177,7 @@ export class TargetSystem {
     }
 
     // Parent components such as Rescue's target_tile also contribute.
-    for (const position of this.getValidTargets(unit, item, origin)) {
+    for (const position of this.getValidTargets(unit, item, origin, checkAvailable)) {
       merged.set(positionKey(position), position);
     }
     return [...merged.values()];

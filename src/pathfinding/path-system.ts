@@ -135,6 +135,7 @@ export class PathSystem {
     const movementGroup = this.getMovementGroup(unit);
     const astar = new AStar(width, height);
     astar.thetaStar = !!options?.freeMovement;
+    astar.bounds = board.bounds;
 
     // Populate terrain costs
     for (let y = 0; y < height; y++) {
@@ -240,6 +241,7 @@ export class PathSystem {
   private buildDijkstra(movementGroup: string, board: GameBoard): Dijkstra {
     const { width, height } = board;
     const dijkstra = new Dijkstra(width, height);
+    dijkstra.bounds = board.bounds;
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
