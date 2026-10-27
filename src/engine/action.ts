@@ -4210,6 +4210,28 @@ function restoreEquipState(unit: UnitObject, state: EquipState): void {
   }
 }
 
+/**
+ * Python SourceType.displaceable: only skills added with the DEFAULT source
+ * (statuses, give_skill) can be displaced at max stacks. The web tags global,
+ * personal, aura, terrain/region and item-sourced skills in skill.data; class
+ * and personal learned skills are recognised by their unit/class prefab.
+ */
+function skillIsDisplaceable(unit: UnitObject, skill: SkillObject, incoming: boolean = false): boolean {
+  const data = skill.data;
+  if (data.has('sourceType') || data.has('auraSourceType') ||
+      data.has('positionStatusSourceType') || data.has('itemSourceType') ||
+      data.has('multiSkillSource')) return false;
+  // A skill being granted carries its own source; only owned instances can
+  // be the class/personal grant.
+  if (incoming) return true;
+  const db = _getGame?.()?.db;
+  const learned = (entries: unknown): boolean => Array.isArray(entries) &&
+    entries.some((entry) => (Array.isArray(entry) ? entry[1] : entry) === skill.nid);
+  if (db && (learned(db.classes?.get?.(unit.klass)?.learned_skills) ||
+      learned(db.units?.get?.(unit.nid)?.learned_skills))) return false;
+  return true;
+}
+
 /** Add an already-created skill object, avoiding duplicates, reversibly. */
 export class AddSkillAction extends Action {
   private unit: UnitObject;
@@ -4224,6 +4246,7 @@ export class AddSkillAction extends Action {
   private initializedStatusReactions = false;
 
   private equipBefore: EquipState | null = null;
+  private addDecision: 'add' | 'displace' | 'skip' | null = null;
 
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
@@ -4240,20 +4263,32 @@ export class AddSkillAction extends Action {
 
   private addSkill(): void {
     const sameNid = this.unit.skills.filter((skill) => skill.nid === this.skill.nid);
-    const hasStackComponent = this.skill.hasComponent('stack') || this.skill.hasComponent('stax');
     const configuredStack = Number(
       this.skill.getComponent<unknown>('stack') ??
       this.skill.getComponent<unknown>('stax') ??
       1,
     );
     const stackLimit = Number.isFinite(configuredStack) ? Math.max(1, configuredStack) : 1;
-    if (hasStackComponent && sameNid.length >= stackLimit) {
-      if (!this.displacedAction) {
-        this.displacedAction = new RemoveSkillAction(this.unit, sameNid[0]);
+    // Python unit.add_skill (upstream and fork): at max stacks (1 without a
+    // stack component) the oldest displaceable (SourceType.DEFAULT) instance
+    // is removed and the new one added, so re-gaining a status refreshes it;
+    // with none displaceable a DEFAULT skill is not added, while a sourced
+    // one (aura, terrain, item, class, personal...) is added anyway.
+    if (this.addDecision === null) {
+      if (sameNid.length < stackLimit) {
+        this.addDecision = 'add';
+      } else {
+        const displaceable = sameNid.find((skill) => skillIsDisplaceable(this.unit, skill));
+        if (displaceable) {
+          this.displacedAction = new RemoveSkillAction(this.unit, displaceable);
+          this.addDecision = 'displace';
+        } else {
+          this.addDecision = skillIsDisplaceable(this.unit, this.skill, true) ? 'skip' : 'add';
+        }
       }
-      this.displacedAction.execute();
     }
-    this.added = this.unit.skills.filter((skill) => skill.nid === this.skill.nid).length < stackLimit;
+    if (this.addDecision === 'displace') this.displacedAction?.execute();
+    this.added = this.addDecision !== 'skip';
     if (this.added) {
       if (!this.initializedStatusPreparation) {
         this.initializedStatusPreparation = true;

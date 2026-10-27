@@ -235,7 +235,11 @@ import {
   triggerSkillCharge,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
-import { applySkillTurnHooks } from '../skill-turn-lifecycle';
+import {
+  collectSkillTurnHooks,
+  finishSkillTurnHooks,
+  type CollectedSkillTurn,
+} from '../skill-turn-lifecycle';
 import {
   applyItemEndResourceHooks,
   applyItemStartResourceHooks,
@@ -9749,6 +9753,7 @@ export class StatusUpkeepState extends State {
   override readonly transparent = true;
 
   private units: UnitObject[] = [];
+  private pendingFinish: CollectedSkillTurn | null = null;
 
   protected turnPhase(): 'upkeep' | 'endstep' {
     return 'upkeep';
@@ -9756,6 +9761,7 @@ export class StatusUpkeepState extends State {
 
   override start(): StateResult {
     const game = getGame();
+    this.pendingFinish = null;
     if (game.initiative) {
       const nid = game.initiative.getCurrentUnitNid();
       const unit = nid ? game.getUnit(nid) : null;
@@ -9777,10 +9783,21 @@ export class StatusUpkeepState extends State {
   override update(): StateResult {
     const game = getGame();
     const phase = this.turnPhase();
+    // A unit whose hooks produced playback: Python runs the events they
+    // queued (pushed over this state) before its pending actions.
+    if (this.pendingFinish) {
+      const collected = this.pendingFinish;
+      this.pendingFinish = null;
+      finishSkillTurnHooks(game, collected);
+      if (game.eventManager?.hasActiveEvents()) {
+        game.state.change('event');
+        return 'repeat';
+      }
+    }
     while (this.units.length > 0) {
       const unit = this.units.pop() as UnitObject;
       if (!unit.position || unit.isDead()) continue;
-      applySkillTurnHooks(game, [unit], phase);
+      const collected = collectSkillTurnHooks(game, unit, phase);
       if (phase === 'upkeep') {
         applyItemUpkeepResourceHooks(
           game,
@@ -9788,6 +9805,12 @@ export class StatusUpkeepState extends State {
           getSkillAbilityOptions(game, unit).map((ability) => ability.item),
         );
       }
+      if (collected.playback && unit.position && game.eventManager?.hasActiveEvents()) {
+        this.pendingFinish = collected;
+        game.state.change('event');
+        return 'repeat';
+      }
+      finishSkillTurnHooks(game, collected);
       if (game.eventManager?.hasActiveEvents()) {
         game.state.change('event');
         return 'repeat';
@@ -15101,8 +15124,8 @@ export class EventState extends State {
         const deathPosition = unit.position
           ? [unit.position[0], unit.position[1]] as [number, number]
           : undefined;
-        game.actionLog.doAction(new SetCurrentHpAction(unit, 0));
-        // Python: an on-map unit goes through game.death.should_die and the
+        // Python kill_unit leaves current HP alone (both engines); the unit
+        // is dead once Die runs. An on-map unit goes through game.death.should_die and the
         // DyingState (Death sfx, white flicker, fade; Die after 400 ms) once
         // the UnitDeath events it triggers have run; `immediate` and off-map
         // units die at once.
