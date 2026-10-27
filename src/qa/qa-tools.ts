@@ -209,12 +209,18 @@ class QaController {
     const draw = this.fast.drawEvery <= 1 || this.frames % this.fast.drawEvery === 0;
     const surface = this.display.surface();
     game.frameDeltaMs = FRAMETIME;
+    // Keyboard/pointer input still works (a headed QA tab can be played by
+    // hand after a jump); driver input takes precedence.
+    const manual = game.input?.processInput?.(FRAMETIME) ?? null;
+    if (input === null) input = manual;
     if (draw) surface.clear();
     qaDraw.skip = !draw;
     try {
       let repeat = true;
       let iterations = 0;
       while (repeat && iterations < 10) {
+        // main.ts gameLoop: repeat iterations see no stale frame events.
+        if (iterations > 0) game.input?.clearFrameEvents?.();
         const [, again] = game.state.update(iterations === 0 ? input : null, surface);
         repeat = again;
         iterations += 1;
@@ -222,6 +228,7 @@ class QaController {
     } finally {
       qaDraw.skip = false;
     }
+    game.input?.endFrame?.();
     updateAnimationCounters();
     game.movementSystem.update(FRAMETIME);
     updateUnitSounds(game.units.values(), !!game.roamInfo?.roam, game.camera?.getCullRect?.() ?? null);
