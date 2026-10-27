@@ -7220,7 +7220,19 @@ export class CombatState extends State {
   override finish(): void {
     animationViewbox = null;
     const saved = this.suspendedCombats.pop();
-    if (!saved) return;
+    if (!saved) {
+      // Cleared off the stack mid-combat (a game over from a UnitDeath
+      // event, a level change): Python drops that CombatState, so the next
+      // combat must not resume this one.
+      if (this.initialized) {
+        const fresh = new CombatState() as unknown as Record<string, unknown>;
+        const self = this as unknown as Record<string, unknown>;
+        for (const key of Object.keys(fresh)) {
+          if (!CombatState.NESTING_KEPT.has(key)) self[key] = fresh[key];
+        }
+      }
+      return;
+    }
     Object.assign(this, saved);
     // The outer combat is still under way: keep the map clear of its UI.
     const game = getGame();
