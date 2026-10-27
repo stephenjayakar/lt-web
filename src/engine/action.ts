@@ -2287,7 +2287,12 @@ export class ProcessStatusEffectsAction extends Action {
  */
 export class WaitAction extends Action {
   private unit: UnitObject;
-  private previous: boolean = false;
+  private previous: {
+    finished: boolean;
+    hasAttacked: boolean;
+    hasTraded: boolean;
+    hasMoved: boolean;
+  } | null = null;
   private regionRemovals: RemoveRegionAction[] | null = null;
 
   constructor(unit: UnitObject) {
@@ -2307,14 +2312,24 @@ export class WaitAction extends Action {
           .map((region) => new RemoveRegionAction(region.nid, regions))
         : [];
     }
-    this.previous = this.unit.finished;
+    // Python Wait.do sets has_moved, has_traded and has_attacked along with
+    // finished; reverse restores the whole get_action_state() tuple.
+    this.previous = {
+      finished: this.unit.finished,
+      hasAttacked: this.unit.hasAttacked,
+      hasTraded: this.unit.hasTraded,
+      hasMoved: this.unit.hasMoved,
+    };
+    this.unit.hasMoved = true;
+    this.unit.hasTraded = true;
+    this.unit.hasAttacked = true;
     this.unit.finished = true;
     for (const removal of this.regionRemovals) removal.execute();
   }
 
   reverse(): void {
     for (const removal of [...(this.regionRemovals ?? [])].reverse()) removal.reverse();
-    this.unit.finished = this.previous;
+    if (this.previous) Object.assign(this.unit, this.previous);
   }
 }
 
@@ -2471,12 +2486,15 @@ export class GainExpAction extends Action {
   private startGrowthPoints: Record<string, number> = {};
   private startHp: number = 0;
   private applied: number = 0;
+  /** Python's `bonus_exp` ExpState: its level-ups also raise current HP. */
+  private bonusExp: boolean;
 
-  constructor(unit: UnitObject, amount: number, growthMode: string = 'random') {
+  constructor(unit: UnitObject, amount: number, growthMode: string = 'random', bonusExp: boolean = false) {
     super();
     this.unit = unit;
     this.amount = amount;
     this.growthMode = growthMode;
+    this.bonusExp = bonusExp;
   }
 
   execute(): void {
@@ -2487,7 +2505,7 @@ export class GainExpAction extends Action {
     this.startHp = this.unit.currentHp;
     // Python routes exp through ExpState, which clamps the gain at the level
     // cap (get_level_cap) and grants nothing when can_give_exp fails.
-    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.());
+    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.(), this.bonusExp);
     this.applied = result.applied;
     this.levelUps = result.levelUps;
   }

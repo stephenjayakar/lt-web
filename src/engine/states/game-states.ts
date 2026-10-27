@@ -1024,14 +1024,16 @@ function getTradePartners(unit: UnitObject): UnitObject[] {
  * mark the unit finished.
  */
 function waitUnit(game: any, unit: UnitObject, activelyChosen: boolean): void {
-  if (unit.position && game.eventManager) {
+  // A unit that died in combat still waits (Python WaitState skips no dead
+  // unit); its unit_wait has no position and no region.
+  if (game.eventManager) {
     const levelNid = game.currentLevel?.nid ?? '';
-    const region = getRegionUnderPos(unit.position[0], unit.position[1]);
+    const region = unit.position ? getRegionUnderPos(unit.position[0], unit.position[1]) : null;
     const ctx = { game, unit1: unit, region, gameVars: game.gameVars, levelVars: game.levelVars };
     game.eventManager.trigger(
       {
         type: 'unit_wait', levelNid, unitNid: unit.nid, unit1: unit,
-        position: [unit.position[0], unit.position[1]],
+        position: unit.position ? [unit.position[0], unit.position[1]] : undefined,
         region: region ?? undefined,
         localArgs: new Map<string, any>([['actively_chosen', activelyChosen]]),
       },
@@ -4328,7 +4330,9 @@ export class WaitState extends State {
     const game = getGame();
     game.state.back();
     for (const unit of game.getAllUnits() as UnitObject[]) {
-      if (unit.hasAttacked && !unit.finished && !unit.isDead()) waitUnit(game, unit, false);
+      // Python iterates game.units, dead ones included: a unit killed in
+      // combat after attacking is waited (finished) too.
+      if (unit.hasAttacked && !unit.finished) waitUnit(game, unit, false);
     }
     if (game.eventManager?.hasActiveEvents()) game.state.change('event');
     return 'repeat';
@@ -8278,7 +8282,9 @@ export class CombatState extends State {
         if (!wasEventCombat && !hasCanto) {
           if (aiCombat) {
             game.state.change('wait');
-          } else if (!attacker.isDead() && !returnsToMenu) {
+          } else if (attacker.isDead() || !returnsToMenu) {
+            // Python checks attacker.is_dying before the menu/Canto routing:
+            // a player attacker that died also clears to free + wait.
             game.selectedUnit = null;
             game._moveOrigin = null;
             game._moveAction = null;

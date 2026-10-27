@@ -1589,7 +1589,7 @@ export class BaseBexpAllocateState extends State {
         const party = game.parties.get(game.currentParty);
         game.actionLog.doAction(new SpendBexpAction(party, this.stagedCost()));
         game.actionLog.doAction(new GainExpAction(this.unit, this.expToGain,
-          game.currentMode?.growths ?? 'random'));
+          game.currentMode?.growths ?? 'random', true));
         game.state.back();
       }
     } else if (event === 'BACK') {
