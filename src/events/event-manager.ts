@@ -333,6 +333,21 @@ const VALID_COMMANDS: Set<string> = new Set<string>([
   'set_game_var', 'change_objective',
 ]);
 
+/**
+ * Python component classes that expose @property accessors over their value
+ * dict, as `[value key, default from __init__]`. Expressions read them on
+ * the component, e.g. `item.effective_damage.tags`.
+ */
+const COMPONENT_PROPERTIES: Record<string, Record<string, [string, unknown]>> = {
+  // item_components/extra_components.py EffectiveDamage
+  effective_damage: {
+    tags: ['effective_tags', []],
+    multiplier: ['effective_multiplier', 3],
+    bonus_damage: ['effective_bonus_damage', 0],
+    show_flash: ['show_effectiveness_flash', true],
+  },
+};
+
 /** Map of command aliases to their canonical names. */
 const COMMAND_ALIASES: Record<string, string> = {
   // Common aliases from LT
@@ -691,6 +706,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   }
 
   function wrapComponent(nid: string, value: any) {
+    const accessors = COMPONENT_PROPERTIES[nid];
     return new Proxy({
       nid,
       value: value && typeof value === 'object' && !Array.isArray(value)
@@ -699,6 +715,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     }, {
       get(target, property: string | symbol) {
         if (property in target) return target[property as keyof typeof target];
+        if (accessors && typeof property === 'string' && property in accessors) {
+          const [key, fallback] = accessors[property];
+          return value && typeof value === 'object' && key in value ? value[key] : fallback;
+        }
         if (value && typeof value === 'object' && typeof property === 'string') {
           return value[property];
         }
