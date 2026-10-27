@@ -235,9 +235,11 @@ test.describe('Embrace of the Fog dynamic combat output', () => {
         nid: '_DynamicAttackWeapon',
         name: 'Dynamic attack weapon',
         desc: '',
+        // EOtF's engine only applies skill eval_extra_damage through the
+        // item's own eval_extra_damage component (EOtF grants it via ED_OR).
         components: [
           ['weapon', null], ['damage', 1], ['hit', 100], ['uses', 99],
-          ['min_range', 1], ['max_range', 1],
+          ['min_range', 1], ['max_range', 1], ['eval_extra_damage', '0'],
         ],
       });
       const defenseItem = new ItemObject({

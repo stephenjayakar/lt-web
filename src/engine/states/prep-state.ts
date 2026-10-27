@@ -272,19 +272,25 @@ export class PrepMainState extends State {
     } else if (event === 'SELECT') {
       sfx('Select 1');
       const selection = this.menu.getCurrentText();
+      // Python goes through 'transition_to' (a short fade that takes no
+      // input) for every screen but Formation.
+      const transitionTo = (next: string) => {
+        game.memory?.set?.('next_state', next);
+        game.state.change('transition_to');
+      };
       if (selection === 'Pick Units') {
-        game.state.change('prep_pick');
+        transitionTo('prep_pick');
       } else if (selection === 'Manage') {
-        game.state.change('base_manage');
+        transitionTo('base_manage');
       } else if (selection === 'Formation') {
         this.bg?.fadeOut();
         game.memory?.set?.('_prep_outline', this.bg);
         game.state.change('prep_formation');
       } else if (selection === 'Options') {
-        game.state.change('settings_menu');
+        transitionTo('settings_menu');
       } else if (selection === 'Save') {
         game.memory?.set?.('save_kind', 'prep');
-        game.state.change('save_menu');
+        transitionTo('save_menu');
       } else if (selection === 'Fight') {
         this.tryFight();
       } else {

@@ -3,14 +3,14 @@
   "project": {
     "path": "lt-maker/eotf.ltproj",
     "nid": "EotF",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "levels": 159,
-    "events": 2339,
-    "items": 1749,
-    "skills": 3477,
+    "events": 2353,
+    "items": 1755,
+    "skills": 3489,
     "units": 497,
     "classes": 253,
-    "files": 3021
+    "files": 3025
   },
   "commands": [
     {
@@ -95,7 +95,7 @@
     },
     {
       "nid": "add_lore",
-      "uses": 55
+      "uses": 56
     },
     {
       "nid": "add_portrait",
@@ -111,19 +111,19 @@
     },
     {
       "nid": "add_tag",
-      "uses": 146
+      "uses": 147
     },
     {
       "nid": "add_talk",
-      "uses": 348
+      "uses": 352
     },
     {
       "nid": "add_unit",
-      "uses": 667
+      "uses": 673
     },
     {
       "nid": "add_unit_map_anim",
-      "uses": 2
+      "uses": 1
     },
     {
       "nid": "add_weather",
@@ -131,7 +131,7 @@
     },
     {
       "nid": "alert",
-      "uses": 737
+      "uses": 749
     },
     {
       "nid": "all_item_uids += [item.uid for item in unit.items]",
@@ -151,7 +151,7 @@
     },
     {
       "nid": "arrange_formation",
-      "uses": 149
+      "uses": 151
     },
     {
       "nid": "autolevel_to",
@@ -167,7 +167,7 @@
     },
     {
       "nid": "bop",
-      "uses": 447
+      "uses": 448
     },
     {
       "nid": "bop_portrait",
@@ -179,7 +179,7 @@
     },
     {
       "nid": "center_cursor",
-      "uses": 629
+      "uses": 640
     },
     {
       "nid": "change_affinity",
@@ -195,11 +195,11 @@
     },
     {
       "nid": "change_background",
-      "uses": 119
+      "uses": 122
     },
     {
       "nid": "change_class",
-      "uses": 44
+      "uses": 49
     },
     {
       "nid": "change_global_level_cap",
@@ -219,7 +219,7 @@
     },
     {
       "nid": "change_music",
-      "uses": 78
+      "uses": 82
     },
     {
       "nid": "change_objective_loss",
@@ -239,7 +239,7 @@
     },
     {
       "nid": "change_portrait",
-      "uses": 33
+      "uses": 36
     },
     {
       "nid": "change_roam_ai",
@@ -251,7 +251,7 @@
     },
     {
       "nid": "change_stat_cap_modifiers",
-      "uses": 39
+      "uses": 40
     },
     {
       "nid": "change_stats",
@@ -267,7 +267,7 @@
     },
     {
       "nid": "change_unit_desc",
-      "uses": 2
+      "uses": 3
     },
     {
       "nid": "change_unit_level_cap",
@@ -275,7 +275,7 @@
     },
     {
       "nid": "choice",
-      "uses": 687
+      "uses": 690
     },
     {
       "nid": "chosen_item = static_random.get_random_choice(items)",
@@ -311,11 +311,11 @@
     },
     {
       "nid": "create_record",
-      "uses": 249
+      "uses": 261
     },
     {
       "nid": "create_unit",
-      "uses": 324
+      "uses": 329
     },
     {
       "nid": "credits",
@@ -323,7 +323,7 @@
     },
     {
       "nid": "delete_save",
-      "uses": 10
+      "uses": 14
     },
     {
       "nid": "draw_overlay_sprite",
@@ -335,11 +335,11 @@
     },
     {
       "nid": "elif",
-      "uses": 3543
+      "uses": 3554
     },
     {
       "nid": "else",
-      "uses": 1033
+      "uses": 1048
     },
     {
       "nid": "enable_convoy",
@@ -355,11 +355,11 @@
     },
     {
       "nid": "end",
-      "uses": 5137
+      "uses": 5179
     },
     {
       "nid": "end_skip",
-      "uses": 347
+      "uses": 351
     },
     {
       "nid": "end_turn",
@@ -383,7 +383,7 @@
     },
     {
       "nid": "flicker_cursor",
-      "uses": 717
+      "uses": 727
     },
     {
       "nid": "for",
@@ -395,7 +395,7 @@
     },
     {
       "nid": "game_var",
-      "uses": 617
+      "uses": 619
     },
     {
       "nid": "game.boundary.displaying_units.discard('Nikume_E')",
@@ -415,7 +415,7 @@
     },
     {
       "nid": "give_item",
-      "uses": 501
+      "uses": 503
     },
     {
       "nid": "give_money",
@@ -423,15 +423,15 @@
     },
     {
       "nid": "give_skill",
-      "uses": 1438
+      "uses": 1452
     },
     {
       "nid": "give_wexp",
-      "uses": 124
+      "uses": 127
     },
     {
       "nid": "gvar",
-      "uses": 92
+      "uses": 96
     },
     {
       "nid": "has_attacked",
@@ -455,7 +455,7 @@
     },
     {
       "nid": "if",
-      "uses": 5132
+      "uses": 5175
     },
     {
       "nid": "if 1 == 2",
@@ -495,11 +495,11 @@
     },
     {
       "nid": "inc_game_var",
-      "uses": 159
+      "uses": 165
     },
     {
       "nid": "inc_level_var",
-      "uses": 187
+      "uses": 188
     },
     {
       "nid": "interact_unit",
@@ -527,7 +527,7 @@
     },
     {
       "nid": "level_var",
-      "uses": 1783
+      "uses": 1788
     },
     {
       "nid": "load_unit",
@@ -543,15 +543,15 @@
     },
     {
       "nid": "lvar",
-      "uses": 999
+      "uses": 1008
     },
     {
       "nid": "main_menu",
-      "uses": 4
+      "uses": 5
     },
     {
       "nid": "make_generic",
-      "uses": 440
+      "uses": 442
     },
     {
       "nid": "map_anim",
@@ -567,7 +567,7 @@
     },
     {
       "nid": "modify_item_component",
-      "uses": 95
+      "uses": 94
     },
     {
       "nid": "modify_skill_component",
@@ -619,7 +619,7 @@
     },
     {
       "nid": "pair_up",
-      "uses": 16
+      "uses": 18
     },
     {
       "nid": "pop_dialog",
@@ -627,7 +627,7 @@
     },
     {
       "nid": "prep",
-      "uses": 153
+      "uses": 155
     },
     {
       "nid": "promote",
@@ -635,7 +635,7 @@
     },
     {
       "nid": "r",
-      "uses": 90
+      "uses": 91
     },
     {
       "nid": "recruit_generic",
@@ -651,7 +651,7 @@
     },
     {
       "nid": "remove_all_units",
-      "uses": 39
+      "uses": 40
     },
     {
       "nid": "remove_game_board_bounds",
@@ -687,7 +687,7 @@
     },
     {
       "nid": "remove_skill",
-      "uses": 532
+      "uses": 537
     },
     {
       "nid": "remove_table",
@@ -695,7 +695,7 @@
     },
     {
       "nid": "remove_tag",
-      "uses": 40
+      "uses": 41
     },
     {
       "nid": "remove_talk",
@@ -703,11 +703,7 @@
     },
     {
       "nid": "remove_unit",
-      "uses": 334
-    },
-    {
-      "nid": "remove_unit_map_anim",
-      "uses": 1
+      "uses": 336
     },
     {
       "nid": "remove_weather",
@@ -723,7 +719,7 @@
     },
     {
       "nid": "resurrect",
-      "uses": 43
+      "uses": 44
     },
     {
       "nid": "return",
@@ -731,11 +727,11 @@
     },
     {
       "nid": "rr",
-      "uses": 75
+      "uses": 77
     },
     {
       "nid": "s",
-      "uses": 736
+      "uses": 741
     },
     {
       "nid": "screen_shake",
@@ -747,11 +743,11 @@
     },
     {
       "nid": "separate",
-      "uses": 18
+      "uses": 20
     },
     {
       "nid": "set_current_hp",
-      "uses": 510
+      "uses": 511
     },
     {
       "nid": "set_custom_options",
@@ -767,7 +763,7 @@
     },
     {
       "nid": "set_growths",
-      "uses": 58
+      "uses": 60
     },
     {
       "nid": "set_item_data",
@@ -783,15 +779,15 @@
     },
     {
       "nid": "set_name",
-      "uses": 40
+      "uses": 41
     },
     {
       "nid": "set_next_chapter",
-      "uses": 115
+      "uses": 117
     },
     {
       "nid": "set_skill_data",
-      "uses": 155
+      "uses": 158
     },
     {
       "nid": "set_stat_cap_modifiers",
@@ -803,11 +799,11 @@
     },
     {
       "nid": "set_unit_field",
-      "uses": 113
+      "uses": 116
     },
     {
       "nid": "set_wexp",
-      "uses": 29
+      "uses": 38
     },
     {
       "nid": "shop",
@@ -815,7 +811,7 @@
     },
     {
       "nid": "show_layer",
-      "uses": 402
+      "uses": 403
     },
     {
       "nid": "show_pokedex",
@@ -823,7 +819,7 @@
     },
     {
       "nid": "skip_save",
-      "uses": 92
+      "uses": 94
     },
     {
       "nid": "sound",
@@ -835,7 +831,7 @@
     },
     {
       "nid": "speak",
-      "uses": 3076
+      "uses": 3082
     },
     {
       "nid": "speak_style",
@@ -859,19 +855,19 @@
     },
     {
       "nid": "transition",
-      "uses": 214
+      "uses": 218
     },
     {
       "nid": "trigger_script",
-      "uses": 1558
+      "uses": 1565
     },
     {
       "nid": "trigger_script_with_args",
-      "uses": 1160
+      "uses": 1162
     },
     {
       "nid": "u",
-      "uses": 69
+      "uses": 70
     },
     {
       "nid": "unchoice",
@@ -895,7 +891,7 @@
     },
     {
       "nid": "update_record",
-      "uses": 208
+      "uses": 225
     },
     {
       "nid": "upgraded_skill = has_skill('Ayla', 'Gods_Identity')",
@@ -903,7 +899,7 @@
     },
     {
       "nid": "uu",
-      "uses": 64
+      "uses": 66
     },
     {
       "nid": "vessel_item = get_item('Ayla', 'False_Vessel') or get_item('Ayla', 'Perfect_Vessel')",
@@ -911,11 +907,11 @@
     },
     {
       "nid": "wait",
-      "uses": 247
+      "uses": 249
     },
     {
       "nid": "win_game",
-      "uses": 601
+      "uses": 603
     }
   ],
   "components": {
@@ -988,7 +984,7 @@
       },
       {
         "nid": "alternate_damage_formula",
-        "uses": 119,
+        "uses": 120,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1000,13 +996,13 @@
       },
       {
         "nid": "alternate_resist_formula",
-        "uses": 129,
+        "uses": 130,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "attack_after_combat",
-        "uses": 248,
+        "uses": 252,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1060,13 +1056,13 @@
       },
       {
         "nid": "cooldown",
-        "uses": 86,
+        "uses": 95,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "crit",
-        "uses": 701,
+        "uses": 703,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1078,13 +1074,13 @@
       },
       {
         "nid": "damage",
-        "uses": 739,
+        "uses": 741,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "damage_any",
-        "uses": 8,
+        "uses": 9,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -1180,7 +1176,7 @@
       },
       {
         "nid": "eval_available",
-        "uses": 197,
+        "uses": 198,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1240,13 +1236,13 @@
       },
       {
         "nid": "eval_max_range",
-        "uses": 24,
+        "uses": 25,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
       {
         "nid": "eval_min_range",
-        "uses": 3,
+        "uses": 2,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -1276,14 +1272,14 @@
       },
       {
         "nid": "eval_target_restrict_2",
-        "uses": 138,
+        "uses": 139,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "eval_warning",
         "uses": 1,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
@@ -1300,7 +1296,7 @@
       },
       {
         "nid": "event_after_combat_on_hit",
-        "uses": 67,
+        "uses": 68,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -1330,7 +1326,7 @@
       },
       {
         "nid": "event_on_hit",
-        "uses": 218,
+        "uses": 220,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -1378,7 +1374,7 @@
       },
       {
         "nid": "hit",
-        "uses": 722,
+        "uses": 724,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1402,7 +1398,7 @@
       },
       {
         "nid": "item_tags",
-        "uses": 690,
+        "uses": 711,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -1432,7 +1428,7 @@
       },
       {
         "nid": "magic",
-        "uses": 333,
+        "uses": 335,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1462,7 +1458,7 @@
       },
       {
         "nid": "map_hit_add_blend",
-        "uses": 157,
+        "uses": 158,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -1480,7 +1476,7 @@
       },
       {
         "nid": "max_range",
-        "uses": 1218,
+        "uses": 1222,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1492,7 +1488,7 @@
       },
       {
         "nid": "min_range",
-        "uses": 1275,
+        "uses": 1279,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1618,7 +1614,7 @@
       },
       {
         "nid": "prf_unit",
-        "uses": 332,
+        "uses": 334,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1726,7 +1722,7 @@
       },
       {
         "nid": "shove_flex_stops",
-        "uses": 2,
+        "uses": 3,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -1738,7 +1734,7 @@
       },
       {
         "nid": "shove_flexible_on_end_combat_initiate",
-        "uses": 9,
+        "uses": 8,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -1774,7 +1770,7 @@
       },
       {
         "nid": "spell",
-        "uses": 635,
+        "uses": 639,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1786,7 +1782,7 @@
       },
       {
         "nid": "stack_cost_multi",
-        "uses": 5,
+        "uses": 6,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -1810,7 +1806,7 @@
       },
       {
         "nid": "status_after_combat_on_hit",
-        "uses": 109,
+        "uses": 110,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -1828,19 +1824,19 @@
       },
       {
         "nid": "status_on_hit",
-        "uses": 180,
+        "uses": 182,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "status_on_hold",
-        "uses": 106,
+        "uses": 107,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "statuses_after_combat_on_hit",
-        "uses": 32,
+        "uses": 33,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -1876,13 +1872,13 @@
       },
       {
         "nid": "target_ally",
-        "uses": 390,
+        "uses": 391,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "target_enemy",
-        "uses": 785,
+        "uses": 788,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1894,7 +1890,7 @@
       },
       {
         "nid": "target_tile",
-        "uses": 208,
+        "uses": 209,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1906,14 +1902,14 @@
       },
       {
         "nid": "target_unit",
-        "uses": 72,
+        "uses": 73,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "text_color",
         "uses": 2,
-        "structuralStatus": "reference-only",
+        "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
@@ -1954,7 +1950,7 @@
       },
       {
         "nid": "unstealable",
-        "uses": 47,
+        "uses": 48,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -1991,12 +1987,12 @@
       {
         "nid": "warning",
         "uses": 10,
-        "structuralStatus": "consumed",
+        "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
         "nid": "weapon",
-        "uses": 697,
+        "uses": 699,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -2014,13 +2010,13 @@
       },
       {
         "nid": "weapon_type_exempt",
-        "uses": 26,
+        "uses": 28,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
       {
         "nid": "weight",
-        "uses": 687,
+        "uses": 689,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -2034,7 +2030,7 @@
     "skills": [
       {
         "nid": "ability",
-        "uses": 510,
+        "uses": 512,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -2190,19 +2186,19 @@
       },
       {
         "nid": "aura",
-        "uses": 262,
+        "uses": 263,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "aura_range",
-        "uses": 262,
+        "uses": 263,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "aura_target",
-        "uses": 262,
+        "uses": 263,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -2256,7 +2252,7 @@
       },
       {
         "nid": "block_specific_status",
-        "uses": 4,
+        "uses": 5,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -2292,7 +2288,7 @@
       },
       {
         "nid": "cannot_double",
-        "uses": 39,
+        "uses": 40,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -2382,7 +2378,7 @@
       },
       {
         "nid": "class_skill",
-        "uses": 1651,
+        "uses": 1653,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -2430,7 +2426,7 @@
       },
       {
         "nid": "combat_condition",
-        "uses": 472,
+        "uses": 471,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -2442,19 +2438,19 @@
       },
       {
         "nid": "combined_time",
-        "uses": 56,
+        "uses": 57,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "condition",
-        "uses": 558,
+        "uses": 564,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "copysafe",
-        "uses": 1085,
+        "uses": 1086,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -2478,13 +2474,13 @@
       },
       {
         "nid": "damage",
-        "uses": 49,
+        "uses": 56,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
       {
         "nid": "damage_multiplier",
-        "uses": 24,
+        "uses": 26,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -2532,7 +2528,7 @@
       },
       {
         "nid": "drain_charge",
-        "uses": 540,
+        "uses": 541,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -2886,7 +2882,7 @@
       },
       {
         "nid": "gain_skill_after_active_kill",
-        "uses": 33,
+        "uses": 34,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -2898,7 +2894,7 @@
       },
       {
         "nid": "gain_skill_after_combat",
-        "uses": 27,
+        "uses": 28,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -3000,13 +2996,13 @@
       },
       {
         "nid": "global",
-        "uses": 29,
+        "uses": 30,
         "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
         "nid": "grey_if_inactive",
-        "uses": 38,
+        "uses": 39,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -3054,19 +3050,19 @@
       },
       {
         "nid": "hidden",
-        "uses": 678,
+        "uses": 682,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "hidden_if_inactive",
-        "uses": 122,
+        "uses": 123,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "hide_aura",
-        "uses": 96,
+        "uses": 97,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -3120,7 +3116,7 @@
       },
       {
         "nid": "item_override",
-        "uses": 199,
+        "uses": 195,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -3174,7 +3170,7 @@
       },
       {
         "nid": "lost_on_end_chapter",
-        "uses": 524,
+        "uses": 526,
         "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
@@ -3186,13 +3182,13 @@
       },
       {
         "nid": "lost_on_end_next_combat",
-        "uses": 20,
+        "uses": 21,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
       {
         "nid": "lost_on_endstep",
-        "uses": 61,
+        "uses": 62,
         "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
@@ -3258,7 +3254,7 @@
       },
       {
         "nid": "negative",
-        "uses": 71,
+        "uses": 72,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -3378,8 +3374,14 @@
       },
       {
         "nid": "regeneration",
-        "uses": 9,
+        "uses": 8,
         "structuralStatus": "reference-only",
+        "semanticStatus": "verified"
+      },
+      {
+        "nid": "regeneration_no_anim",
+        "uses": 1,
+        "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
       {
@@ -3396,7 +3398,7 @@
       },
       {
         "nid": "resist",
-        "uses": 37,
+        "uses": 38,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -3486,7 +3488,7 @@
       },
       {
         "nid": "stack",
-        "uses": 224,
+        "uses": 226,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
@@ -3516,7 +3518,7 @@
       },
       {
         "nid": "stat_multiplier",
-        "uses": 34,
+        "uses": 35,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -3564,19 +3566,19 @@
       },
       {
         "nid": "unit_anim",
-        "uses": 54,
+        "uses": 55,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "unit_flickering_tint",
-        "uses": 54,
+        "uses": 56,
         "structuralStatus": "consumed",
         "semanticStatus": "verified"
       },
       {
         "nid": "unselectable",
-        "uses": 15,
+        "uses": 16,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -3594,13 +3596,13 @@
       },
       {
         "nid": "upkeep_event",
-        "uses": 58,
+        "uses": 57,
         "structuralStatus": "reference-only",
         "semanticStatus": "verified"
       },
       {
         "nid": "upkeep_skill_gain",
-        "uses": 36,
+        "uses": 37,
         "structuralStatus": "project-local-or-unknown",
         "semanticStatus": "verified"
       },
@@ -3612,7 +3614,7 @@
       },
       {
         "nid": "vantage",
-        "uses": 10,
+        "uses": 11,
         "structuralStatus": "hook-and-reference",
         "semanticStatus": "verified"
       },
@@ -3687,7 +3689,7 @@
         "hooks": [
           "minimum_range"
         ],
-        "uses": 3
+        "uses": 2
       },
       {
         "nid": "eval_max_range",
@@ -3696,7 +3698,7 @@
         "hooks": [
           "maximum_range"
         ],
-        "uses": 24
+        "uses": 25
       },
       {
         "nid": "damage_any",
@@ -3708,7 +3710,7 @@
           "on_glancing_hit",
           "on_crit"
         ],
-        "uses": 8
+        "uses": 9
       },
       {
         "nid": "shove_on_end_combat_initiate",
@@ -3728,7 +3730,7 @@
           "_check_shove",
           "end_combat"
         ],
-        "uses": 9
+        "uses": 8
       },
       {
         "nid": "eval_hp_cost",
@@ -3752,7 +3754,7 @@
           "_check_shove",
           "on_hit"
         ],
-        "uses": 2
+        "uses": 3
       },
       {
         "nid": "permanent_stat_change_early",
@@ -3775,7 +3777,7 @@
           "end_combat",
           "ai_priority"
         ],
-        "uses": 32
+        "uses": 33
       },
       {
         "nid": "eval_smartblast_aoe",
@@ -3825,7 +3827,7 @@
           "weapon_type",
           "available"
         ],
-        "uses": 26
+        "uses": 28
       },
       {
         "nid": "pivot_on_end_combat_initiate",
@@ -4015,7 +4017,7 @@
           "start_combat",
           "reverse_use"
         ],
-        "uses": 5
+        "uses": 6
       },
       {
         "nid": "solomon_heal",
@@ -4365,7 +4367,7 @@
         "hooks": [
           "on_upkeep"
         ],
-        "uses": 58
+        "uses": 57
       },
       {
         "nid": "endstep_event",
@@ -4392,7 +4394,7 @@
         "hooks": [
           "on_upkeep"
         ],
-        "uses": 36
+        "uses": 37
       },
       {
         "nid": "endstep_skill_gain",
@@ -4413,7 +4415,7 @@
           "post_combat",
           "on_end_chapter"
         ],
-        "uses": 20
+        "uses": 21
       },
       {
         "nid": "full_miracle",
@@ -4536,7 +4538,7 @@
         "kind": "skill",
         "pythonClass": "CopySafe",
         "hooks": [],
-        "uses": 1085
+        "uses": 1086
       },
       {
         "nid": "event_after_combat",
@@ -5416,7 +5418,16 @@
         "hooks": [
           "after_gain_skill"
         ],
-        "uses": 4
+        "uses": 5
+      },
+      {
+        "nid": "regeneration_no_anim",
+        "kind": "skill",
+        "pythonClass": "RegenerationNoAnim",
+        "hooks": [
+          "on_upkeep"
+        ],
+        "uses": 1
       }
     ]
   },
@@ -5435,7 +5446,6 @@
       "'Banished' not in unit.tags and is_dead(unit) and position",
       "'Beast' in u('{realize}').tags or 'Dragon' in u('{realize}').tags",
       "'Beast' in unit.tags",
-      "'Bootes' in unit2.nid",
       "'Boss' in unit.tags and u('Boss_SN') and u('Boss_SN').position and has_skill(u('Boss_SN'), 'Formation_Alpha_Status')",
       "'Boss' in unit.tags and unit.team == 'enemy' and unit.nid != 'Grigol_Boss'",
       "'Boss' in unit2.tags",
@@ -5471,11 +5481,9 @@
       "'Infantry' in unit.tags",
       "'LGFG_Dejected' in [skill.nid for skill in unit.skills]",
       "'Light_Rune_' in region.nid",
-      "'Lupus' in unit2.nid",
       "'Monster' in unit.tags",
       "'Monster' in unit2.tags",
       "'Nikume' in unit.nid and unit.nid != 'Nikume_E' and unit.team == 'enemy' and not is_dead('Kaku_E')",
-      "'Ouranos' in unit2.nid",
       "'Player' in [u.nid for u in game.get_units_in_party()]",
       "'Player' not in [u.nid for u in game.get_units_in_party('Player')]",
       "'Prometheus' in unit2.nid",
@@ -5493,9 +5501,7 @@
       "'Snag' in unit.nid",
       "'Snag' in unit2.nid",
       "'Thunder' in unit.tags",
-      "'Trinity' in unit2.nid",
       "'Visit' in region.nid",
-      "'Vulpecula' in unit2.nid",
       "'Wall' in unit.nid",
       "'Whirlpool' in region.nid",
       "'Yusha' in [u.nid for u in game.get_all_units_in_party('Player')] and len([s for s in u('Yusha').skills if s.nid == 'Heroics']) >= 25 and not u('Yusha').klass == 'Hero'",
@@ -5554,7 +5560,7 @@
       "'{e:receiver}' == 'August' and u('August').level != u('Reese').level and game.level_vars.get('picked_reserve_exp', 0) == 0",
       "'{e:receiver}' == 'Canes_P'",
       "'{e:receiver}' == 'Canes_P' and game.level_vars.get('picked_reserve_wexp', 0) == 0",
-      "'{e:receiver}' == 'Canes_P' and u('Lupus_P').level != u('Canes_P').level and game.level_vars.get('picked_reserve_exp', 0) == 0",
+      "'{e:receiver}' == 'Canes_P' and u('Lupus_P').level < u('Canes_P').level and game.level_vars.get('picked_reserve_exp', 0) == 0",
       "'{e:receiver}' == 'Gemini_F'",
       "'{e:receiver}' == 'Gemini_F' and game.level_vars.get('picked_reserve_wexp', 0) == 0",
       "'{e:receiver}' == 'Gemini_F' and u('Gemini_M').level != u('Gemini_F').level and game.level_vars.get('picked_reserve_exp', 0) == 0",
@@ -5917,6 +5923,7 @@
       "'{e:talker}' == 'Zhinn'",
       "'{e:talker}' == 'Zinnia'",
       "'{e:talker}' == 'Zo'",
+      "'{e:to_revive}' == 'Akane'",
       "'{e:to_revive}' == 'Gemini_F'",
       "'{e:to_revive}' == 'Gemini_M'",
       "'{e:unit.team}' == 'player'",
@@ -6108,6 +6115,7 @@
       "'{v:byechoice}' == 'Yes'",
       "'{v:c_type}' == 'BACK'",
       "'{v:cancel_contract}' == 'Yes'",
+      "'{v:cash_out}' == 'No'",
       "'{v:chain_plate_c}' == 'Armor'",
       "'{v:chain_plate_c}' == 'Cavalry'",
       "'{v:chain_plate_c}' == 'Flying'",
@@ -6235,6 +6243,7 @@
       "'{v:desk_menu}' == 'Enter Password'",
       "'{v:desk_menu}' == 'Game Fixes'",
       "'{v:desk_menu}' == 'Help'",
+      "'{v:desk_menu}' == 'Hetja Shortcut'",
       "'{v:desk_menu}' == 'Records'",
       "'{v:desk_menu}' == 'Reminisce'",
       "'{v:direction1}' == 'East'",
@@ -6303,6 +6312,7 @@
       "'{v:factions}' == '1'",
       "'{v:factions}' == '2'",
       "'{v:factions}' == '3'",
+      "'{v:fix_ally}' != 'BACK'",
       "'{v:fix_list}' == 'Character Supports'",
       "'{v:fix_list}' == 'Shop/Contract Skills'",
       "'{v:forge}' == '1'",
@@ -6342,6 +6352,9 @@
       "'{v:gift_type}' == 'Fragments'",
       "'{v:heal_choice}' == 'Yes'",
       "'{v:healing}' == 'Yes'",
+      "'{v:hetja_klass}' == 'Armor'",
+      "'{v:hetja_klass}' == 'Cavalry'",
+      "'{v:hetja_klass}' == 'Flying'",
       "'{v:hint_choice}' == 'Arielle_Hint' and (RECORDS.get('tether_charges') >= int({d:Hint_List.{v:hint_choice}.cost}) or RECORDS.get('Arielle_Hint_Bought'))",
       "'{v:hint_choice}' == 'Bloodstorm_Hint' and (RECORDS.get('tether_charges') >= int({d:Hint_List.{v:hint_choice}.cost}) or RECORDS.get('Bloodstorm_Hint_Bought'))",
       "'{v:hint_choice}' == 'Eve_Hint' and (RECORDS.get('tether_charges') >= int({d:Hint_List.{v:hint_choice}.cost}) or RECORDS.get('Eve_Hint_Bought'))",
@@ -6628,6 +6641,7 @@
       "'{v:the_var}' == 'Solfrid'",
       "'{v:the_var}' == 'Tower'",
       "'{v:the_var}' == 'Trinity'",
+      "'{v:the_var}' == 'UE'",
       "'{v:the_var}' == 'Ulver'",
       "'{v:the_var}' == 'Uprising'",
       "'{v:the_var}' in ['Combat']",
@@ -6785,6 +6799,8 @@
       "(has_item(\"Frames\", party='Player') or has_item(\"Frames\", party='Flex') or has_item(\"Frames\", party='Shuffle')) and (has_item(\"Left_Lens\", party='Player') or has_item(\"Left_Lens\", party='Flex') or has_item(\"Left_Lens\", party='Shuffle')) and (has_item(\"Right_Lens\", party='Player') or has_item(\"Right_Lens\", party='Flex') or has_item(\"Right_Lens\", party='Shuffle'))",
       "(has_item(\"Glasses\", party='Player') or has_item(\"Glasses\", party='Flex') or has_item(\"Glasses\", party='Shuffle'))",
       "(has_item(\"Key_Part_A\", party='Player') or has_item(\"Key_Part_A\", party='Flex') or has_item(\"Key_Part_A\", party='Shuffle')) and (has_item(\"Key_Part_B\", party='Player') or has_item(\"Key_Part_B\", party='Flex') or has_item(\"Key_Part_B\", party='Shuffle'))",
+      "(has_skill(game.get_unit('{Lamenting}'),'Ritual_Lament') and int(u('{Lamenting}').get_field('Lament', 0)) < 5) or (has_skill(game.get_unit('{Lamenting}'),'Ritual_Lament_L') and int(u('{Lamenting}').get_field('Lament', 0)) < 10)",
+      "(has_skill(u('{myunit}'),'Forgetful') and game.get_random(0, 1) != 1) or (has_skill(u('{myunit}'),'Forgetful_Plus') and game.get_random(0, 3) == 3)",
       "(has_skill(unit, 'Devils_Brand_Child') and (unit.affinity == 'Fire' or any([s.has_affinities and 'Fire' in s.has_affinities.value for s in unit.skills]))) or (has_skill(unit2, 'Devils_Brand_Child') and (unit2.affinity == 'Fire' or any([s.has_affinities and 'Fire' in s.has_affinities.value for s in unit2.skills])))",
       "(has_skill(unit, 'Dynamic_Duo') or has_skill(unit, 'Dynamic_Duo_Plus')) and game.phase.get_current() == 'player'",
       "(has_skill(unit, 'Torn_Skies') or has_skill(unit, 'Torn_Skies_Plus')) and actively_chosen",
@@ -6870,6 +6886,7 @@
       "RECORDS.get('Escape+_unlocked') == 2",
       "RECORDS.get('Event_EXP_level')",
       "RECORDS.get('Execute_unlocked') >= 2",
+      "RECORDS.get('Extra_Ending_Cleared') and RECORDS.get('current_density') >= 25",
       "RECORDS.get('Faint_Recall_level') == 1",
       "RECORDS.get('Fair_Fight_level') == 1",
       "RECORDS.get('Fatigue_level') > 0",
@@ -6894,6 +6911,7 @@
       "RECORDS.get('Gulseth_Unlocked')",
       "RECORDS.get('Heisenberg_4')",
       "RECORDS.get('Heisenberg_Gain_A') and not RECORDS.get('Heisenberg_Gain_B')",
+      "RECORDS.get('Hetja_3')",
       "RECORDS.get('Ilona_Unlocked')",
       "RECORDS.get('Items_Up_level') > 0",
       "RECORDS.get('Johanna_3')",
@@ -6908,6 +6926,7 @@
       "RECORDS.get('Nikume_Unlocked')",
       "RECORDS.get('Nikume_Unlocked') and RECORDS.get('game_clear')",
       "RECORDS.get('Pain_Fog_level') > 0",
+      "RECORDS.get('Penelope_1') or int(unit.get_field('run_promo', 0)) == 1",
       "RECORDS.get('Points_1_unlocked') == 2",
       "RECORDS.get('Points_2_unlocked') == 2",
       "RECORDS.get('Points_3_unlocked') == 2",
@@ -6972,6 +6991,7 @@
       "RECORDS.get('W1TCH_Gain_A') and not RECORDS.get('W1TCH_Gain_B')",
       "RECORDS.get('Weather_level') > 0 and v('in_combat') == 1",
       "RECORDS.get('Weather_level') > 0 and v('in_combat') == 1 and game.turncount > 1",
+      "RECORDS.get('Zero_Percent_level') == 1",
       "RECORDS.get('bar_first_time') and (RECORDS.get('{e:'{v:add_friend}' + '_convos'}') < 3 or (RECORDS.get('{e:'{v:add_friend}' + '_convos'}') < 4 and RECORDS.get('SI_unlocked')))",
       "RECORDS.get('bar_notif_second_time')",
       "RECORDS.get('bar_notif_second_time') and not RECORDS.get('bar_second_time')",
@@ -7488,7 +7508,6 @@
       "any([s.nid == 'Serial_Status' for s in unit.skills]) and not unit2.is_dying",
       "any([s.nid == 'Shadowblade_Proc' for s in unit.skills])",
       "any([s.nid == 'Shadowstep' for s in unit.skills]) and unit2.is_dying",
-      "any([s.nid == 'Shelter_Spotted' for s in unit.skills]) and unit2.is_dying",
       "any([s.nid == 'Shelter_Spotted' for s in unit.skills]) and unit2.position",
       "any([s.nid == 'Sprint' for s in unit.skills]) and unit2.is_dying",
       "any([s.nid == 'Torn_Down_Buff' for s in unit.skills])",
@@ -7538,7 +7557,7 @@
       "any([u.nid for u in game.get_player_units() if has_skill(u, 'White_Beast_Statue')])",
       "any([u.nid for u in game.get_player_units() if has_skill(u,'Lux_Gift')])",
       "any([u.nid for u in game.get_player_units() if has_skill(u,'Ritual_Lament')]) and v('LAMENT', 0) < 5",
-      "any([u.nid for u in game.get_player_units() if has_skill(u,'Ritual_Lament_L')])",
+      "any([u.nid for u in game.get_player_units() if has_skill(u,'Ritual_Lament_L')]) and v('LAMENT_2', 0) < 10",
       "any([u.nid for u in game.get_player_units() if u.nid != unit.nid and u._finished])",
       "any([u.nid for u in get_allies_within_distance(unit.position) if u.nid == 'Coriandr'])",
       "any([u.team in ['enemy','enemy2'] for u in game.level.units])",
@@ -7597,8 +7616,8 @@
       "game.game_vars.get('Floor') and RECORDS.get('Game_Speed') == 1",
       "game.game_vars.get('Floor') and RECORDS.get('Game_Speed') == 2",
       "game.game_vars.get('Ophie_Mode', 0) == 1",
-      "game.game_vars.get('Secret_End_Story', 0) == 2",
       "game.game_vars.get('Secret_End_Story', 0) == 2 and ((RECORDS.get('Game_Speed') == 1 and {v:Floor} < 50) or (RECORDS.get('Game_Speed') == 2 and {v:Floor} < 35))",
+      "game.game_vars.get('Secret_End_Story', 0) == 2 or (RECORDS.get('Secret_Ending_Cleared') and RECORDS.get('Act_4_Power_level') == 0)",
       "game.game_vars.get('Secret_End_Story', 0) == 2 or (game.game_vars.get('Secret_End_Story', 0) == 1 and game.get_random(1, 100) <= 3)",
       "game.game_vars.get('Serpent_Shop', 0) == 1",
       "game.game_vars.get('True_End_Story', 0) == 1",
@@ -7735,7 +7754,6 @@
       "game.level.nid not in ['Act_1', 'Act_2', 'Act_3', 'Act_4'] and any([u.nid for u in game.get_player_units() if has_skill(u, 'Scorched_Skies')])",
       "game.level.nid not in ['Boss_Extra', 'Boss_Secret']",
       "game.level.nid not in ['X', 'Act_1', 'Act_2', 'Act_3', 'Act_4', 'Act_Ophie', 'Act_1A', 'Act_2A', 'Act_3A', 'Act_4A']",
-      "game.level.nid not in ['X', 'Act_1', 'Act_2', 'Act_3', 'Act_4', 'Act_Ophie', 'Act_1A', 'Act_2A', 'Act_3A']",
       "game.level_vars.get('GarvPosition', 0) != 0",
       "game.level_vars.get('LDreins', 0) != 1",
       "game.level_vars.get('Strike_Again_Reset', 0) == 1",
@@ -7797,7 +7815,6 @@
       "game.phase.get_current() == 'player'",
       "game.phase.get_current() == unit.team and skill_system.check_enemy(unit, unit2) and not v('charge_started') and not has_skill(unit2, 'Suspicious')",
       "game.phase.get_current() == unit.team and skill_system.check_enemy(unit, unit2) and not v('charge_started') and not has_skill(unit2, 'Suspicious') and not v('can_follow_up_P') == 1",
-      "game.tilemap.get_terrain(unit.position) in ['1','2','20']",
       "game.turncount % 2 != 0",
       "game.turncount % 2 != 0 and v('switch_1', 0) == 1",
       "game.turncount % 2 == 0",
@@ -7839,8 +7856,11 @@
       "game.turncount > 1 and game.turncount % 3 == 1",
       "game.turncount > 1 and get_skill(unit,'BP').data['charge'] < 0",
       "game.turncount > 1 and not any(['Boss' in u.tags for u in game.get_enemy_units()]) and '{v:current_A_phase}' != 'Last'",
+      "game.turncount > 10",
+      "game.turncount > 14",
       "game.turncount > 2",
       "game.turncount > 2 and (game.turncount + 1) % 3 == 0",
+      "game.turncount > 3 and game.turncount % 2 == 0",
       "game.turncount > 3 and game.turncount % 3 == 0",
       "game.turncount > 3 and game.turncount % 3 == 1",
       "game.turncount > 4 and game.turncount % 2 != 0",
@@ -7858,6 +7878,7 @@
       "game.turncount > 9 and game.turncount % 2 == 0",
       "game.turncount >= 2",
       "game.turncount >= 2 and game.turncount < 5",
+      "game.turncount >= 3",
       "game.turncount in [2,4]",
       "game.turncount in [3, 5, 7]",
       "game.turncount in [3,5]",
@@ -7868,6 +7889,7 @@
       "game.turncount in [5, 8, 11]",
       "get_charge('{eeriewhisperers}', 'Eerie_Whispers_Plus') == 0",
       "get_charge(u('Serpens'), 'Legend') == 0",
+      "get_charge(u('Serpens_SP'), 'Legend') == 0",
       "get_charge(unit, 'Angelic_Decree') == 2",
       "get_charge(unit, 'Angelic_Decree') > 0",
       "get_charge(unit, 'Burning_Desire') == 1",
@@ -7995,6 +8017,7 @@
       "get_stacks(unit, 'Pendulum_F') >= 50",
       "get_stacks(unit, 'Pendulum_I') >= 50",
       "get_terrain(u('{friendlies}')) == 'Fire'",
+      "get_terrain(unit.position) in ['1','2','20']",
       "has_item(\"ColorfulPhoto\",nid=u('{unit}').nid)",
       "has_item(\"Ferry_Ticket\", party='Player')",
       "has_item(\"MercySwordPlus\",nid=u('{unit}').nid)",
@@ -8027,7 +8050,6 @@
       "has_skill('{party_unit}', 'Undeath')",
       "has_skill(blue_unit, blue_replace) and get_skill(blue_unit, blue_replace).blue",
       "has_skill(charge_tgt, 'BP') and get_skill(charge_tgt,'BP').data['charge'] < 0",
-      "has_skill(game.get_unit('{Lamenting}'),'Ritual_Lament')",
       "has_skill(game.get_unit('{charging_ally}'), 'Noble_Dance_Progress_Aura')",
       "has_skill(target_foe, 'Tidal_Surge')",
       "has_skill(u('Heisenberg'), 'Normalization')",
@@ -8064,7 +8086,6 @@
       "has_skill(u('{grillables}'), 'Rare')",
       "has_skill(u('{grillables}'), 'Raw')",
       "has_skill(u('{grillables}'), 'Well_Done')",
-      "has_skill(u('{myunit}'),'Forgetful') or (has_skill(u('{myunit}'),'Forgetful_Plus') and game.get_random(0, 3) != 3)",
       "has_skill(u('{party_unit}'), 'Ascension_Cooldown')",
       "has_skill(u('{party_unit}'), 'Discipline')",
       "has_skill(u('{party_unit}'), 'Mythwalker')",
@@ -8148,6 +8169,7 @@
       "has_skill(unit, 'Lifecast_Stance')",
       "has_skill(unit, 'Lifecast_Stance_Plus')",
       "has_skill(unit, 'Light_Crescendo_Proc')",
+      "has_skill(unit, 'Loyalty') and any([u for u in get_allies_within_distance(unit.position, 5) if (u.get_hp() <= u.get_max_hp() // 4) and u.nid != unit.nid and has_skill(unit, 'Cheer')])",
       "has_skill(unit, 'Macabre_Mauling')",
       "has_skill(unit, 'Macabre_Mauling') and any([s.nid == 'Bleeding' for s in target.skills]) and unit2.is_dying",
       "has_skill(unit, 'MagesCoda')",
@@ -8157,6 +8179,7 @@
       "has_skill(unit, 'Motivation') and item and item.tags and 'Steal' in item.tags",
       "has_skill(unit, 'Muzzled')",
       "has_skill(unit, 'My_Reign_Dies_With_Me')",
+      "has_skill(unit, 'No_Shelter')",
       "has_skill(unit, 'Nullify_and_Resist')",
       "has_skill(unit, 'Nullify_and_Resist_Plus')",
       "has_skill(unit, 'On_The_Rocks_Plus')",
@@ -8246,7 +8269,6 @@
       "if v('heisen_tome') and not v('heisen_owner')",
       "int(RECORDS.get('Rest_Units_Up_level')) > 0 and len(game.get_units_in_party('Reserves')) <= 3",
       "int(RECORDS.get('current_density')) > int(RECORDS.get('highest_density'))",
-      "int(u('{Lamenting}').get_field('Lament', 0)) < 5",
       "int(unit.get_field('snake_venom', '0')) >= 3",
       "int({d:Run_Upgrades.{v:Run_Choice}.level_cap}) > RECORDS.get('{v:Run_Choice}' + '_level')",
       "is_dead('101')",
@@ -8303,6 +8325,7 @@
       "is_dead('Prometheus_E')",
       "is_dead('Sage_1') and is_dead('Sage_2')",
       "is_dead('Sage_1') and is_dead('Sage_2') and not game.level_vars.get('door_opened', 0) == 1",
+      "is_dead('Samael_SP') and is_dead('Samael_SP_2') and is_dead('Serpens_SP') and is_dead('Serpens_SP_2') and is_dead('Solfrid_SP') and is_dead('Melgaard_SP') and is_dead('Grigol_Boss_SP') and is_dead('Levan_SP') and is_dead('Gigantes_SP')",
       "is_dead('Serpens')",
       "is_dead('Sotirios_E')",
       "is_dead('Spire')",
@@ -8688,6 +8711,7 @@
       "not any([u for u in game.get_enemy_units()]) or game.level_vars.get('win', 0) == 1",
       "not any([u for u in game.get_player_units() if u._finished and not u.generic]) and skill_system.check_enemy(unit, unit2)",
       "not any([u for u in game.units if u.team == 'player' and not u.dead and not u.is_dying and 'Tile' not in u.tags and 'Deployed' in u.tags and not u.nid == unit.nid])",
+      "not any([u for u in game.units if u.team == 'player' and not u.dead and not u.is_dying and 'Tile' not in u.tags and 'Deployed' in u.tags and u.position])",
       "not any([u for u in game.units if u.team == 'player' and not u.dead and not u.is_dying and 'Tile' not in u.tags and 'Deployed' in u.tags])",
       "not any([u.position == (7,1) for u in game.get_tile_units() if u.klass == 'Pylon'])",
       "not any([u.position == (8,1) for u in game.get_tile_units() if u.klass == 'Pylon'])",
@@ -8700,6 +8724,7 @@
       "not game.game_vars.get('eve_start', 0) == 1",
       "not game.game_vars.get('key_c_quest')",
       "not game.game_vars.get('last_combat')",
+      "not game.game_vars.get('penelope_first')",
       "not game.game_vars.get('recruit_cost')",
       "not game.get_item({v:all_player_items}).owner_nid",
       "not game.get_item({v:all_player_weapons}).owner_nid",
@@ -8721,6 +8746,7 @@
       "not has_skill(u('{init_unit}'), 'Fog_Associate')",
       "not has_skill(u('{v:TurnRelay_NewTop}') , 'TurnRelay')",
       "not has_skill(unit, 'Ascension_Cooldown')",
+      "not has_skill(unit, 'No_Shelter') and any([s.nid == 'Shelter_Spotted' for s in unit.skills]) and unit2.is_dying",
       "not has_skill(unit, 'Powered_Core')",
       "not has_skill(unit, 'Powered_Core') and len([u for u in game.get_player_units() if not u.dead and not u.is_dying and 'Tile' not in u.tags and 'Deployed' in u.tags]) > 1",
       "not has_skill(unit, 'Rage')",
@@ -8746,8 +8772,9 @@
       "not is_dead('{p_unit}')",
       "not is_dead(unit.nid)",
       "not is_dead(unit2.nid)",
-      "not is_dead(unit2.nid) and game.get_unit('{charging_ally}').get_weapon()",
+      "not is_dead(unit2.nid) and game.get_unit('{charging_ally}').get_weapon() and unit2.position",
       "not is_dead(unit2.nid) and unit.position and game.phase.get_current() == unit.team and skill_system.check_enemy(unit, unit2) and not v('charge_started') and not has_skill(unit2, 'Suspicious') and not v('can_follow_up_P') == 1",
+      "not is_dead(unit2.nid) and unit2.position",
       "not skill_system.check_ally(unit, u('Garvey'))",
       "not skill_system.check_enemy(unit, unit2) and (v('{e:unit.nid + '_experiment_Start'}') and v('{e:unit.nid + '_experiment_End'}') > v('{e:unit.nid + '_experiment_Start'}'))",
       "not skill_system.check_enemy(unit, unit2) and not 'Temporary' in unit2.tags",
@@ -8776,6 +8803,7 @@
       "not v('recruit_tracker') == 0 and not v('recruit_tracker') % 4 == 0",
       "not v('solfrid_meme', 0) == 1",
       "not v('solfrid_meme_2', 0) == 1",
+      "not v('sotirios_meme', 0) == 1",
       "not v('supp_searched') == 1",
       "not v('tide')",
       "not v('white_beast_counter')",
@@ -8935,6 +8963,7 @@
       "u('Lucidus')",
       "u('Lupus_P') and is_dead('Lupus_P')",
       "u('Malakay')",
+      "u('Melgaard_SP') and u('Melgaard_SP').position and u('Solfrid_SP') and u('Solfrid_SP').position",
       "u('Nikume_E').position",
       "u('Nikume_E').position and get_skill('Nikume_E', 'Legend').data['charge'] == 0",
       "u('Ogen') and RECORDS.get('Ogen_convos') > 3",
@@ -8987,7 +9016,7 @@
       "u('{enemy_unit}').generic",
       "u('{foes}').get_hp() <= 0",
       "u('{gardeners}').traveler and not has_skill(u('{gardeners}'), 'Garden_Wall_Recharge')",
-      "u('{generics}').get_hp() == 1",
+      "u('{generics}').get_hp() <= 1",
       "u('{night_friends}').get_field('Sleep_Casts')",
       "u('{night_friends}').nid == 'Autumn' and RECORDS.get('Autumn_3')",
       "u('{not_ophies}').get_field('Ophie_Points') and game.get_random(1, 100) <= 4 * int(u('{not_ophies}').get_field('Ophie_Points'))",
@@ -9008,10 +9037,11 @@
       "u('{storm_gods}').get_hp() <= u('{storm_gods}').get_max_hp() // 4 and any([s.fatal_block for s in u('{storm_gods}').skills])",
       "u('{storm_gods}').get_hp() <= u('{storm_gods}').get_max_hp() // 4 and not any([s.fatal_block for s in u('{storm_gods}').skills])",
       "u('{team_unit}').nid != '{v:leader_unit}'",
-      "u('{tiles}').get_hp() == 1",
+      "u('{tiles}').get_hp() <= 1",
       "u('{unit2}').wexp.get('{wep_type}') > 0",
       "u('{unit}').wexp.get('{wep_type}') > 0",
       "u('{v:anointed_target}').wexp['{wep_type}'] <= 0",
+      "u('{v:imprison_choice}').position",
       "u('{v:new_unit}').party == 'Reserves'",
       "u('{v:next_kaku}')",
       "u('{v:ouch}').get_hp() > 3",
@@ -9030,6 +9060,7 @@
       "u('{v:p_unit}').wexp.get('{wep_type}') > 0",
       "u('{v:player}').get_field('Promoted_Weapon')",
       "u('{v:promoter}').get_field('Promoted_Weapon')",
+      "u('{v:ue_pick}').party == 'Reserves'",
       "u('{v:whomst}').stats['{stats}'] < 30",
       "u('{v:whomst}').stats['{stats}'] > 0",
       "u(guy).get_field('Pair_Up_Skills')",
@@ -9054,10 +9085,11 @@
       "unit.get_hp() <= (unit.get_max_hp()//4) and not is_dead(unit) and not has_skill(unit,'Bunny_Cooldown_Helper')",
       "unit.get_hp() <= 0",
       "unit.get_hp() <= 10",
-      "unit.get_hp() <= 10 and any([s.fatal_block for s in unit.skills])",
       "unit.get_hp() <= 10 and not any([s.fatal_block for s in unit.skills])",
       "unit.get_hp() <= 12 and any([s.fatal_block for s in unit.skills])",
       "unit.get_hp() <= 12 and not any([s.fatal_block for s in unit.skills])",
+      "unit.get_hp() <= 20 and any([s.fatal_block for s in unit.skills])",
+      "unit.get_hp() <= 20 and not any([s.fatal_block for s in unit.skills])",
       "unit.get_hp() <= 3 and any([s.fatal_block for s in unit.skills])",
       "unit.get_hp() <= 3 and not any([s.fatal_block for s in unit.skills])",
       "unit.get_hp() <= 4",
@@ -9080,6 +9112,7 @@
       "unit.get_weapon().nid == 'Charybdis'",
       "unit.get_weapon().nid == 'Charybdis_Plus'",
       "unit.klass != 'Hunting_Hounds'",
+      "unit.klass != 'Magician_Loonie'",
       "unit.klass == 'Armor'",
       "unit.klass == 'Brightwing'",
       "unit.klass == 'CursedSword'",
@@ -9322,7 +9355,7 @@
       "unit.team == 'player'",
       "unit.team == 'player' and 'Temporary' not in unit.tags and (not unit.generic or unit.nid == 'Double')",
       "unit.team == 'player' and 'Temporary' not in unit.tags and not is_dead('Adrius_Extra') and (not unit.generic or unit.nid == 'Double')",
-      "unit.team == 'player' and game.game_vars.get('in_combat', 0) == 1",
+      "unit.team == 'player' and game.game_vars.get('in_combat', 0) == 1 and game.level_vars.get('preps_ended', 0) == 1",
       "unit.team == 'player' and game.phase.get_current() == 'player'",
       "unit.team == 'player' and has_skill(unit, 'The_Dead_Walk_Child') and has_skill(unit, 'Poisoned') and unit.get_field('dead_walk', 'No') == 'No'",
       "unit.team == 'player' and not unit.generic and any([has_skill(u, 'Whisper_Stars') for u in game.get_player_units()])",
@@ -9337,7 +9370,7 @@
       "unit.traveler",
       "unit.traveler and skill_system.check_enemy(unit, u(unit.traveler))",
       "unit.wexp.get('{wep_type}') > 0",
-      "unit.wexp['Stone'] <= 0",
+      "unit.wexp['Stone'] < 15",
       "unit2",
       "unit2 and 'Boss' not in unit2.tags",
       "unit2 and (any([s.nid == 'Torn_Down' for s in unit2.skills])) and unit2.is_dying",
@@ -9869,8 +9902,14 @@
       "unit2.nid == 'wall_t3'",
       "unit2.nid in ['Adrius_Hallway']",
       "unit2.nid in ['Adrius_Spec']",
+      "unit2.nid in ['Bootes','Bootes_Final','Bootes_P']",
+      "unit2.nid in ['Gigantes','Gigantes_SP','Gigantes_P']",
+      "unit2.nid in ['Lupus','Lupus_Final','Lupus_P','Lupus_B']",
       "unit2.nid in ['Nikume', 'Nikume_E']",
+      "unit2.nid in ['Ouranos','Ouranos_Final','Ouranos_P']",
       "unit2.nid in ['Sydney_Spec']",
+      "unit2.nid in ['Trinity','Trinity_Final','Trinity_B']",
+      "unit2.nid in ['Vulpecula','Vulpecula_P','Vulpecula_E']",
       "unit2.nid in ['armory']",
       "unit2.nid in ['blacksmith']",
       "unit2.nid in ['contractor']",
@@ -9922,6 +9961,7 @@
       "v('Loreia_Dazzle_Counter') >= 70",
       "v('PenelopeCon')",
       "v('Serpens_Part_Two')",
+      "v('Serpens_SP_Part_Two', 1) == 2",
       "v('Solfrid_Dead', 1) == 2",
       "v('ToW_Choice') == 'Brave'",
       "v('ToW_Choice') == 'Hit'",
@@ -10393,6 +10433,7 @@
       "-1 * v('contract_gold')",
       "100 * v('promoted_headcount')",
       "15 * len(game.get_units_in_party())",
+      "15 - unit.wexp['Stone']",
       "RECORDS.get('Essence')",
       "RECORDS.get('Flame')",
       "RECORDS.get('Fragments')",
@@ -10480,6 +10521,7 @@
       "max(1,unit2.get_hp() - 10)",
       "max(10, unit.level)",
       "max(get_stacks('Horologium', 'Oscillation') // 2, 1)",
+      "max(int(u('Ayaka').get_max_hp() * v('revive_amt')), 1)",
       "max(int(u('Gemini_F').get_max_hp() * v('revive_amt')), 1)",
       "max(int(u('Gemini_M').get_max_hp() * v('revive_amt')), 1)",
       "max(unit.get_hp() - 1, 1)",
@@ -10544,6 +10586,7 @@
       "unit.get_hp() - 10",
       "unit.get_hp() - 12",
       "unit.get_hp() - 2 * len([s for s in unit.skills if s.nid == 'Heat'])",
+      "unit.get_hp() - 20",
       "unit.get_hp() - 3",
       "unit.get_hp() - 4",
       "unit.get_hp() - 7",
@@ -10700,7 +10743,6 @@
       "all_unit;[u.nid for u in game.units if u.team == 'player']",
       "allies;[u.nid for u in game.get_all_units() if u.team in ['player','other']]",
       "allies;[u.nid for u in game.get_player_units() if not 'Temporary' in u.tags and u.nid != unit.nid]",
-      "ally;[u.nid for u in game.get_player_units()]",
       "ally_armor;[u for u in get_allies_within_distance(unit.position, 1) if 'Armor' in u.tags]",
       "ally_def;[u.nid for u in game.get_player_units()]",
       "ally_family;[u for u in get_allies_within_distance(unit.position, 5) if u.name == 'Edryd' or u.nid in ['Player', 'Libra_P']]",
@@ -10736,7 +10778,7 @@
       "bird_friends;[u.nid for u in game.get_player_units() if has_skill(u.nid, 'Summon_Bird')]",
       "birds;[u for u in game.get_player_units() if has_skill(u, 'Spectral_Beacon')];no_warn",
       "blackmailed;[u.nid for u in game.get_player_units() if has_skill(u, 'Blackmailed')]",
-      "blank_skills;[s for s in u('{v:player_choice}').skills if not s.class_skill and not skill_system.hidden(s, u('{v:player_choice}'))]",
+      "blank_skills;[s for s in u('{v:player_choice}').skills if not s.class_skill and not skill_system.hidden(s, u('{v:player_choice}')) and not s.nid == 'Lux_Capture_Foe_Target']",
       "blockers;[p for p in {v:ValidLocs} if not game.board.get_unit(p)]",
       "bonus_party_unit;[u for u in {v:bonus_units}]",
       "bonus_unit;range(4)",
@@ -10757,9 +10799,9 @@
       "charging_ally;[u.nid for u in game.get_team_units(unit.team) if u.get_weapon() and utils.calculate_distance(unit.position, u.position) <= 5 and unit.nid != u.nid and has_skill(u, 'Command_Alpha')]",
       "charging_ally;[u.nid for u in game.get_team_units(unit.team) if u.get_weapon() and utils.calculate_distance(unit.position, u.position) <= 5 and unit.nid != u.nid and has_skill(u, 'Command_Beta')]",
       "charging_ally;[u.nid for u in game.get_team_units(unit.team) if utils.calculate_distance(unit.position, u.position) <= 3 and unit.nid != u.nid and ((has_skill(u, 'Leading_Charge') and get_skill(u,'Leading_Charge').data['charge'] > 0) or (has_skill(u, 'Leading_Charge_Plus') and get_skill(u,'Leading_Charge_Plus').data['charge'] > 0)) or (has_skill(u, 'Leading_Charge_Ilona') and get_skill(u,'Leading_Charge_Ilona').data['charge'] > 0)]",
-      "charging_ally;[u.nid for u in game.get_team_units(unit.team) if utils.calculate_distance(unit.position, u.position) <= 3 and unit.nid != u.nid and (has_skill(u, 'Hellspark_Aura') and get_skill(u,'Hellspark_Aura').data['charge'] > 0)]",
       "charging_ally;[u.nid for u in game.get_team_units(unit.team) if utils.calculate_distance(unit.position, u.position) <= 3 and unit.nid != u.nid and u.klass == 'Spectral_Bird']",
       "charging_ally;[u.nid for u in game.get_team_units(unit.team) if utils.calculate_distance(unit.position, u.position) <= 3 and utils.calculate_distance(unit2.position, u.position) <= 1 and unit.nid != u.nid and ((has_skill(u, 'Noble_Dance_Progress_Aura') and get_skill(u,'Noble_Dance_Progress_Aura').data['charge'] > 0) or (has_skill(u, 'Noble_Dance_Progress_Aura_Plus') and get_skill(u,'Noble_Dance_Progress_Aura_Plus').data['charge'] > 0))]",
+      "charging_ally;[u.nid for u in game.get_team_units(unit.team) if utils.calculate_distance(unit.position, u.position) <= 5 and unit.nid != u.nid and (has_skill(u, 'Hellspark_Aura') and get_skill(u,'Hellspark_Aura').data['charge'] > 0)]",
       "charging_grigol_guys;[u.nid for u in game.get_enemy_units() if u.ai_group and u.ai_group == 'Boss']",
       "cheater;[u.nid for u in get_units_in_region('cheater_zone', team='player')]",
       "cheer_ally;[u for u in get_allies_within_distance(unit.position, 5) if u.nid != unit.nid and has_skill(u, 'Cheer')]",
@@ -10885,7 +10927,7 @@
       "garbage_units;[u.nid for u in game.get_units_in_party() if has_skill(u, 'Garbage_Data')]",
       "gardeners;[u for u in game.get_player_units() if has_skill(u, 'Over_the_Garden_Walls')]",
       "gardenias;[u for u in {v:all_playable_units}]",
-      "generics;[u.nid for u in game.get_all_units() if u.team != 'enemy' and u.generic and u.nid != 'Double']",
+      "generics;[u.nid for u in game.get_all_units() if u.team != 'enemy' and u.generic and u.nid != 'Double' and 'Protect' not in u.tags]",
       "generics;[u.nid for u in game.get_all_units() if u.team != 'enemy' and u.generic]",
       "get_skill;[s.nid for s in unit2.skills if s.copysafe]",
       "gifties;[u.nid for u in game.get_player_units() if has_skill(u,'Lux_Gift')]",
@@ -11044,7 +11086,7 @@
       "rigged_coders;[u.nid for u in game.get_player_units() if has_skill(u.nid, 'Rigged_Code')]",
       "rika_wep;[w for w in u('Rikaharuz').wexp if w != 'Axe']",
       "rika_wep;[w for w in u('Rikaharuz').wexp if w not in ['Axe', 'Dark', 'Default']]",
-      "ripping;range(max(0, unit.get_stat('SPD') - unit.stats['SPD']) + max(0, unit.get_stat('STR') - unit.stats['STR']))",
+      "ripping;range(min(10, max(0, unit.get_stat('SPD') - unit.stats['SPD']) + max(0, unit.get_stat('STR') - unit.stats['STR'])))",
       "rival;[u.nid for u in game.get_player_units() if not u._finished and has_skill(u,'Rivalry')]",
       "rivers;[u.nid for u in game.get_units_in_party() if has_skill(u, 'Still_Rivers') and 'Deployed' in u.tags]",
       "room_types;['Combat','Respite','Shop','Event']",
@@ -11185,6 +11227,7 @@
       "the_doors;['door6a','door6b','door6c','door6d','door6e']",
       "the_region;[r.nid for r in game.level.regions if r.nid.startswith('E_')]",
       "three;[x for x in range(3)]",
+      "tiles;[u.nid for u in game.get_tile_units() if u.team != 'enemy' and 'Protect' not in u.tags]",
       "tiles;[u.nid for u in game.get_tile_units() if u.team != 'enemy']",
       "time_regions;range(3)",
       "times;[x for x in range({v:heisen_super})]",
@@ -11322,11 +11365,11 @@
       },
       {
         "nid": "game",
-        "uses": 1013
+        "uses": 1021
       },
       {
         "nid": "game_vars",
-        "uses": 82
+        "uses": 83
       },
       {
         "nid": "growths",
@@ -11370,11 +11413,11 @@
       },
       {
         "nid": "level",
-        "uses": 62
+        "uses": 61
       },
       {
         "nid": "level_vars",
-        "uses": 91
+        "uses": 92
       },
       {
         "nid": "levels",
@@ -11414,7 +11457,7 @@
       },
       {
         "nid": "RECORDS",
-        "uses": 991
+        "uses": 998
       },
       {
         "nid": "region",
@@ -11426,7 +11469,7 @@
       },
       {
         "nid": "s",
-        "uses": 362
+        "uses": 364
       },
       {
         "nid": "Scavenge_List",
@@ -11473,16 +11516,12 @@
         "uses": 4
       },
       {
-        "nid": "tilemap",
-        "uses": 1
-      },
-      {
         "nid": "u",
-        "uses": 610
+        "uses": 622
       },
       {
         "nid": "unit",
-        "uses": 796
+        "uses": 804
       },
       {
         "nid": "unit_funcs",
@@ -11490,7 +11529,7 @@
       },
       {
         "nid": "unit2",
-        "uses": 728
+        "uses": 732
       },
       {
         "nid": "units",
@@ -11531,8 +11570,8 @@
     ]
   },
   "resources": {
-    "files": 2988,
-    "checks": 1797,
+    "files": 2992,
+    "checks": 1799,
     "missing": [
       {
         "category": "portrait",
@@ -11643,7 +11682,7 @@
       },
       {
         "nid": "music",
-        "uses": 63
+        "uses": 65
       },
       {
         "nid": "panorama",

@@ -56,7 +56,7 @@ test.describe('Embrace of the Fog item status and stack hooks', () => {
 
     expect(authored).toEqual({
       counts: {
-        statuses_after_combat_on_hit: 32,
+        statuses_after_combat_on_hit: 33, // EOtF 2.0.1 data (2.0.0: 32)
         self_stacks_on_hit: 1,
         buff_ally: 14,
         stacks_on_hit: 2,
@@ -71,6 +71,7 @@ test.describe('Embrace of the Fog item status and stack hooks', () => {
         5, 5,
         6,
         2,
+        2, // EOtF 2.0.1: Crook_Knife
       ].sort((left, right) => left - right),
       foeOnly: ['Burning', 'Exposed', 'Toxin', 'Chilled', 'SPD_minus_4', 'Inflexible'],
       buffs: [

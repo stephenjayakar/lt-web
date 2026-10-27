@@ -88,7 +88,7 @@ test.describe('Embrace of the Fog final standard skill components', () => {
       },
       invalid: [],
       missing: [],
-      eventCount: 2339,
+      eventCount: 2353, // EOtF 2.0.1 data (2.0.0: 2339)
     });
   });
 

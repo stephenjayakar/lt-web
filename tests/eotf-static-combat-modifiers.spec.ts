@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog conditional static combat modifiers', () => {
-  test('count-locks all 1,999 authored component uses and value shapes', async ({ page }) => {
+  test('count-locks all 2,015 authored component uses and value shapes', async ({ page }) => {
     await bootEotf(page);
     const inventory = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -42,21 +42,23 @@ test.describe('Embrace of the Fog conditional static combat modifiers', () => {
     expect(inventory.counts).toEqual({
       attack_speed: 32,
       avoid: 76,
-      cannot_double: 39,
-      combat_condition: 472,
-      condition: 558,
+      // EOtF 2.0.1 data (2.0.0: cannot_double 39, combat_condition 472,
+      // condition 558, damage 49, damage_multiplier 24, resist 37).
+      cannot_double: 40,
+      combat_condition: 471,
+      condition: 564,
       crit: 81,
       crit_avoid: 33,
-      damage: 49,
-      damage_multiplier: 24,
+      damage: 56,
+      damage_multiplier: 26,
       defense_speed: 30,
       hit: 115,
-      resist: 37,
+      resist: 38,
       resist_multiplier: 35,
       stat_change: 418,
     });
     expect(Object.values(inventory.counts)
-      .reduce((total, count) => total + count, 0)).toBe(1999);
+      .reduce((total, count) => total + count, 0)).toBe(2015);
   });
 
   test('applies condition, combat snapshot, and charge gates to every hook', async ({ page }) => {
