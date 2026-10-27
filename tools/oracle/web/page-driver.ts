@@ -880,8 +880,14 @@ export async function runScenario(scn: Scenario): Promise<Json> {
     // drains it before it runs. Run it here, before the level, as Python's
     // title screen does (EOtF creates its persistent records there).
     if (scn.startup_events !== false) {
+      // Python's title_start (where py_driver boots): title music, then
+      // on_title_screen and on_startup. A level without music of its own
+      // keeps playing the title song.
+      const titleSong = RECORDS.get('_music_title_screen') ?? g.db.getConstant?.('music_main', null);
+      if (titleSong) void g.audioManager?.fadeIn?.(titleSong, 50);
       const ctx = { game: g, gameVars: g.gameVars, levelVars: g.levelVars };
-      if (g.eventManager.trigger({ type: 'on_startup' }, ctx)) {
+      const titleEvents = g.eventManager.trigger({ type: 'on_title_screen' }, ctx);
+      if (g.eventManager.trigger({ type: 'on_startup' }, ctx) || titleEvents) {
         g.state.change('event');
         await e.settle({ until: (en) => !en.game.eventManager.hasActiveEvents() && en.top() !== 'event' });
       }
