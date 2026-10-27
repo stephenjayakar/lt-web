@@ -60,21 +60,30 @@ const QA_AI_FIGHTER = 'QA_Fighter';
 const QA_AI_HEALER = 'QA_Healer';
 const OBJECTIVE_REGIONS = ['Seize', 'Arrive', 'Escape', 'Defuse', 'Visit', 'Key Point', 'Switch'];
 
-function behaviour(action: string, target: string, spec: unknown, viewRange: number) {
+function behaviour(action: string, target: string, spec: unknown, viewRange: number, condition = '') {
   return {
     action, target, target_spec: spec, view_range: viewRange,
-    invert_targeting: false, roam_speed: 100, desired_proximity: 0, condition: '',
+    invert_targeting: false, roam_speed: 100, desired_proximity: 0, condition,
   };
 }
 
+/**
+ * The first turns are played patiently: attack what is in reach this turn,
+ * otherwise hold so the enemy walks into the party instead of the party
+ * walking into the enemy one unit at a time. From PATIENT_TURNS on, units
+ * go for the objective regions and then pursue.
+ */
+const PATIENT_TURNS = 3;
+
 export function registerQaAiPresets(game: any): void {
-  const objectives = OBJECTIVE_REGIONS.map((spec) => behaviour('Interact', 'Event', spec, -4));
+  const later = `game.turncount >= ${PATIENT_TURNS}`;
+  const objectives = OBJECTIVE_REGIONS.map((spec) => behaviour('Interact', 'Event', spec, -4, later));
   game.db.ai.set(QA_AI_FIGHTER, {
     nid: QA_AI_FIGHTER,
     behaviours: [
       behaviour('Attack', 'Enemy', null, -2),
       ...objectives,
-      behaviour('Attack', 'Enemy', null, -4),
+      behaviour('Attack', 'Enemy', null, -4, later),
     ],
     priority: 20,
     offense_bias: 2,
@@ -86,7 +95,7 @@ export function registerQaAiPresets(game: any): void {
       behaviour('Support', 'Ally', null, -2),
       behaviour('Attack', 'Enemy', null, -2),
       ...objectives,
-      behaviour('Move_to', 'Ally', null, -4),
+      behaviour('Move_to', 'Ally', null, -4, later),
     ],
     priority: 15,
     offense_bias: 1,
