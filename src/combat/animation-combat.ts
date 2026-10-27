@@ -1211,7 +1211,9 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
   ): Promise<void> {
     try {
       const effectData = this.db.combatEffects?.get(effectNid) as CombatEffectData | undefined;
-      if (!effectData) return;
+      // Python loads an effect's sheet only when it has frames; spell
+      // effects such as Thunder or Heal only spawn child effects.
+      if (!effectData?.frames?.length) return;
       const resources = (globalThis as any).__ltResources ?? this.game?.resources;
       if (!resources) return;
       const img = await loadEffectSpritesheet(resources, effectNid);
