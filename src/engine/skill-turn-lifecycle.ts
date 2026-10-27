@@ -23,7 +23,9 @@ import {
 } from '../combat/skill-system';
 import { evaluateInt } from '../events/event-manager';
 import { isForkEngine } from './engine-flavor';
+import { sourceAllowsPlainRemoval } from '../combat/skill-system';
 import { getCombatRandom, getCombatRandomState } from './static-random';
+
 
 export type SkillTurnPhase = 'upkeep' | 'endstep';
 
@@ -359,7 +361,7 @@ export function applySkillTurnHooks(
         }
       }
 
-      if (removeAfterHooks) {
+      if (removeAfterHooks && sourceAllowsPlainRemoval(skill)) {
         game.actionLog.doAction(new RemoveSkillAction(unit, skill));
       }
     }

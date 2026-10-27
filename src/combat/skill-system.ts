@@ -210,6 +210,10 @@ export function initializeSkillData(
   if (isForkEngine() && skill.hasComponent('witch_warp_expression') && !skill.data.has('arbitrary')) {
     skill.data.set('arbitrary', '');
   }
+  // Python CombatArt.init: a combat art starts inactive.
+  if (skill.hasComponent('combat_art') && !skill.data.has('active')) {
+    skill.data.set('active', false);
+  }
   if (!skill.hasComponent('stat_change_at_apply_expression') ||
       skill.data.has('stat_changes')) return;
 
@@ -222,6 +226,23 @@ export function initializeSkillData(
     localArgs: new Map<string, unknown>([['skill', skill]]),
   });
   skill.data.set('stat_changes', changes);
+}
+
+/**
+ * Python UnitObject.remove_skill: a RemoveSkill with no source (an expiring
+ * status, the remove_skill event command) only removes an instance whose source type is removable
+ * (class, personal, fatigue, default). One granted by an item, terrain,
+ * region, aura, rescue or the game stays on (at 0 turns) until its own
+ * source takes it away.
+ */
+export function sourceAllowsPlainRemoval(skill: SkillObject): boolean {
+  const data = skill.data;
+  const types = [
+    data.get('sourceType'), data.get('itemSourceType'), data.get('positionStatusSourceType'),
+    data.get('auraSourceType'), data.get('rescueSourceType'),
+  ];
+  return !types.some((type) => typeof type === 'string' &&
+    ['item', 'terrain', 'region', 'aura', 'traveler', 'global'].includes(type));
 }
 
 /** Python skill_system.additional_tags, including EotF RedirectDamage. */

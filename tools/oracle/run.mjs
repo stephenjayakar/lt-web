@@ -109,7 +109,7 @@ async function main() {
         : runPython(path.resolve(file), path.join(dir, 'py.json'), backend, verbose);
       const webP = flags.has('--py-only')
         ? Promise.resolve({ engine: 'web', steps: [], error: 'skipped' })
-        : runWebScenario(scenario, { browser, verbose }).catch((e) => ({ engine: 'web', steps: [], error: String(e?.stack ?? e) }));
+        : runWebScenario(scenario, { browser, verbose, base: path.dirname(path.resolve(file)) }).catch((e) => ({ engine: 'web', steps: [], error: String(e?.stack ?? e) }));
       const [py, web] = await Promise.all([pyP, webP]);
       fs.writeFileSync(path.join(dir, 'web.json'), JSON.stringify(web, null, 1));
       if (!fs.existsSync(path.join(dir, 'py.json'))) fs.writeFileSync(path.join(dir, 'py.json'), JSON.stringify(py, null, 1));

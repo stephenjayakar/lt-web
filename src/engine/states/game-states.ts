@@ -338,6 +338,7 @@ import {
   unitSpriteTint,
   canUnlock as skillCanUnlock,
   unitHasTag,
+  sourceAllowsPlainRemoval,
   changeAi,
   checkEnemy,
 } from '../../combat/skill-system';
@@ -11797,7 +11798,7 @@ export class EventState extends State {
     }
 
     if (game.levelVars.get('_lose_game')) {
-      game.levelVars.set('_lose_game', false);
+      // Python leaves _lose_game set; the game over leads to the title.
       console.warn('GAME OVER — loss condition met via lose_game flag');
       game.state.clear();
       game.state.change('game_over');
@@ -13465,7 +13466,13 @@ export class EventState extends State {
       case 'if': {
         const condition = args[0] ?? 'True';
         const ctx = this.buildConditionContext();
-        if (evaluateCondition(condition, ctx)) {
+        // Python EventProcessor: a false `if` is evaluated a second time by
+        // _jump_conditional, and that second answer decides whether the body
+        // runs (a random condition such as `game.get_random(1, 2) == 1` draws
+        // twice and can still enter the body).
+        if (evaluateCondition(condition, ctx) ||
+            evaluateCondition(this.substituteEventArgs([cmd.args?.[0] ?? condition], game)[0] ?? condition,
+              this.buildConditionContext())) {
           // Condition true — advance into the if body
           this._jumpedToBranch = false;
           this.advancePointer();
@@ -14037,9 +14044,9 @@ export class EventState extends State {
         // Resolve/assign the new unit's nid
         let newNid = explicitNid;
         if (!newNid) {
-          let counter = 201;
-          while (game.units.has(String(counter))) counter++;
-          newNid = String(counter);
+          // Python str_utils.get_next_int('201', unit nids): '201' if free,
+          // else the first free '1', '2', ...
+          newNid = nextIntNid('201', game.units);
         } else if (game.units.has(newNid)) {
           console.warn(`create_unit: unit with nid "${newNid}" already exists`);
           this.advancePointer();
@@ -15718,12 +15725,16 @@ export class EventState extends State {
           const uid = /^\d+$/.test(skillId) ? parseInt(skillId, 10) : null;
           const matches = unit.skills.filter((skill: SkillObject) =>
             uid !== null ? skill.uid === uid : skill.nid === skillId);
+          // Python RemoveSkill without a source: instances granted by an
+          // item, terrain, region, aura, rescue or the game stay, and a count
+          // only counts the instances actually removed.
+          const removable = matches.filter((skill: SkillObject) => sourceAllowsPlainRemoval(skill));
           const removals = uid !== null || count === 1
-            ? matches.slice(0, 1)
+            ? matches.slice(0, 1).filter((skill: SkillObject) => removable.includes(skill))
             : count < 0
-              ? matches
-              : matches.slice(0, count);
-          rsRemovedSkill = removals[0];
+              ? removable
+              : removable.slice(0, count);
+          rsRemovedSkill = matches[0];
           for (const skill of removals) {
             game.actionLog.doAction(new RemoveSkillAction(unit, skill));
           }
@@ -18323,21 +18334,29 @@ export class EventState extends State {
           void game.audioManager.playMusic(args[1]);
         }
         const otherOptions = prepList(args[2]).filter(Boolean);
+        // EOtF's engine has no option descriptions (no _prep_options_info_descs)
+        // and pads the enabled list by how many on-select events were given.
+        const forkPrep = isForkEngine();
         if (otherOptions.length) {
           const enabled = prepList(args[3]).map(prepBool);
-          while (enabled.length < otherOptions.length) enabled.push(false);
+          const givenEvents = prepList(args[4]).length;
+          if (forkPrep) for (let i = givenEvents; i < otherOptions.length; i++) enabled.push(false);
+          else while (enabled.length < otherOptions.length) enabled.push(false);
           const onSelect: (string | null)[] = prepList(args[4]).map((entry) => entry || null);
           while (onSelect.length < otherOptions.length) onSelect.push(null);
           const descs = prepList(args[5]);
           while (descs.length < otherOptions.length) descs.push('');
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled', enabled.slice(0, otherOptions.length)));
+          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled',
+            forkPrep ? enabled : enabled.slice(0, otherOptions.length)));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_events', onSelect.slice(0, otherOptions.length)));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_additional_options', otherOptions));
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', descs.slice(0, otherOptions.length)));
+          if (!forkPrep) {
+            game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', descs.slice(0, otherOptions.length)));
+          }
         } else {
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_enabled', []));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_events', []));
-          game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', []));
+          if (!forkPrep) game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_options_info_descs', []));
           game.actionLog.doAction(new SetGameVarAction(game.gameVars, '_prep_additional_options', []));
         }
 

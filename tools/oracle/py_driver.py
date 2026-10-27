@@ -336,7 +336,7 @@ class Engine:
 
     def start_level(self, level_nid: str, seed: int, events: bool,
                     rng_mode: str | None = None, growths: str | None = None,
-                    game_vars: dict | None = None) -> None:
+                    game_vars: dict | None = None, run_state: dict | None = None) -> None:
         from app.engine import game_state
         from app.utilities import static_random
         self.cf.SETTINGS['random_seed'] = int(seed)
@@ -351,6 +351,8 @@ class Engine:
         self.game.load_states(['start_level_asset_loading'])
         self.game.build_new()
         self.apply_mode(rng_mode, growths)
+        if run_state:
+            self.apply_run_state(run_state)
         # Run state a real playthrough would have set before this level.
         for k, v in (game_vars or {}).items():
             self.game.game_vars[k] = v
@@ -368,6 +370,64 @@ class Engine:
             self.game.events.trigger = trigger
         else:
             self._suppress_events = False
+
+    def apply_run_state(self, state: dict) -> None:
+        """Load a captured run state (capture_run_state.py) into the fresh
+        game, the way GameState.load restores units, items and skills, so
+        the next level starts as it would mid-run. Units start off the map
+        and lose terrain statuses, as after a real level end."""
+        from app.engine import save
+        from app.engine.objects.item import ItemObject
+        from app.engine.objects.skill import SkillObject
+        from app.engine.objects.unit import UnitObject
+        from app.engine.source_type import SourceType
+        from app.engine.persistent_records import RECORDS
+        g = self.game
+        for k, v in state.get('game_vars', {}).items():
+            if k != '_random_seed':
+                g.game_vars[k] = v
+        for nid, value in state.get('records', {}).items():
+            if nid in RECORDS.keys():
+                RECORDS.update(nid, value)
+            else:
+                RECORDS.create(nid, value)
+        for d in state.get('items', []):
+            g.item_registry[d['uid']] = ItemObject.restore(d)
+        for d in state.get('skills', []):
+            g.skill_registry[d['uid']] = SkillObject.restore(d)
+        for item in list(g.item_registry.values()):
+            for sub_uid in item.subitem_uids:
+                sub = g.item_registry.get(sub_uid)
+                if sub:
+                    item.subitems.append(sub)
+                    for component in sub.components:
+                        component.item = item
+                    sub.parent_item = item
+        for skill in list(g.skill_registry.values()):
+            if skill.subskill_uid is not None and skill.subskill_uid in g.skill_registry:
+                skill.subskill = g.skill_registry[skill.subskill_uid]
+                skill.subskill.parent_skill = skill
+        save.set_next_uids(g)
+        source_types = {t.nid: t for t in SourceType}
+        for d in state.get('units', []):
+            d = dict(d)
+            d['position'] = None
+            d['skills'] = [(uid, tuple(src) if isinstance(src, list) else src, source_types[stype])
+                           for uid, src, stype in d['skills'] if stype != 'terrain']
+            unit = UnitObject.restore(d, g)
+            g.unit_registry[unit.nid] = unit
+        for p in state.get('parties', []):
+            party = g.get_party(p['nid'])
+            if party:
+                party.money = p['money']
+                party.convoy = [g.item_registry[uid] for uid in p['convoy'] if uid in g.item_registry]
+                if hasattr(party, 'bexp'):
+                    party.bexp = p.get('bexp', 0)
+        if state.get('current_party'):
+            g.current_party = state['current_party']
+        if hasattr(g, 'level_cap_modifier'):
+            g.level_cap_modifier = int(state.get('level_cap_modifier') or 0)
+        g.already_triggered_events = list(state.get('already_triggered', []))
 
     def apply_mode(self, rng_mode: str | None, growths: str | None) -> None:
         from app.data.database.difficulty_modes import RNGOption, GrowthOption
@@ -720,13 +780,18 @@ class Runner:
         e.press('SELECT')
         e.settle(until=lambda en: en.top() == 'option_menu')
         e.choose('End')
-        e.settle(until=lambda en: en.top() == 'free' and en.game.phase.get_current() == 'player',
-                 max_frames=a.get('max_frames', 20000))
+        # Back to the player phase, or a level whose turn ended in free roam
+        # or a game over (stop there rather than pressing on into the title).
+        e.settle(until=lambda en: (en.top() in ('free', 'free_roam') and en.game.phase.get_current() == 'player')
+                 or en.top() == 'game_over', max_frames=a.get('max_frames', 20000))
 
     def _empty_tile(self):
+        """First unoccupied tile inside the board's movement bounds (the
+        cursor cannot leave them, so a tile outside could land on a unit)."""
         g = self.e.game
-        for y in range(g.tilemap.height):
-            for x in range(g.tilemap.width):
+        min_x, min_y, max_x, max_y = g.board.bounds
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
                 if not g.board.get_unit((x, y)):
                     return (x, y)
         raise OracleError('no empty tile')
@@ -753,6 +818,32 @@ class Runner:
             e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
         finally:
             e._suppress_events = was
+
+    def do_attack_or_wait(self, a) -> None:
+        """A simple scripted player move: ``unit`` (default Player) attacks
+        with its first weapon the nearest valid target (Manhattan distance,
+        then x, then y) if its menu offers Attack, else waits in place."""
+        e = self.e
+        nid = a.get('unit', 'Player')
+        u = e.game.get_unit(nid)
+        if not u or not u.position or u.finished or u.team != 'player':
+            return
+        self.in_menu_for(nid)
+        _, values = e.menu_values()
+        if 'Attack' in [str(v) for v in values]:
+            e.choose('Attack')
+            e.settle()
+            if e.top() == 'weapon_choice':
+                e.press('SELECT')
+                e.settle()
+            e.expect('combat_targeting')
+            st = e.game.state.current_state()
+            ux, uy = u.position
+            pos = min(st.selection.pos_list, key=lambda p: (abs(p[0] - ux) + abs(p[1] - uy), p[0], p[1]))
+            self._target_and_fire(list(pos))
+        else:
+            e.choose('Wait')
+            e.settle()
 
     def do_choose(self, a) -> None:
         """Pick a named option in whatever menu the top state shows."""
@@ -840,6 +931,14 @@ def install_ai_trace(e: Engine) -> None:
 # Snapshot
 # --------------------------------------------------------------------------
 
+def _current_music():
+    """The song on top of the sound thread's stack (the dummy mixer never
+    reports playback, so get_current_song() would always be None)."""
+    from app.engine.sound import get_sound_thread
+    stack = getattr(get_sound_thread(), 'song_stack', None)
+    return stack[-1].nid if stack else None
+
+
 def snapshot(e: Engine) -> dict:
     g = e.game
     units = {}
@@ -882,6 +981,7 @@ def snapshot(e: Engine) -> dict:
             'ai': u.ai,
             'ai_group': u.ai_group,
             'traveler': u.traveler,
+            'generic': bool(u.generic),
         }
     regions = []
     for r in g.level.regions:
@@ -895,7 +995,8 @@ def snapshot(e: Engine) -> dict:
             'only_once': bool(r.only_once),
         })
     party = g.get_party()
-    events = [ev.nid for ev in g.events.all_events]
+    # Processing order: the event stack runs its last entry first.
+    events = [ev.nid for ev in reversed(g.events.all_events)]
     sr = e.static_random.r
     return {
         'frame': e.frame,
@@ -909,6 +1010,8 @@ def snapshot(e: Engine) -> dict:
         'game_vars': _jsonable(dict(g.game_vars)),
         'level_vars': _jsonable(dict(g.level_vars)),
         'regions': regions,
+        'objective': _jsonable(dict(g.level.objective)) if g.level else None,
+        'music': _current_music(),
         'events': events,
         'already_triggered': sorted(g.already_triggered_events),
         'rng': {'combat': sr.combat_random.state, 'growth': sr.growth_random.state,
@@ -943,7 +1046,22 @@ def pick_backend(scn: dict, override: str | None = None) -> str:
     return 'fork' if scn.get('project', 'default.ltproj') in FORK_PROJECTS else 'upstream'
 
 
-def run_scenario(scn: dict, backend: str = 'upstream') -> dict:
+def load_run_state(scn: dict, base: Path | None = None):
+    """A scenario's run state: inline, or a path (absolute, or relative to
+    the scenario file / $LT_ORACLE_HOME)."""
+    rs = scn.get('run_state')
+    if rs is None or isinstance(rs, dict):
+        return rs
+    for cand in (Path(rs), (base or Path('.')) / rs, ORACLE_HOME / rs):
+        if cand.exists():
+            return json.loads(cand.read_text(encoding='utf-8'))
+    raise OracleError('run state not found: %s' % rs)
+
+
+def run_scenario(scn: dict, backend: str = 'upstream', base: Path | None = None) -> dict:
+    """One level (``level``) with setup and actions, or a level sweep
+    (``levels``): every listed level started from the same run state and
+    settled, one snapshot each, failures recorded per level."""
     out = {'engine': 'python', 'backend': backend, 'scenario': scn.get('name'),
            'steps': [], 'error': None}
     real_stdout = sys.stdout
@@ -956,13 +1074,60 @@ def run_scenario(scn: dict, backend: str = 'upstream') -> dict:
             out['shims'] = e.shims
         if scn.get('startup_events', True):
             e.run_startup()
-        e.start_level(str(scn['level']), scn.get('seed', 0), scn.get('events', True),
-                      scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'),
-                      scn.get('start_game_vars'))
-        e.settle(skip=scn.get('skip', 'SELECT'), max_frames=scn.get('start_frames', 20000))
+        run_state = load_run_state(scn, base)
+        from app.engine.persistent_records import RECORDS
+        baseline_records = RECORDS.save()
+        sweep = scn.get('levels')
+        for level in (sweep or [scn['level']]):
+            step = {'action': {'do': 'level', 'level': str(level)} if sweep else {'do': 'start'}}
+            try:
+                RECORDS.restore(baseline_records)
+                e.start_level(str(level), scn.get('seed', 0), scn.get('events', True),
+                              scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'),
+                              scn.get('start_game_vars'), run_state)
+                e.settle(skip=scn.get('skip', 'SELECT'), max_frames=scn.get('start_frames', 20000))
+                if scn.get('through_prep') and e.top() == 'prep_main':
+                    # Leave preparations like a player: the first player
+                    # phase (turn 1 events) only starts after Fight.
+                    e.choose('Fight')
+                    # prep_main fades out for 300 ms before it leaves.
+                    e.settle(until=lambda en: en.top() != 'prep_main', max_frames=600)
+                    e.settle(skip=scn.get('skip', 'SELECT'), max_frames=scn.get('start_frames', 20000))
+                Runner(e, scn).setup(scn.get('setup', []))
+            except Exception as exc:
+                traceback.print_exc()
+                step['error'] = '%s: %s' % (type(exc).__name__, exc)
+                if not sweep:
+                    raise
+            try:
+                step['snapshot'] = snapshot(e)
+            except Exception as exc:
+                step.setdefault('error', 'snapshot failed: %s' % exc)
+            out['steps'].append(step)
+            # Sweep: the same actions on every level that settled into a
+            # turn-based phase (free roam levels have no turns to end).
+            if sweep and not step.get('error') and e.top() != 'free_roam':
+                r = Runner(e, scn)
+                for a in scn.get('level_actions', []):
+                    act = {'action': dict(a, level=str(level))}
+                    try:
+                        r.run_action(a)
+                    except Exception as exc:
+                        traceback.print_exc()
+                        act['error'] = '%s: %s' % (type(exc).__name__, exc)
+                    try:
+                        act['snapshot'] = snapshot(e)
+                    except Exception as exc:
+                        act.setdefault('error', 'snapshot failed: %s' % exc)
+                    out['steps'].append(act)
+                    if act.get('error'):
+                        break
+        if sweep:
+            failed = [s['action']['level'] for s in out['steps'] if s.get('error')]
+            if failed:
+                out['level_errors'] = failed
+            return out
         r = Runner(e, scn)
-        r.setup(scn.get('setup', []))
-        out['steps'].append({'action': {'do': 'start'}, 'snapshot': snapshot(e)})
         for a in scn.get('actions', []):
             try:
                 r.run_action(a)
@@ -988,7 +1153,7 @@ def main(argv=None) -> int:
     ap.add_argument('--backend', choices=['upstream', 'fork'])
     args = ap.parse_args(argv)
     scn = json.loads(Path(args.scenario).read_text(encoding='utf-8'))
-    result = run_scenario(scn, pick_backend(scn, args.backend))
+    result = run_scenario(scn, pick_backend(scn, args.backend), Path(args.scenario).resolve().parent)
     text = json.dumps(result, indent=1, sort_keys=True)
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,14 @@
+{
+  "name": "eotf-level-sweep",
+  "description": "Every EOtF level started from one captured run state (hub run start with the first unit offered, carried into Act_1), settled through preparations to the first player phase.",
+  "project": "eotf.ltproj",
+  "levels": "all",
+  "events": true,
+  "through_prep": true,
+  "seed": 0,
+  "run_state": "run-state/eotf-run.json",
+  "known_diffs": [
+    "units.*.growth_points",
+    "units.*.party"
+  ]
+}

@@ -105,7 +105,11 @@ one released), and the state machine is updated exactly like `driver.run`.
   "setup": [ ... ],                   // direct state edits after the level settles
   "actions": [ ... ],                 // one snapshot after each
   "ignore": ["units.*.ai"],           // extra non-comparable paths for this scenario
-  "known_diffs": ["units.Eirika.hp"]  // reported as (known), do not fail the run
+  "known_diffs": ["units.Eirika.hp"], // reported as (known), do not fail the run
+  "run_state": "run-state/eotf-run.json", // captured run state loaded before the level (see Run states)
+  "levels": ["0", "1"],               // level sweep instead of "level": one snapshot per level
+  "through_prep": true,               // press Fight when a level settles in preparations
+  "level_actions": [{"do": "end_turn"}] // sweep: actions run on every turn-based level after it starts
 }
 ```
 
@@ -152,7 +156,8 @@ pending state change or moving unit, pressing SELECT to advance dialog.
 | `{"do": "spell", "unit": "Moulder", "target": "Vanessa", "item": "Heal"}` | `Spells` -> spell -> target |
 | `{"do": "use_item", "unit": "Eirika", "item": "Vulnerary", "option": "Use", "target": ...}` | `Item` -> item -> option |
 | `{"do": "trade", "unit": "Vanessa", "with": "Moulder", "give": ["Javelin"], "take": ["Vulnerary"]}` | trade screen; each give/take lands in the first free slot |
-| `{"do": "end_turn"}` | option menu `End`, runs the AI phases until player phase |
+| `{"do": "end_turn"}` | option menu `End`, runs the AI phases until player phase (or free roam, or a game over) |
+| `{"do": "attack_or_wait", "unit": "Player"}` | attack the nearest valid target with the first weapon if the menu offers Attack, else Wait |
 | `{"do": "event", "script": ["give_money;100", "..."]}` | inline event (also `"nid"` for a DB event, `"trigger"` for a trigger class) |
 | `{"do": "choose", "option": "Fight"}` | pick an option in the top state's menu |
 | `{"do": "press", "button": "START"}`, `{"do": "frames", "n": 30}`, `{"do": "settle"}` | raw control |
@@ -179,9 +184,11 @@ several trade partners are a menu on the web instead of map targeting.
       "items": [{"nid", "uses", "c_uses", "droppable"}],
       "equipped_weapon", "skills", "skill_data",
       "finished", "has_attacked", "has_traded", "has_moved",
-      "ai", "ai_group", "traveler" } },
+      "ai", "ai_group", "traveler", "generic" } },
   "game_vars", "level_vars", "regions": [{"nid", "region_type", "position", "size", "sub_nid", "time_left", "only_once"}],
-  "events",                                // queued/running event nids
+  "objective": {"simple", "win", "loss"},
+  "music",                                 // song on top of the music stack
+  "events",                                // queued/running event nids, in processing order
   "already_triggered",                     // only_once events used
   "rng": {"combat", "growth", "other"}     // LCG states; catches extra or missing rolls
 }
@@ -238,6 +245,45 @@ units, `load_unit` and `create_unit` (default-event-units, eotf-hub-start).
   `Generate_Enemies` on the fork too. Use `"events": false` plus event
   scripts and setup for room maps, or seed variables with
   `start_game_vars`.
+
+## Run states
+
+Room levels need the state a real run builds before them. A run state is
+captured once from a Python engine and loaded into both engines before each
+level, so both start from the same documented state:
+
+```
+<fork python> -I tools/oracle/capture_run_state.py -o $LT_ORACLE_HOME/run-state/eotf-run.json
+```
+
+The capture boots the project, runs on_startup, starts the hub with its
+events, triggers the hub keeper's run-start event, answers its menus (the
+first units offered, then "Yes"), and lets the real level end carry the run
+into the next level (`Act_1`). Once that level settles it writes JSON with
+the game vars, persistent records, parties (money, convoy), spent only_once
+events and the persistent units with their items and skills as the Python
+engine saves them. Both drivers load it after `build_new`: units start off
+the map without terrain statuses, as after a level end, and the uid counters
+continue after the captured items and skills. The file is generated from the
+project's data, so it stays outside the repo.
+
+## Level sweeps
+
+`node tools/oracle/level-sweep.mjs [sweep.json] [--levels=a,b] [--chunk=8]
+[--workers=3]` starts every level (default `sweeps/eotf-level-sweep.json`:
+all EOtF levels except DEBUG) from the run state on both engines, settles
+through preparations to the first player phase, and diffs one snapshot per
+level. Levels run in chunks (one Python process and one page per chunk,
+`workers` chunks in parallel, about ten minutes for EOtF). It prints a
+per-level table and writes `report.md` and `diffs.json` under
+`$LT_ORACLE_OUT/<name>/`. Diffs on generic units' construction (stats, HP,
+weapon experience, equipped weapon, growth points, party, class skills) are
+counted in their own column, so level flow differences stand out.
+
+`sweeps/eotf-first-turn.json` adds one full turn per level (end the turn,
+AI phases, next upkeep); `sweeps/eotf-first-turn-act.json` first lets the
+Player attack the nearest enemy in range (else wait). The table then shows
+each step's result and how many diffs are new since the previous step.
 
 ## Writing a scenario
 

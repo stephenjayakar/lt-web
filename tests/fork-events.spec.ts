@@ -501,3 +501,119 @@ test.describe('EOtF fork event commands (engine-checked)', () => {
     });
   });
 });
+
+// Found by the level-start differential (tools/oracle/level-sweep.mjs); the
+// expected values come from EOtF's own engine.
+test.describe('Level-start differential fixes', () => {
+  test('a false if is evaluated twice and the second answer decides', async ({ page }) => {
+    await bootEotf(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.gameVars.set('_random_seed', 2);
+      g.gameVars.delete('_other_random_seed');
+      g.gameVars.delete('_other_random_state');
+    });
+    await runEvent(page, 'QaIfTwice', [
+      'if;game.get_random(1, 2) == 1',
+      'game_var;qa_body;1',
+      'else',
+      'game_var;qa_else;1',
+      'end',
+      'if;game.get_random(1, 100) > 1000',
+      'game_var;qa_never;1',
+      'elif;game.get_random(1, 100) > 1000',
+      'game_var;qa_never2;1',
+      'end',
+      'game_var;qa_after;game.get_random(1, 1000)',
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return ['qa_body', 'qa_else', 'qa_never', 'qa_never2', 'qa_after'].map((key) => g.gameVars.get(key) ?? null);
+    });
+    // First draw 2 (false), second draw 1: the body runs. The always-false
+    // if draws twice, its elif once, so qa_after is the sixth draw.
+    expect(result).toEqual([1, null, null, null, 497]);
+  });
+
+  test('carried-over units keep their place ahead of a new level\'s units', async ({ page }) => {
+    await bootEotf(page);
+    const order = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      g.cleanUpLevel();
+      await g.loadLevel('EX_2');
+      return [...g.units.keys()];
+    });
+    expect(order.indexOf('Player')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('Player')).toBeLessThan(order.indexOf('Yusha'));
+  });
+
+  test('an item-granted timed status stays at 0 turns when it runs out', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const { applySkillTurnHooks } = await import('/src/engine/skill-turn-lifecycle.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Player');
+      const fromItem = new SkillObject(g.db.skills.get('Mighty_Gale'));
+      fromItem.data.set('turns', 1);
+      fromItem.data.set('itemSourceType', 'item');
+      const plain = new SkillObject(g.db.skills.get('Mighty_Gale'));
+      plain.data.set('turns', 1);
+      unit.skills.push(fromItem, plain);
+      applySkillTurnHooks(g, [unit], 'upkeep');
+      return {
+        fromItem: unit.skills.includes(fromItem) ? fromItem.data.get('turns') : 'removed',
+        plain: unit.skills.includes(plain) ? plain.data.get('turns') : 'removed',
+      };
+    });
+    expect(result).toEqual({ fromItem: 0, plain: 'removed' });
+  });
+
+  test('prep keeps no option descriptions, and a given combat art starts inactive', async ({ page }) => {
+    await bootEotf(page);
+    await runEvent(page, 'QaPrepDescs', ['give_skill;Player;Capture_Piece;no_banner']);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const art = g.units.get('Player').skills.find((s: any) => s.nid === 'Capture_Piece');
+      return { active: art?.data.get('active') ?? 'missing' };
+    });
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.db.events.set('QaPrep', {
+        name: 'QaPrep', nid: 'QaPrep', trigger: 'QaPrep', level_nid: g.currentLevel?.nid ?? null,
+        condition: 'True', only_once: false, priority: 0, _source: ['prep;t'],
+      });
+      g.eventManager.triggerSpecific('QaPrep', { type: 'QaPrep' }, true);
+      g.state.change('event');
+      (window as any).__harness.stepFrames(20, null);
+    });
+    const prep = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return { descs: g.gameVars.has('_prep_options_info_descs'), enabled: g.gameVars.get('_prep_options_enabled') };
+    });
+    expect({ ...result, ...prep }).toEqual({ active: false, descs: false, enabled: [] });
+  });
+});
+
+test.describe('First-turn differential fixes', () => {
+  test('create_unit without a nid takes 201, then 1, 2, ... as Python get_next_int does', async ({ page }) => {
+    await bootEotf(page);
+    const before = await page.evaluate(() => [...(window as any).__gameRef.units.keys()]);
+    await runEvent(page, 'QaCreateNids', ['create_unit;Keeper', 'create_unit;Keeper', 'create_unit;Keeper']);
+    const added = await page.evaluate((prior: string[]) =>
+      [...(window as any).__gameRef.units.keys()].filter((nid: string) => !prior.includes(nid)), before);
+    expect(added).toEqual(['201', '1', '2']);
+  });
+  test('remove_skill leaves skills the game granted, and counts only removed instances', async ({ page }) => {
+    await bootEotf(page);
+    await runEvent(page, 'QaRemoveSkillSource', [
+      'give_skill;Player;HaveFaith;no_banner', 'give_skill;Player;HaveFaith;no_banner',
+      'remove_skill;Player;Global_Parameters;no_banner', 'remove_skill;Player;HaveFaith;1;no_banner',
+    ]);
+    const counts = await page.evaluate(() => {
+      const nids = (window as any).__gameRef.units.get('Player').skills.map((s: any) => s.nid);
+      return [nids.filter((n: string) => n === 'Global_Parameters').length, nids.filter((n: string) => n === 'HaveFaith').length];
+    });
+    expect(counts).toEqual([1, 0]);
+  });
+});
