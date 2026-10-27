@@ -17,6 +17,8 @@ export class ResourceManager {
   private audioBuffers: Map<string, ArrayBuffer> = new Map();
   private jsonCache: Map<string, unknown> = new Map();
   private pendingImages: Map<string, Promise<HTMLImageElement>> = new Map();
+  /** Python RESOURCES.map_sprites: the project's map sprite nids (null if unlisted). */
+  private mapSpriteNids: Promise<Set<string> | null> | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
@@ -212,11 +214,26 @@ export class ResourceManager {
   async tryLoadMapSprite(
     nid: string,
   ): Promise<{ stand: HTMLImageElement | null; move: HTMLImageElement | null }> {
+    // Python looks the nid up in RESOURCES.map_sprites (the catalog in
+    // map_sprites.json) and only then loads files; a missing variant such as
+    // "<Class>Female" is a silent miss, not a failed image request.
+    const catalog = await this.loadMapSpriteCatalog();
+    if (catalog && !catalog.has(nid)) return { stand: null, move: null };
     const [stand, move] = await Promise.all([
       this.tryLoadImage(`resources/map_sprites/${nid}-stand.png`),
       this.tryLoadImage(`resources/map_sprites/${nid}-move.png`),
     ]);
     return { stand, move };
+  }
+
+  private loadMapSpriteCatalog(): Promise<Set<string> | null> {
+    this.mapSpriteNids ??= this.tryLoadJsonSilent<unknown[]>('resources/map_sprites/map_sprites.json').then((list) => {
+      if (!Array.isArray(list) || list.length === 0) return null;
+      const nids = list.map((entry) =>
+        typeof entry === 'string' ? entry : (entry as { nid?: unknown } | null)?.nid);
+      return nids.every((n) => typeof n === 'string') ? new Set(nids as string[]) : null;
+    });
+    return this.mapSpriteNids;
   }
 
   /** Load a portrait image by NID. */
