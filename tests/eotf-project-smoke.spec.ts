@@ -769,7 +769,7 @@ test.describe('Embrace of the Fog project compatibility', () => {
     expect(failures).toEqual([]);
   });
 
-  test('all 4937 conditions, 249 evals, and 646 loops execute in strict mode', async ({ page }) => {
+  test('all 4966 conditions, 252 evals, and 646 loops execute in strict mode', async ({ page }) => {
     await initializeCampaignRecords(page);
 
     const inventory = eotfManifest.expressions as {
@@ -777,8 +777,9 @@ test.describe('Embrace of the Fog project compatibility', () => {
       evalSubstitutions: string[];
       loops: string[];
     };
-    expect(inventory.conditions).toHaveLength(4_937);
-    expect(inventory.evalSubstitutions).toHaveLength(249);
+    // EOtF 2.0.1 data (2.0.0: 4937 conditions, 249 evals).
+    expect(inventory.conditions).toHaveLength(4_966);
+    expect(inventory.evalSubstitutions).toHaveLength(252);
     expect(inventory.loops).toHaveLength(646);
 
     const result = await page.evaluate(async (expressions) => {
@@ -1121,8 +1122,8 @@ test.describe('Embrace of the Fog project compatibility', () => {
       [...result.failures.slice(0, 100), ...result.warnings.slice(-100)].join('\n'),
     ).toEqual([]);
     expect(result).toMatchObject({
-      conditionCount: 4_937,
-      evalCount: 249,
+      conditionCount: 4_966,
+      evalCount: 252,
       loopCount: 646,
     });
     // Only Python exceptions may be logged: no JavaScript errors from the

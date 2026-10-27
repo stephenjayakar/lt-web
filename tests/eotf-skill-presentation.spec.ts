@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog skill presentation', () => {
-  test('count-locks all 124 authored map and combat presentation uses', async ({ page }) => {
+  test('count-locks all 127 authored map and combat presentation uses', async ({ page }) => {
     await bootEotf(page);
     const result = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -43,8 +43,8 @@ test.describe('Embrace of the Fog skill presentation', () => {
       counts: {
         display_skill_icon_in_combat: 12,
         hide_skill_icon_in_combat: 4,
-        unit_anim: 54,
-        unit_flickering_tint: 54,
+        unit_anim: 55, // EOtF 2.0.1 data (2.0.0: 54)
+        unit_flickering_tint: 56, // EOtF 2.0.1 data (2.0.0: 54)
       },
       invalid: [],
     });

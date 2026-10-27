@@ -15,6 +15,7 @@ test.describe('Embrace of the Fog regeneration and recoil hooks', () => {
       const expressions = new Set(['eval_regeneration', 'eval_upkeep_damage']);
       const numbers = new Set([
         'regeneration',
+        'regeneration_no_anim',
         'upkeep_damage',
         'recoil',
         'post_combat_damage',
@@ -47,7 +48,10 @@ test.describe('Embrace of the Fog regeneration and recoil hooks', () => {
         post_combat_damage: 2,
         post_combat_damage_percent: 1,
         recoil: 9,
-        regeneration: 9,
+        // EOtF 2.0.1 moved Venom from regeneration (2.0.0: 9) to the
+        // project-local regeneration_no_anim.
+        regeneration: 8,
+        regeneration_no_anim: 1,
         upkeep_damage: 2,
       },
       invalid: [],
@@ -79,6 +83,7 @@ test.describe('Embrace of the Fog regeneration and recoil hooks', () => {
         [['eval_regeneration', '3']],
       );
       const signedRegeneration = make('_SignedRegeneration', [['regeneration', -0.05]]);
+      const silentRegeneration = make('_SilentRegeneration', [['regeneration_no_anim', -0.05]]);
       const upkeep = make('_UpkeepDamage', [['upkeep_damage', 2]]);
       const evaluatedDamage = make('_EvalUpkeepDamage', [
         ['eval_upkeep_damage', '4'],
@@ -90,6 +95,7 @@ test.describe('Embrace of the Fog regeneration and recoil hooks', () => {
         regeneration,
         evaluatedRegeneration,
         signedRegeneration,
+        silentRegeneration,
         upkeep,
         evaluatedDamage,
       ];
@@ -136,18 +142,19 @@ test.describe('Embrace of the Fog regeneration and recoil hooks', () => {
 
     expect(result).toEqual({
       changed: {
-        hp: 10,
+        hp: 9,
         charge: 0,
         effects: [
           ['regeneration', 4],
           ['eval_regeneration', 3],
           ['regeneration', -1],
+          ['regeneration_no_anim', -1],
           ['upkeep_damage', -2],
           ['eval_upkeep_damage', -4],
         ],
       },
       reversed: { hp: 10, charge: 1 },
-      replayed: { hp: 10, charge: 0 },
+      replayed: { hp: 9, charge: 0 },
     });
   });
 
