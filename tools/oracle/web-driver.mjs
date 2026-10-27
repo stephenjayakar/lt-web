@@ -20,18 +20,45 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const PORT = Number(process.env.ORACLE_PORT ?? process.env.PLAYWRIGHT_PORT ?? 5190);
 const BASE = `http://localhost:${PORT}`;
 
-async function reachable() {
+const STARTUP_MS = Number(process.env.ORACLE_VITE_TIMEOUT_MS ?? 300_000);
+
+/** One GET with its own timeout; false on any network error or non-2xx. */
+async function ok(url, timeoutMs) {
   try {
-    const res = await fetch(BASE + '/', { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    await res.arrayBuffer();
     return res.ok;
   } catch {
     return false;
   }
 }
 
-/** Start Vite unless something already serves the port. Returns a stopper. */
+/**
+ * Ready means Vite answers the page *and* can transform the engine and the
+ * oracle's page driver; a busy machine can take minutes for the first
+ * transform, so each probe gets a generous timeout of its own.
+ */
+async function ready(timeoutMs = 15_000) {
+  return await ok(`${BASE}/`, timeoutMs) &&
+    await ok(`${BASE}/src/main.ts`, timeoutMs * 4) &&
+    await ok(`${BASE}/tools/oracle/web/page-driver.ts`, timeoutMs * 4);
+}
+
+/**
+ * Reuse whatever already serves ORACLE_PORT (it must serve this worktree:
+ * pick a free port per worktree), else start Vite and poll until ready
+ * (ORACLE_VITE_TIMEOUT_MS, default 5 minutes). Returns a stopper that kills
+ * only a server this call started, by PID.
+ */
 export async function ensureServer() {
-  if (await reachable()) return async () => {};
+  if (await ok(`${BASE}/`, 5_000)) {
+    const deadline = Date.now() + STARTUP_MS;
+    while (!(await ready())) {
+      if (Date.now() > deadline) throw new Error(`server on ${PORT} answers but never became ready`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return async () => {};
+  }
   const vite = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
   const child = spawn(process.execPath, [vite, '--port', String(PORT), '--strictPort'], {
     cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'],
@@ -39,16 +66,8 @@ export async function ensureServer() {
   let log = '';
   child.stdout.on('data', (d) => { log += d; });
   child.stderr.on('data', (d) => { log += d; });
-  const deadline = Date.now() + 60_000;
-  while (!(await reachable())) {
-    if (child.exitCode !== null || Date.now() > deadline) {
-      throw new Error(`vite did not start on ${PORT}:\n${log}`);
-    }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return async () => {
+  const stop = async () => {
     if (child.exitCode === null) {
-      // Stop exactly the server we started (and its children) by PID.
       if (process.platform === 'win32') {
         spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
       } else {
@@ -56,6 +75,22 @@ export async function ensureServer() {
       }
     }
   };
+  const deadline = Date.now() + STARTUP_MS;
+  for (let delay = 500; ; delay = Math.min(delay * 2, 5000)) {
+    if (child.exitCode !== null) {
+      // Lost a race for the port to another server: reuse it if it is ready.
+      if (/already in use|EADDRINUSE/i.test(log) && await ready()) return async () => {};
+      throw new Error(`vite exited (${child.exitCode}) on ${PORT}:
+${log.slice(-2000)}`);
+    }
+    if (await ready()) return stop;
+    if (Date.now() > deadline) {
+      await stop();
+      throw new Error(`vite not ready on ${PORT} after ${STARTUP_MS} ms:
+${log.slice(-2000)}`);
+    }
+    await new Promise((r) => setTimeout(r, delay));
+  }
 }
 
 export async function runWebScenario(scenario, { browser, verbose = false } = {}) {
