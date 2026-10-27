@@ -2468,11 +2468,9 @@ export class OptionMenuState extends State {
           break;
         }
         case 'end_turn': {
-          // Mark all player units as finished and trigger turn change
-          const playerUnits: UnitObject[] = game.board?.getTeamUnits('player') ?? [];
-          for (const unit of playerUnits) {
-            game.actionLog.doAction(new WaitAction(unit));
-          }
+          // Python OptionMenuState 'End' (upstream and fork) changes to
+          // turn_change without waiting anyone: units keep their action
+          // flags, which the next ResetAll clears for living units only.
           this.menu = null;
           game.state.back();
           game.state.change('turn_change');

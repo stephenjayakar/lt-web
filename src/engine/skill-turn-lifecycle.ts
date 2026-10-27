@@ -20,6 +20,7 @@ import {
   checkAlly,
   modifiedHealAmount,
   skillConditionActive,
+  unitHasTag,
 } from '../combat/skill-system';
 import { evaluateInt } from '../events/event-manager';
 import { isForkEngine } from './engine-flavor';
@@ -152,6 +153,70 @@ function skillIsRemovable(skill: SkillObject): boolean {
     data.has('positionStatusSourceType') || data.has('itemSourceType'));
 }
 
+/** One entry of Python StatusUpkeepState's per-unit `actions` list. */
+type PendingTurnAction =
+  | { kind: 'hp'; unit: UnitObject; num: number; oldHp: number }
+  | { kind: 'other'; run: () => void };
+
+/**
+ * skill_system.after_take_strike(actions, playback, unit, None, None, None,
+ * 'defense', (0, 0), Strike.HIT) as upkeep damage calls it (fork
+ * UpkeepDamage/EndstepDamage, EOtF EvalUpkeepDamage): every condition-active
+ * skill's hook sees the unit's pending actions. With no attacker, only the
+ * hooks that read those actions act: gain_skill_after_take_damage,
+ * ignore_damage and the TrueMiracle pair (the target-based ones need one).
+ */
+function turnAfterTakeStrike(game: SkillTurnGame, unit: UnitObject, deferred: PendingTurnAction[]): void {
+  const damaging = (act: PendingTurnAction): act is Extract<PendingTurnAction, { kind: 'hp' }> =>
+    act.kind === 'hp' && act.unit === unit && act.num < 0;
+  for (const skill of [...unit.skills]) {
+    for (const [component, value] of skill.components) {
+      if (!['gain_skill_after_take_damage', 'ignore_damage', 'TrueMiracle', 'True_Miracle_Event'].includes(component)) continue;
+      if (!isConditionActive(game, unit, skill)) continue;
+      if (component === 'gain_skill_after_take_damage') {
+        const prefab = typeof value === 'string' ? game.db?.skills.get(value) : null;
+        if (deferred.some(damaging)) {
+          deferred.push({ kind: 'other', run: () => {
+            if (!prefab) return;
+            const gained = new SkillObject(prefab);
+            gained.initiatorNid = unit.nid;
+            game.actionLog.doAction(new AddSkillAction(unit, gained));
+          } });
+          deferred.push({ kind: 'other', run: () => triggerCharge(game, skill) });
+        }
+      } else if (component === 'ignore_damage') {
+        let removed = false;
+        for (let i = deferred.length - 1; i >= 0; i--) {
+          if (damaging(deferred[i])) {
+            deferred.splice(i, 1);
+            removed = true;
+          }
+        }
+        if (removed) deferred.push({ kind: 'other', run: () => triggerCharge(game, skill) });
+      } else {
+        if (unitHasTag(unit, 'IgnoringDamage', game)) continue;
+        let saved = false;
+        for (const act of [...deferred].reverse()) {
+          if (act.kind === 'hp' && act.unit === unit && -act.num >= act.oldHp) {
+            act.num = -act.oldHp + 1;
+            saved = true;
+          }
+        }
+        if (saved) {
+          deferred.push({ kind: 'other', run: () => triggerCharge(game, skill) });
+          if (component === 'True_Miracle_Event' && typeof value === 'string' && value) {
+            game.eventManager?.triggerSpecific(value, {
+              type: component, unit1: unit, unitNid: unit.nid,
+              position: unit.position ? [...unit.position] as [number, number] : undefined,
+              localArgs: new Map<string, unknown>([['item', null], ['item2', null], ['mode', 'defense']]),
+            });
+          }
+        }
+      }
+    }
+  }
+}
+
 /** One recorded combat-stream draw outside the solver (RecordRandomState). */
 function drawCombatRoll(game: SkillTurnGame, minimum: number, maximum: number): number {
   const randomGame = game as SkillTurnGame & { gameVars: Map<string, any> };
@@ -174,7 +239,7 @@ export interface CollectedSkillTurn {
   unit: UnitObject;
   effects: SkillTurnEffect[];
   /** Python's per-unit `actions` list, done by finishSkillTurnHooks. */
-  deferred: Array<() => void>;
+  deferred: PendingTurnAction[];
   /** Python `playback` was produced (heal/damage animations). */
   playback: boolean;
   aliveBefore: boolean;
@@ -202,7 +267,10 @@ export function applySkillTurnHooks(
 /** Python StatusUpkeepState: do a unit's pending hook actions, then check_death. */
 export function finishSkillTurnHooks(game: SkillTurnGame, collected: CollectedSkillTurn): void {
   const { unit, deferred, aliveBefore } = collected;
-  for (const act of deferred.splice(0)) act();
+  for (const act of deferred.splice(0)) {
+    if (act.kind === 'hp') applyHpChange(game, act.unit, act.num);
+    else act.run();
+  }
   if (aliveBefore && unit.currentHp <= 0) dieFromTurnDamage(game, unit);
 }
 
@@ -224,7 +292,9 @@ export function collectSkillTurnHooks(
   let playback = false;
   {
     const aliveBefore = !unit.dead && unit.currentHp > 0;
-    const deferred: Array<() => void> = [];
+    const deferred: PendingTurnAction[] = [];
+    const later = (run: () => void) => deferred.push({ kind: 'other', run });
+    const changeHp = (num: number) => deferred.push({ kind: 'hp', unit, num, oldHp: unit.currentHp });
     for (const skill of [...unit.skills]) {
       let removeAfterHooks = false;
       const conditional = isConditionActive(game, unit, skill);
@@ -342,7 +412,7 @@ export function collectSkillTurnHooks(
             ? modifiedHealAmount(base, unit, null, game)
             : base;
           if (amount !== 0 && unit.currentHp < unit.maxHp) {
-            deferred.push(() => applyHpChange(game, unit, amount));
+            changeHp(amount);
             playback = true;
             effects.push({ unit, skill, component, value: amount });
           }
@@ -358,7 +428,7 @@ export function collectSkillTurnHooks(
           const base = Math.trunc(unit.maxHp * Number(rawValue ?? 0));
           const amount = base <= 0 ? base : modifiedHealAmount(base, unit, null, game);
           if (amount !== 0) {
-            deferred.push(() => applyHpChange(game, unit, amount));
+            changeHp(amount);
             effects.push({ unit, skill, component, value: amount });
           }
         } else if (
@@ -370,7 +440,7 @@ export function collectSkillTurnHooks(
           const baseAmount = evaluatedTurnAmount(game, unit, skill, rawValue);
           if (baseAmount !== 0) {
             const amount = modifiedHealAmount(baseAmount, unit, null, game);
-            deferred.push(() => applyHpChange(game, unit, amount));
+            changeHp(amount);
             // EOtF EvalRegeneration plays the heal only for a positive heal.
             if (amount > 0) playback = true;
             effects.push({ unit, skill, component, value: amount });
@@ -378,7 +448,7 @@ export function collectSkillTurnHooks(
         } else if (phase === 'upkeep' && component === 'mana_regeneration' && conditional) {
           const amount = Math.trunc(Number(rawValue ?? 0));
           if (amount !== 0) {
-            deferred.push(() => game.actionLog.doAction(new ChangeManaAction(unit, amount, maximumMana(game, unit))));
+            later(() => game.actionLog.doAction(new ChangeManaAction(unit, amount, maximumMana(game, unit))));
             effects.push({ unit, skill, component, value: amount });
           }
         } else if (phase === 'upkeep' && component === 'purge_ailments' && conditional) {
@@ -393,13 +463,16 @@ export function collectSkillTurnHooks(
             (phase === 'endstep' && component === 'endstep_damage')) &&
           conditional
         ) {
+          // Python UpkeepDamage/EndstepDamage: ChangeHP, TriggerCharge, then
+          // after_take_strike over the unit's pending actions.
           const amount = Math.trunc(Number(rawValue ?? 0));
+          changeHp(-amount);
+          later(() => triggerCharge(game, skill));
           if (amount !== 0) {
-            deferred.push(() => applyHpChange(game, unit, -amount));
-            deferred.push(() => triggerCharge(game, skill));
             playback = true;
             effects.push({ unit, skill, component, value: -amount });
           }
+          turnAfterTakeStrike(game, unit, deferred);
         } else if (phase === 'upkeep' && component === 'gba_poison' && conditional) {
           // Python GBAPoison.on_upkeep (upstream and the fork): lose
           // static_random.get_randint(1, value) HP, drawn from the combat
@@ -410,8 +483,8 @@ export function collectSkillTurnHooks(
             const before = getCombatRandomState(randomGame);
             const loss = getCombatRandom(randomGame, 1, maximum);
             const after = getCombatRandomState(randomGame);
-            deferred.push(() => game.actionLog.doAction(new RecordCombatRandomStateAction(randomGame, before, after)));
-            deferred.push(() => applyHpChange(game, unit, -loss));
+            later(() => game.actionLog.doAction(new RecordCombatRandomStateAction(randomGame, before, after)));
+            changeHp(-loss);
             effects.push({ unit, skill, component, value: -loss });
           }
         } else if (
@@ -420,19 +493,20 @@ export function collectSkillTurnHooks(
           conditional
         ) {
           const amount = evaluatedTurnAmount(game, unit, skill, rawValue);
-          deferred.push(() => applyHpChange(game, unit, -amount));
-          deferred.push(() => triggerCharge(game, skill));
+          changeHp(-amount);
+          later(() => triggerCharge(game, skill));
           if (amount !== 0) playback = true;
           // EOtF EvalUpkeepDamage picks its hit sound with
           // static_random.get_randint(1, 5): a damage tick draws the combat
           // stream (upstream UpkeepDamage uses Python's own random).
           if (amount > 0 && game.gameVars) drawCombatRoll(game, 1, 5);
           effects.push({ unit, skill, component, value: -amount });
+          turnAfterTakeStrike(game, unit, deferred);
         }
       }
 
       if (removeAfterHooks && skillIsRemovable(skill)) {
-        deferred.push(() => game.actionLog.doAction(new RemoveSkillAction(unit, skill)));
+        later(() => game.actionLog.doAction(new RemoveSkillAction(unit, skill)));
       }
     }
     return { unit, effects, deferred, playback, aliveBefore };

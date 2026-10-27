@@ -224,3 +224,29 @@ test('giving a unit an aura skill propagates the aura at once', async ({ page })
   });
   expect(result).toEqual({ given: true, released: true });
 });
+
+test('upkeep damage runs after_take_strike over the pending actions', async ({ page }) => {
+  await boot(page);
+  await definePrefabs(page, [
+    { nid: '_FzGained', components: [['stack', 9]] },
+    { nid: '_FzOnHurt', components: [['gain_skill_after_take_damage', '_FzGained']] },
+    { nid: '_FzMiracle', components: [['TrueMiracle', null]] },
+    { nid: '_FzBurn', components: [['upkeep_damage', 50]] },
+  ]);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const { SkillObject } = await import('/src/objects/skill.ts');
+    const { AddSkillAction } = await import('/src/engine/action.ts');
+    const { applySkillTurnHooks } = await import('/src/engine/skill-turn-lifecycle.ts');
+    const unit = g.units.get('Eirika');
+    for (const nid of ['_FzOnHurt', '_FzMiracle', '_FzBurn']) {
+      g.actionLog.doAction(new AddSkillAction(unit, new SkillObject(g.db.skills.get(nid))));
+    }
+    unit.currentHp = 10;
+    applySkillTurnHooks(g, [unit], 'upkeep');
+    return { hp: unit.currentHp, dead: unit.isDead(), gained: unit.skills.filter((s: any) => s.nid === '_FzGained').length };
+  });
+  // TrueMiracle leaves 1 HP from the lethal tick; the hit grants one stack.
+  expect(result).toEqual({ hp: 1, dead: false, gained: 1 });
+});
+
