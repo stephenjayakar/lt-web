@@ -590,10 +590,13 @@ function collectVisibleUnits(): {
     // Update sprite state: gray for finished units on the active team only.
     // Units from other teams should never appear greyed out.
     // In initiative mode, non-current-initiative units appear greyed.
-    // (moving state is set by the movement system)
+    // Only a unit the movement system is walking keeps 'moving'. Combat
+    // poses set 'moving' on the sprite every drawn frame (poseOverride), so a
+    // left-over 'moving' must not block the state update: it used to keep
+    // every unit that had fought (player and AI alike) out of its gray image.
     if (u.sprite && typeof u.sprite === 'object' && 'state' in u.sprite) {
       const spr = u.sprite as { state: string };
-      if (spr.state !== 'moving') {
+      if (!game.movementSystem.isUnitMoving(u)) {
         let showGray = u.finished && u.team === currentTeam;
         // Initiative mode: grey out units that aren't the current initiative unit
         if (game.initiative) {
