@@ -4335,7 +4335,10 @@ export class AddSkillAction extends Action {
   private initializedStatusReactions = false;
 
   private equipBefore: EquipState | null = null;
-  private addDecision: 'add' | 'displace' | 'skip' | null = null;
+  private addDecision: 'add' | 'displace' | 'skip' | 'shadow' | null = null;
+  /** The visible same-nid instance this skill shadows (Python's visibility). */
+  private shadowedOld: SkillObject | null = null;
+  private shadowedOldIndex = -1;
 
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
@@ -4363,7 +4366,9 @@ export class AddSkillAction extends Action {
     // stack component) the oldest displaceable (SourceType.DEFAULT) instance
     // is removed and the new one added, so re-gaining a status refreshes it;
     // with none displaceable a DEFAULT skill is not added, while a sourced
-    // one (aura, terrain, item, class, personal...) is added anyway.
+    // one (aura, terrain, item, class, personal, multi_skill...) is added
+    // anyway. unit.skills then shows the newest instances (up to the stack),
+    // so the oldest visible one is shadowed until the new one goes.
     if (this.addDecision === null) {
       if (sameNid.length < stackLimit) {
         this.addDecision = 'add';
@@ -4373,11 +4378,19 @@ export class AddSkillAction extends Action {
           this.displacedAction = new RemoveSkillAction(this.unit, displaceable);
           this.addDecision = 'displace';
         } else {
-          this.addDecision = skillIsDisplaceable(this.unit, this.skill, true) ? 'skip' : 'add';
+          this.addDecision = skillIsDisplaceable(this.unit, this.skill, true) ? 'skip' : 'shadow';
+          this.shadowedOld = sameNid[0];
         }
       }
     }
     if (this.addDecision === 'displace') this.displacedAction?.execute();
+    if (this.addDecision === 'shadow' && this.shadowedOld) {
+      this.shadowedOldIndex = this.unit.skills.indexOf(this.shadowedOld);
+      if (this.shadowedOldIndex >= 0) {
+        this.unit.skills.splice(this.shadowedOldIndex, 1);
+        (this.unit.shadowedSkills ??= []).push(this.shadowedOld);
+      }
+    }
     this.added = this.addDecision !== 'skip';
     if (this.added) {
       if (!this.initializedStatusPreparation) {
@@ -4549,6 +4562,11 @@ export class AddSkillAction extends Action {
       this.skill.ownerNid = null;
       for (const action of [...this.multiSkillActions].reverse()) action.reverse();
       this.displacedAction?.reverse();
+      if (this.addDecision === 'shadow' && this.shadowedOld && this.shadowedOldIndex >= 0) {
+        const hidden = this.unit.shadowedSkills.indexOf(this.shadowedOld);
+        if (hidden >= 0) this.unit.shadowedSkills.splice(hidden, 1);
+        this.unit.skills.splice(this.shadowedOldIndex, 0, this.shadowedOld);
+      }
     }
     if (this.added) {
       for (const action of [...this.statusPreparationActions].reverse()) action.reverse();
@@ -4574,6 +4592,7 @@ export class RemoveSkillAction extends Action {
   private index: number = -1;
   private multiSkillActions: RemoveSkillAction[] = [];
   private initializedMultiSkill = false;
+  private promoted: SkillObject | null = null;
 
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
@@ -4611,6 +4630,18 @@ export class RemoveSkillAction extends Action {
     this.index = this.unit.skills.indexOf(this.skill);
     if (this.index >= 0) this.unit.skills.splice(this.index, 1);
     if (this.index >= 0) this.skill.ownerNid = null;
+    // Python unit.skills: an instance the removed one shadowed shows again.
+    this.promoted = null;
+    if (this.index >= 0) {
+      const hidden = this.unit.shadowedSkills ?? [];
+      for (let i = hidden.length - 1; i >= 0; i--) {
+        if (hidden[i].nid === this.skill.nid) {
+          this.promoted = hidden.splice(i, 1)[0];
+          this.unit.skills.splice(this.index, 0, this.promoted);
+          break;
+        }
+      }
+    }
     if (this.index >= 0) {
       if (!this.initializedMultiSkill) {
         this.initializedMultiSkill = true;
@@ -4625,6 +4656,12 @@ export class RemoveSkillAction extends Action {
   }
 
   reverse(): void {
+    if (this.promoted) {
+      const shown = this.unit.skills.indexOf(this.promoted);
+      if (shown >= 0) this.unit.skills.splice(shown, 1);
+      (this.unit.shadowedSkills ??= []).push(this.promoted);
+      this.promoted = null;
+    }
     if (this.index >= 0 && !this.unit.skills.includes(this.skill)) {
       this.skill.ownerNid = this.unit.nid;
       this.unit.skills.splice(this.index, 0, this.skill);

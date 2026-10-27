@@ -1253,7 +1253,9 @@ test.describe('Rekka project-local skill components', () => {
       const unit = game.units.get('Lyn');
       unit.skills = [];
 
+      // A personal (non-displaceable) instance, as a unit's learned skill is.
       const natural = new SkillObject(game.db.skills.get('PersonalSpaceLong'));
+      natural.data.set('sourceType', 'personal');
       unit.skills.push(natural);
       const personal = new SkillObject(game.db.skills.get('PersonalSpace'));
       const personalAction = new AddSkillAction(unit, personal);
@@ -1265,6 +1267,7 @@ test.describe('Rekka project-local skill components', () => {
           skill.nid === 'PersonalSpaceLong').length,
         children: directChildren.map((skill: any) => skill.nid),
         naturalSourced: natural.data.has('multiSkillSource'),
+        naturalShadowed: unit.shadowedSkills.includes(natural),
       };
       const removePersonal = new RemoveSkillAction(unit, personal);
       game.actionLog.doAction(removePersonal);
@@ -1318,10 +1321,14 @@ test.describe('Rekka project-local skill components', () => {
       };
     });
 
+    // Python AddSkill adds the MULTISKILL child next to the personal one
+    // (neither is displaceable) and unit.skills shows the newest instance:
+    // the natural one is shadowed until PersonalSpace and its children go.
     expect(result.duplicateState).toEqual({
       longCount: 1,
-      children: ['PersonalSpaceClose'],
+      children: ['PersonalSpaceLong', 'PersonalSpaceClose'],
       naturalSourced: false,
+      naturalShadowed: true,
     });
     expect(result.naturalSurvives).toBe(true);
     expect(result.loaded).toBe(true);
