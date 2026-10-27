@@ -189,7 +189,7 @@ test.describe('Rekka visual baselines', () => {
       game.camera.forceTile(x, y);
       attacker.finished = false;
       game.selectedUnit = attacker;
-      game.state.change('targeting');
+      game.state.change('combat_targeting');
       // Python ui_view slides the forecast in 20 px per frame from 80 px.
       (window as any).__harness.stepFrames(12, null);
     });
@@ -200,7 +200,7 @@ test.describe('Rekka visual baselines', () => {
     });
     expect(await page.evaluate(
       () => (window as any).__gameRef.state.getCurrentState()?.name,
-    )).toBe('targeting');
+    )).toBe('combat_targeting');
     await expect(page.locator('#game-canvas')).toHaveScreenshot(
       'rekka-combat-forecast.png',
       { maxDiffPixelRatio: 0.01 },

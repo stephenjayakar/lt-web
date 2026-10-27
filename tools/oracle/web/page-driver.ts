@@ -337,15 +337,12 @@ class Runner {
     await this.inMenuFor(a.unit);
     e.choose('Trade');
     await e.settle();
+    e.expect('targeting');
+    e.cursor(e.targetPos(a.with));
+    e.press('SELECT');
+    await e.settle();
     e.expect('trade');
-    let st: any = e.game.state.getCurrentState();
-    // Web deviation: several partners are picked from a menu instead of
-    // Python's map targeting state.
-    if (st.targetMenu) {
-      e.choose(a.with);
-      await e.settle();
-      st = e.game.state.getCurrentState();
-    }
+    const st: any = e.game.state.getCurrentState();
     const menu = st.menu;
     if (!menu) throw new OracleError('trade menu did not open');
     const seek = (hand: number, nid: string): void => {

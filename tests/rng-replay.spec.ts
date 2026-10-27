@@ -584,7 +584,7 @@ test.describe('RNG-mode verification and deterministic replay', () => {
       game.gameVars.set('_random_seed', 73);
       setCombatRandomState(game, 73);
       const before = getCombatRandomState(game);
-      game.state.change('targeting');
+      game.state.change('combat_targeting');
       return {
         before,
         targets: game.targetSystem.getValidUnitTargets(attacker, weapon, [3, 3])
@@ -596,7 +596,7 @@ test.describe('RNG-mode verification and deterministic replay', () => {
 
     await page.evaluate(() => (window as any).__harness.stepFrames(4, null));
     expect(await page.evaluate(() =>
-      (window as any).__gameRef.state.getCurrentState()?.name)).toBe('targeting');
+      (window as any).__gameRef.state.getCurrentState()?.name)).toBe('combat_targeting');
     await page.evaluate(() => (window as any).__harness.stepFrames(2, 'RIGHT'));
     await page.evaluate(() => (window as any).__harness.stepFrames(2, 'LEFT'));
     await page.evaluate(() => (window as any).__harness.stepFrames(2, 'BACK'));

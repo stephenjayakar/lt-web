@@ -206,7 +206,7 @@ test.describe('finished units draw gray (unit_sprite.update_state)', () => {
     for (let i = 0; i < 200; i++) {
       const top = await stateName(page);
       if (top === 'move') break;
-      await step(page, 8, ['combat', 'targeting', 'weapon_choice'].includes(top) && i % 3 === 0 ? 'SELECT' : null);
+      await step(page, 8, ['combat', 'combat_targeting', 'weapon_choice'].includes(top) && i % 3 === 0 ? 'SELECT' : null);
       await page.waitForTimeout(25);
     }
     expect(await stateName(page)).toBe('move');

@@ -162,6 +162,9 @@ test.describe('Support conversations (field + base + turnwheel)', () => {
       st.menu.selectedIndex = idx;
     }, { idx: supportIdx });
     await stepFrames(page, 1, 'SELECT');
+    await stepFrames(page, 3);
+    // Python TargetingState: SELECT confirms the partner under the cursor.
+    await stepFrames(page, 1, 'SELECT');
     await stepFrames(page, 10);
 
     const captured = await page.evaluate(

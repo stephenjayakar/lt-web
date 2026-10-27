@@ -38,6 +38,7 @@ import {
 } from '../combat/combat-calcs';
 import { checkEnemy, unitHasTag } from '../combat/skill-system';
 import { itemIconWhiteness } from '../combat/item-system';
+import { drawItemOption, unitStandFrame } from './prep-ui';
 
 /** Sprites the HUD needs on the first map frame (Python loads all at boot). */
 const HUD_SPRITES = [
@@ -54,6 +55,7 @@ const HUD_SPRITES = [
   ]),
   'Minimap_Tiles', 'Minimap_Sprites', 'Minimap_Cursor',
   'marker_talk', 'marker_interact', 'marker_warning', 'marker_danger', 'marker_steal',
+  'trade_window', 'rescue_window', 'give_window', 'pennant_bg',
   // EOtF project sprites for its engine's weather window.
   'Weather_Window', 'Sun_Icon', 'Rain_Icon', 'Sand_Icon', 'Snow_Icon',
 ];
@@ -1094,4 +1096,70 @@ export class HUD {
 }
 
 /** Python name for the same class. */
+/** Top-left of a target preview window: the side away from the cursor. */
+function previewTopleft(game: Game, width: number): [number, number] {
+  return cursorOnRight(game) ? [0, 0] : [viewport.width - 4 - width, 0];
+}
+
+/**
+ * Python UIView.draw_trade_preview: the unit's inventory in the skinned
+ * trade_window (27 px top, 16 px per row, 5 px bottom; translucent .1),
+ * the unit's name at (32, 8) and its passive map sprite hanging off the
+ * window's top-left corner. `ignore` greys rows (steal targeting).
+ */
+export function drawTradePreview(surf: Surface, game: Game, unit: UnitObject, ignore: boolean[] | null = null): Surface {
+  const window = getSprite('trade_window');
+  if (!window) return surf;
+  const items: ItemObject[] = unit.items ?? [];
+  const width = window.width;
+  const height = window.height;
+  const size: [number, number] = [width, -2 + 27 + 5 + 16 * Math.max(1, items.length)];
+  const bg = new Surface(size[0], size[1]);
+  bg.blitFrom(window, 0, 0, width, 27, 0, 0);
+  for (let idx = 0; idx < Math.max(1, items.length); idx++) {
+    bg.blitFrom(window, 0, Math.floor(height / 2) + 3, width, 16, 0, 27 + idx * 16);
+  }
+  bg.blitFrom(window, 0, height - 5, width, 5, 0, size[1] - 5);
+  const out = new Surface(size[0], size[1]);
+  bg.setAlpha(0.9);
+  out.blit(bg, 0, 0);
+  items.forEach((item, idx) => {
+    drawItemOption(out, game, item, 5, 27 + idx * 16 - 2, { ignore: !!ignore?.[idx] });
+  });
+  if (!items.length) font('text-grey')?.blit(out, 'Nothing', 25, 27 - 2);
+  font('text')?.blit(out, unit.name, 32, 8);
+  const [x, y] = previewTopleft(game, width);
+  surf.blit(out, x, y);
+  const sprite = unitStandFrame(game, unit, 'passive');
+  if (sprite) surf.blit(sprite, x - 12, y - 16);
+  return surf;
+}
+
+/**
+ * Python TargetingState.draw_rescue_preview / draw_give_preview: the skinned
+ * rescue_window or give_window (drawn as is) with the two units' names at
+ * (32, 8) and (32, 56), the numbers right-aligned 5 px in at y 24 and 72,
+ * and both passive map sprites hanging off the left edge.
+ */
+export function drawCarryPreview(
+  surf: Surface, game: Game, kind: 'rescue' | 'give',
+  top: UnitObject, bottom: UnitObject, topNumber: number, bottomNumber: number,
+): Surface {
+  const window = getSprite(kind === 'rescue' ? 'rescue_window' : 'give_window');
+  if (!window) return surf;
+  const out = window.copy();
+  const blue = font('text-blue');
+  blue?.blitRight(out, String(topNumber), out.width - 5, 24);
+  blue?.blitRight(out, String(bottomNumber), out.width - 5, 72);
+  font('text')?.blit(out, top.name, 32, 8);
+  font('text')?.blit(out, bottom.name, 32, 56);
+  const [x, y] = previewTopleft(game, out.width);
+  surf.blit(out, x, y);
+  const topSprite = unitStandFrame(game, top, 'passive');
+  const bottomSprite = unitStandFrame(game, bottom, 'passive');
+  if (topSprite) surf.blit(topSprite, x - 12, y - 16);
+  if (bottomSprite) surf.blit(bottomSprite, x - 12, y - 16 + 48);
+  return surf;
+}
+
 export { HUD as UIView };
