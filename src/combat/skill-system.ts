@@ -2050,6 +2050,9 @@ export function armsthriftRestoration(unit: UnitObject, item: ItemObject): numbe
   let restored = 0;
   for (const skill of unit.skills) {
     const value = skill.getComponent<number>('armsthrift');
+    // EOtF's engine dispatches Armsthrift.after_strike only while the skill's
+    // condition holds (e.g. Alpha Sanctuary needs Formation Alpha).
+    if (typeof value === 'number' && isForkEngine() && !isSkillActive(skill, unit)) continue;
     // Python writes `min(curr_uses + value - 1, max_uses)` after each
     // ordinary one-point use loss. At the max-uses boundary any positive
     // value cancels that strike's loss, but cannot restore more than one.

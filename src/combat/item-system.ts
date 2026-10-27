@@ -986,7 +986,14 @@ function resolveCleave(
   position: TargetPosition,
   context: SplashContext,
 ): SplashResult {
-  const nearby = adjacentToUnit(unit, context.board).filter((candidate) => !samePosition(candidate, position));
+  // EOtF's engine builds the eight neighbours as a Python set (listed NW,
+  // N, NE, W, E, SW, S, SE), filters it into another set: CPython set order.
+  const neighbours = isForkEngine() && unit.position
+    ? pySetOrder(pySetOrder(([[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const)
+      .map(([dx, dy]) => [unit.position![0] + dx, unit.position![1] + dy] as [number, number]))
+      .filter(([x, y]) => context.board.inBounds(x, y)))
+    : adjacentToUnit(unit, context.board);
+  const nearby = neighbours.filter((candidate) => !samePosition(candidate, position));
   return {
     mainTarget: context.board.getUnit(position[0], position[1]) ? position : null,
     splash: affectedUnits(nearby, unit, context, 'enemy'),
