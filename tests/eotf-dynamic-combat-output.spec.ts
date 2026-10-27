@@ -227,6 +227,10 @@ test.describe('Embrace of the Fog dynamic combat output', () => {
       defender.stats.SKL = 100;
       attacker.stats.LCK = 0;
       defender.stats.LCK = 0;
+      // Max HP too: the solver caps current HP, and Keeper (a level-1
+      // promoted generic) only has 22.
+      attacker.stats.HP = 999;
+      defender.stats.HP = 999;
       attacker.currentHp = 999;
       defender.currentHp = 999;
       attacker.dead = false;
