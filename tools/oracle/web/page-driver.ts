@@ -490,6 +490,65 @@ function rngSnap(g: any): Json {
   };
 }
 
+/**
+ * AI decision trace, matching py_driver.install_ai_trace: one entry per AI
+ * decision (Python AIController.think finishing a unit), per canto retreat
+ * and per AI group ping. Python pings inside think, before the decision is
+ * recorded, and a unit whose group is not ready ends with no goal; the web
+ * pings and checks the group after getAction, so those entries are fixed up.
+ */
+const aiTrace: any[] = [];
+
+function installAiTrace(g: any): void {
+  aiTrace.length = 0;
+  const ai = g.aiController;
+  const here = (u: any) => (u?.position ? pos(u.position) : null);
+  const same = (a: Json, b: Json) => JSON.stringify(a) === JSON.stringify(b);
+  const getAction = ai.getAction.bind(ai);
+  ai.getAction = (unit: any) => {
+    const start = here(unit);
+    const action = getAction(unit);
+    let move: Json = action.targetPosition ? pos(action.targetPosition) : null;
+    if (same(move, start)) move = null;
+    const did = action.type !== 'wait' && !(action.type === 'move' && move === null);
+    aiTrace.push({
+      unit: unit.nid,
+      from: start,
+      did,
+      move: did ? move : null,
+      // Python's goal_target is set only by the PrimaryAI (attack, steal,
+      // support use); a SecondaryAI move toward a unit has none.
+      target: did && ['attack', 'steal', 'use_item'].includes(action.type) && action.targetUnit?.position
+        ? pos(action.targetUnit.position) : null,
+      item: did ? action.item?.nid ?? null : null,
+    });
+    return action;
+  };
+  const canto = ai.getCantoRetreatAction.bind(ai);
+  ai.getCantoRetreatAction = (unit: any) => {
+    const start = here(unit);
+    const action = canto(unit);
+    let goal: Json = action?.targetPosition ? pos(action.targetPosition) : null;
+    if (same(goal, start)) goal = null;
+    aiTrace.push({ unit: unit.nid, canto: goal });
+    return action;
+  };
+  const trigger = g.triggerAiGroup.bind(g);
+  g.triggerAiGroup = (groupId: string, unitNid: string) => {
+    const ok = trigger(groupId, unitNid);
+    let last = -1;
+    for (let i = aiTrace.length - 1; i >= 0; i--) {
+      if (aiTrace[i].unit === unitNid && 'did' in aiTrace[i]) { last = i; break; }
+    }
+    if (ok) {
+      aiTrace.splice(last < 0 ? aiTrace.length : last, 0, { group: groupId, by: unitNid });
+    } else if (last >= 0) {
+      Object.assign(aiTrace[last], { did: false, move: null, target: null, item: null });
+    }
+    return ok;
+  };
+}
+
 export function snapshot(e: WebEngine): Json {
   const g = e.game;
   const units: Record<string, Json> = {};
@@ -552,6 +611,7 @@ export function snapshot(e: WebEngine): Json {
     events: (em?.eventQueue ?? []).map((ev: any) => ev.nid),
     already_triggered: [...(em?.getOnceTriggered?.() ?? [])].sort(),
     rng: rngSnap(g),
+    ai_trace: aiTrace.splice(0, aiTrace.length),
   };
 }
 
@@ -607,6 +667,7 @@ export async function runScenario(scn: Scenario): Promise<Json> {
     }
     enterStartedLevel(g);
     await e.settle({ skip: scn.skip, maxFrames: scn.start_frames ?? 20000 });
+    installAiTrace(g);
     const r = new Runner(e);
     r.setup(scn.setup ?? []);
     out.steps.push({ action: { do: 'start' }, snapshot: snapshot(e) });
