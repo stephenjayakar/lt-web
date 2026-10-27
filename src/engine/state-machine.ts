@@ -23,9 +23,13 @@ type TempOp =
 
 declare const __LT_QA__: boolean;
 
+/**
+ * QA turbo (src/qa/, dev/LT_QA builds only): skip the draw pass of update().
+ * Unused in player builds, where it is tree-shaken away.
+ */
+export const qaDraw = { skip: false };
+
 export class StateMachine {
-  /** QA turbo: skip the draw pass of the next update() (src/qa/). */
-  qaSkipDraw = false;
   private stack: State[] = [];
   private tempState: TempOp[] = [];
   private allStates: Map<string, State> = new Map();
@@ -153,7 +157,7 @@ export class StateMachine {
     // --- draw (with transparency walk) ---
     // Drawing is read-only, so repeated component queries may share results.
     // QA turbo (dev/LT_QA builds only) may skip drawing intermediate frames.
-    if (!__LT_QA__ || !this.qaSkipDraw) surf = withDrawCache(() => this.drawStack(surf));
+    if (!__LT_QA__ || !qaDraw.skip) surf = withDrawCache(() => this.drawStack(surf));
 
     // --- process deferred transitions ---
     this.processTempState();

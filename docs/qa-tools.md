@@ -132,7 +132,7 @@ Typical jump time: 2-4 s, plus 1-8 s to boot the page.
   time per stepped frame, so the presentation timers that read the clock
   (portrait fades, level-up screens, prep fades) keep pace with the frames.
 - `drawEvery`: intermediate frames run update logic but skip the draw pass
-  and the blit (`StateMachine.qaSkipDraw`). Some presentation that Python
+  and the blit (`qaDraw.skip` in `state-machine.ts`). Some presentation that Python
   also advances while drawing (sprite animation, combat effects) then takes
   more frames, but rules, RNG and outcomes are unchanged. The same seed gave
   identical floors, turns, combat counts and deaths at draw-every 1, 4, 8,

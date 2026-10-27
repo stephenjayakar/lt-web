@@ -26,6 +26,7 @@ import { qaSettingOverrides, setSetting } from '../engine/states/settings-state'
 import { FRAMETIME, updateAnimationCounters } from '../engine/constants';
 import type { Surface } from '../engine/surface';
 import { updateUnitSounds } from '../audio/unit-sound';
+import { qaDraw } from '../engine/state-machine';
 import { advanceVirtualClock, installVirtualClock, realDate, realNow, virtualNow } from './qa-clock';
 import { QaLog, type QaContext, type QaLogEntry } from './qa-log';
 import { Policy, type PolicyOptions } from './qa-policy';
@@ -209,7 +210,7 @@ class QaController {
     const surface = this.display.surface();
     game.frameDeltaMs = FRAMETIME;
     if (draw) surface.clear();
-    game.state.qaSkipDraw = !draw;
+    qaDraw.skip = !draw;
     try {
       let repeat = true;
       let iterations = 0;
@@ -219,7 +220,7 @@ class QaController {
         iterations += 1;
       }
     } finally {
-      game.state.qaSkipDraw = false;
+      qaDraw.skip = false;
     }
     updateAnimationCounters();
     game.movementSystem.update(FRAMETIME);
