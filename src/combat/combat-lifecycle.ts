@@ -58,6 +58,7 @@ import {
   skillConditionActive,
 } from './skill-system';
 import { evaluateEquation, resolveWeapon } from './combat-calcs';
+import { isForkEngine } from '../engine/engine-flavor';
 
 interface CombatLifecycleGame {
   eventManager: EventManager | null;
@@ -122,7 +123,7 @@ function combatSkillEnabled(
   unit: UnitObject,
   skill: SkillObject,
   target: UnitObject,
-  item: ItemObject,
+  item: ItemObject | null,
   item2: ItemObject | null = null,
   mode: string = 'attack',
 ): boolean {
@@ -611,7 +612,7 @@ function combatComponentNumber(
   rawValue: unknown,
   unit: UnitObject,
   target: UnitObject,
-  item: ItemObject,
+  item: ItemObject | null,
   skill: SkillObject,
   mode: string,
 ): number {
@@ -694,12 +695,13 @@ export function applyCombatSkillEndHooks(
   game: CombatLifecycleGame,
   strikes: CombatStrike[],
   initiator?: UnitObject,
-  primaryTarget?: UnitObject,
+  /** null: a combat with no main target (the initiator's hooks see None). */
+  primaryTarget?: UnitObject | null,
   procPlayback: CombatProcMark[] = [],
 ): number {
   if (!game.actionLog || !game.db) return 0;
   initiator ??= strikes[0]?.attacker;
-  primaryTarget ??= strikes[0]?.defender;
+  if (primaryTarget === undefined) primaryTarget = strikes[0]?.defender;
   let applied = 0;
   const conditionOwners = new Set<UnitObject>([
     ...(initiator ? [initiator] : []),
@@ -792,7 +794,7 @@ export function applyCombatSkillEndHooks(
   const pairs = new Map<string, {
     unit: UnitObject;
     target: UnitObject;
-    item: ItemObject;
+    item: ItemObject | null;
     strikes: CombatStrike[];
   }>();
   for (const strike of strikes) {
@@ -813,9 +815,11 @@ export function applyCombatSkillEndHooks(
       fallbackItem: ItemObject | null,
     ): void => {
       const key = `${unit.nid}:${target.nid}:passive`;
+      // EOtF's engine runs a participant's end_combat hooks even when it has
+      // no weapon (item None), e.g. a weaponless defender's Evened Scales.
       if (!pairs.has(key) && ![...pairs.values()].some(
         (pair) => pair.unit === unit && pair.target === target,
-      ) && fallbackItem) {
+      ) && (fallbackItem || isForkEngine())) {
         pairs.set(key, { unit, target, item: fallbackItem, strikes: [] });
       }
     };
@@ -920,26 +924,30 @@ export function applyCombatSkillEndHooks(
         applied += restoreUses(item);
       }
 
+      // EOtF's engine calls each unit's end_combat once, with the main
+      // defender (None if there is none) as the initiator's target, so
+      // these statuses never reach splash targets.
+      const forkHookTarget = !isForkEngine() || isHookTarget;
       const afterCombat = skill.getComponent<string>('give_status_after_combat');
-      if (afterCombat && !isAlly) {
+      if (afterCombat && !isAlly && forkHookTarget) {
         applied += grantCombatStatus(game, unit, target, skill, afterCombat);
       }
       const allyAfterCombat = skill.getComponent<string>('give_ally_status_after_combat');
-      if (allyAfterCombat && isAlly) {
+      if (allyAfterCombat && isAlly && forkHookTarget) {
         applied += grantCombatStatus(game, unit, target, skill, allyAfterCombat);
       }
       const afterAttack = skill.getComponent<string>('give_status_after_attack');
-      if (afterAttack && isMainAttacker && unitAttacked) {
+      if (afterAttack && isMainAttacker && unitAttacked && forkHookTarget) {
         applied += grantCombatStatus(game, unit, target, skill, afterAttack);
       }
       const afterCombatHit = skill.getComponent<string>('give_status_after_combat_on_hit');
       const unitHit = strikes.some((strike) =>
         strike.attacker === unit && strike.hit);
-      if (afterCombatHit && isMainAttacker && unitHit) {
+      if (afterCombatHit && isMainAttacker && unitHit && forkHookTarget) {
         applied += grantCombatStatus(game, unit, target, skill, afterCombatHit);
       }
       const afterCombatStatuses = skill.getComponent<unknown>('give_statuses_after_combat');
-      if (!isAlly && Array.isArray(afterCombatStatuses) &&
+      if (!isAlly && forkHookTarget && Array.isArray(afterCombatStatuses) &&
           afterCombatStatuses.length > 0) {
         let granted = 0;
         for (const statusNid of afterCombatStatuses) {
@@ -1392,7 +1400,7 @@ export function applyCombatSkillEndHooks(
 
       let shouldReset = false;
       if (skill.hasComponent('powerstaff')) {
-        shouldReset = item.getComponent<string>('weapon_type') === 'Staff' &&
+        shouldReset = item?.getComponent<string>('weapon_type') === 'Staff' &&
           pairStrikes.some((strike) => strike.hit);
       } else if (skill.hasComponent('combat_artist')) {
         shouldReset = pairStrikes.some((strike) =>

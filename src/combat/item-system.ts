@@ -356,6 +356,26 @@ function availabilitySkillActive(unit: UnitObject, skill: UnitObject['skills'][n
   }
   if (hasDrainingCharge(skill) &&
       Number(skill.data.get('charge') ?? 0) <= 0) return false;
+  // EOtF's engine: skill_system.condition() includes CombatCondition, whose
+  // value is the start-of-combat snapshot (False outside combat). Without a
+  // snapshot (forecasts) evaluate it against the item with no target.
+  const combatCondition = skill.getComponent<string>('combat_condition');
+  if (combatCondition && isForkEngine()) {
+    const snapshot = skill.data.get('_combat_condition');
+    if (typeof snapshot === 'boolean') {
+      if (!snapshot) return false;
+    } else if (!evaluateCondition(combatCondition, {
+      game,
+      unit1: unit,
+      item,
+      position: unit.position ?? undefined,
+      gameVars: game?.gameVars,
+      levelVars: game?.levelVars,
+      localArgs: new Map<string, unknown>([['item', item], ['mode', 'attack'], ['skill', skill]]),
+    })) {
+      return false;
+    }
+  }
   return skillConditionActive(skill, unit, { game, item });
 }
 
