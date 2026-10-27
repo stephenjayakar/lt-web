@@ -213,22 +213,17 @@ behaviour, not harness artefacts (checked against the Python source):
 | Diff | Seen in |
 |---|---|
 | Unique units miss their class skills on the web (Seth/Vanessa have no Canto): `spawnUnit` only grants the unit's personal `learned_skills` | all default scenarios |
-| Python's `Wait` sets `has_moved`/`has_traded`/`has_attacked`; the web only `finished` | every wait or automatic post-combat wait |
 | Python gives every level unit the level's party; the web only player units | every level with non-player units |
 | Generic units: Python raises wexp to their items' requirements (`calculate_needed_wexp_from_items`, e.g. Shaman 101 Dark 31 -> 71) | default DEBUG |
 | Generic autolevels ignore `enemy_leveling` (default.ltproj: Dynamic) on the web | default Prologue (fighter 102 DEF/RES, then its HP in the AI phase) |
 | Promoted generics: Python autolevels `level + previous levels * promoted_autolevels_fraction`; the web levels through the internal level (EOtF hub NPCs at roughly double stats) | eotf-hub-start |
-| Combat level-up raises current HP on the web; Python only for bonus exp | default-level-up (hp 16 vs 17) |
-| Item use and heal staves draw two combat RNG rolls in Python, none on the web | default-use-item, default-heal-staff (`rng.combat`) |
-| `gba_poison` is not implemented on the web (no damage, no RNG roll) | default-statuses-turns |
-| `cannot_use_items` statuses unequip the weapon in Python | default-statuses-turns |
-| An enemy whose Stunned expires at its phase upkeep acts that phase in Python, not on the web | default-statuses-turns (turn 2) |
-| Dead units are `finished` in Python | eotf-ex2-combat |
 | EOtF fork: units on Fixed growths start with 50 growth points per stat (upstream and the web start at 0) | all eotf scenarios |
-| Terrain status of a unit moved by `move_group` appears a step later on the web | default-prologue-intro |
 
 Matching so far: combat strike order, damage, weapon uses, exp and RNG in the
-default and EOtF attacks; trade results; Vulnerary and Heal amounts; inline
+default and EOtF attacks; trade results; Vulnerary and Heal amounts and their
+combat RNG draws; Wait and post-combat action flags (dead units included);
+level-up HP; `gba_poison`, Stunned/Sleep unequipping and expiring at upkeep;
+terrain statuses after event moves; inline
 event commands (vars, money, items, HP, team, regions, movement, stats, exp,
 wexp, unit removal); the EOtF Dragon AI phase; unit loading/deployment by
 event in EOtF.
