@@ -127,6 +127,7 @@ export interface DriverOptions {
   autoplay: boolean;
   /** QA: every enemy/enemy2 unit gets the 'None' AI (stands still), to walk a boss's event script. */
   passiveEnemies?: boolean;
+  hover?: boolean;
 }
 
 /**
@@ -599,7 +600,16 @@ export class QaDriver {
 
   private handleFree(): GameButton | null | undefined {
     const game = this.game;
-    if (!this.options.autoplay) return undefined;
+    if (!this.options.autoplay) {
+      // Idle player phase as a player sees it: the cursor rests on a unit
+      // (unit window, HP bars, threat preview) and moves on now and then.
+      if (this.options.hover && this.frame % 30 === 0) {
+        const units = (game.getAllUnits() as any[]).filter((u) => u.position && !u.isDead());
+        const unit = units[Math.floor(this.frame / 30) % Math.max(1, units.length)];
+        if (unit) game.cursor.setPos(unit.position[0], unit.position[1]);
+      }
+      return undefined;
+    }
     if (game.phase?.getCurrent?.() !== 'player') return undefined;
     if (game.eventManager?.hasActiveEvents()) return undefined;
     const turn = Number(game.turnCount ?? 0);

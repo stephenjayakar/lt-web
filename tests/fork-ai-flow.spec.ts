@@ -454,4 +454,98 @@ test.describe('EOtF engine fork: actions, AI and map flow', () => {
     expect(result.options).toEqual(['Capture_Piece']);
     expect(result.forkArt).toEqual({ type: 'attack', item: '_FlowStick', art: null });
   });
+
+  test('the AI strike shell keeps eval_special_range squares at 99 range', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const { g, keeper, player, place, give, item, ai, flavor } = (window as any).__flow;
+      const ray = () => item('_FlowRay', [
+        ['weapon', null], ['target_enemy', null], ['damage', 15], ['hit', 100],
+        ['min_range', 1], ['max_range', 99], ['eval_special_range', 'x == 0 or y == 0'],
+      ]);
+      const run = (fork: boolean, target: [number, number]) => {
+        flavor.setForkEngine(fork);
+        for (const unit of [keeper, player]) if (unit.position) g.board.removeUnit(unit);
+        place(keeper, 'enemy', [22, 13]);
+        give(keeper, [ray()]);
+        keeper.ai = ai('_FlowRayGuard', [{ action: 'Attack', target: 'Enemy', view_range: -1 }]);
+        place(player, 'player', target);
+        return g.aiController.getAction(keeper).type;
+      };
+      const out = {
+        forkDiagonal: run(true, [25, 15]),
+        forkCross: run(true, [27, 13]),
+        upstreamDiagonal: run(false, [25, 15]),
+      };
+      flavor.setForkEngine(true);
+      return out;
+    });
+    expect(result).toEqual({ forkDiagonal: 'wait', forkCross: 'attack', upstreamDiagonal: 'wait' });
+  });
+
+  test('attack highlights cover the whole map for 99-range items on the fork', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const { g, player, place, give, weapon, flavor } = (window as any).__flow;
+      const { attackablePositions } = await import('/src/engine/target-system.ts');
+      place(player, 'player', [22, 13]);
+      const far = weapon('_FlowFar', 5, [['min_range', 2], ['max_range', 99]]);
+      const cross = weapon('_FlowCross', 5, [['max_range', 3], ['eval_special_range', 'x == 0 or y == 0']]);
+      give(player, [far, cross]);
+      const [left, top, right, bottom] = g.board.bounds;
+      const tiles = (right - left + 1) * (bottom - top + 1);
+      const read = () => {
+        const farTiles = attackablePositions(player, far, [[22, 13]], g.board, g);
+        const crossTiles = attackablePositions(player, cross, [[22, 13]], g.board, g);
+        const has = (list: [number, number][], x: number, y: number) =>
+          list.some((t) => t[0] === x && t[1] === y);
+        return {
+          far: farTiles.length,
+          adjacent: has(farTiles, 23, 13),
+          crossCount: crossTiles.length,
+          diagonal: has(crossTiles, 23, 14),
+        };
+      };
+      flavor.setForkEngine(true);
+      const fork = read();
+      flavor.setForkEngine(false);
+      const upstream = read();
+      flavor.setForkEngine(true);
+      const highlighted = g.pathSystem.getAttackPositions(player, g.board, [[22, 13]]).length;
+      return { tiles, fork, upstream, highlighted };
+    });
+    expect(result.fork).toEqual({ far: result.tiles, adjacent: true, crossCount: 12, diagonal: false });
+    // Upstream drops the tiles nearer than the minimum range (own tile + 4).
+    expect(result.upstream).toEqual({ far: result.tiles - 5, adjacent: false, crossCount: 12, diagonal: false });
+    // The move-state highlight unions every weapon and omits the move tile.
+    expect(result.highlighted).toBe(result.tiles - 1);
+  });
+
+  test('without an equippable items[0] the AI can end up holding an ability weapon', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const { g, keeper, player, place, give, item, weapon, ai } = (window as any).__flow;
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      g.db.items.set('_FlowAbilityBlade', {
+        nid: '_FlowAbilityBlade', name: '_FlowAbilityBlade', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['weapon', null], ['target_enemy', null], ['damage', 1], ['hit', 100],
+          ['min_range', 1], ['max_range', 1]],
+      });
+      place(keeper, 'enemy', [22, 13]);
+      const tonic = item('_FlowTonic', [['usable', null], ['heal', 10], ['uses', 3]]);
+      const sword = weapon('_FlowSword', 5);
+      give(keeper, [tonic, sword]);
+      keeper.equip(sword);
+      keeper.skills = [new SkillObject({
+        nid: '_FlowBladeSkill', name: '_FlowBladeSkill', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['ability', '_FlowAbilityBlade']],
+      } as any)];
+      keeper.ai = ai('_FlowGuard3', [{ action: 'Attack', target: 'Enemy', view_range: -1 }]);
+      place(player, 'player', [28, 15]);
+      const action = g.aiController.getAction(keeper);
+      const held = keeper.equippedWeapon?.nid ?? null;
+      // With the sword first, items[0] wins again.
+      give(keeper, [sword, tonic]);
+      g.aiController.getAction(keeper);
+      return { type: action.type, held, after: keeper.equippedWeapon?.nid ?? null };
+    });
+    expect(result).toEqual({ type: 'wait', held: '_FlowAbilityBlade', after: '_FlowSword' });
+  });
 });

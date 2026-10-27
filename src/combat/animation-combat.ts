@@ -1265,7 +1265,8 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
     const walk = this.walk ??= { atkHp: this.attackerStartHp, defHp: this.defenderStartHp };
     let atkHp = walk.atkHp;
     let defHp = walk.defHp;
-    const attackerMaxHp = this.attacker.stats['HP'] ?? 0;
+    // Python set_hp clamps to get_max_hp(), which includes stat bonuses.
+    const attackerMaxHp = this.attacker.maxHp;
 
     for (; this.walked < upTo; this.walked++) {
       const strike = this.strikes[this.walked];
@@ -1595,11 +1596,15 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
   // Drawing (AnimationCombat.draw / MockCombat.draw_ui)
   // ================================================================
 
-  /** The map fuzz (75% black outside the viewbox) CombatState draws first. */
+  /**
+   * The map fuzz CombatState draws first outside the viewbox:
+   * make_translucent(bg_black, 0.75), i.e. black at alpha 255 - int(255 * 0.75)
+   * = 64 (the map stays at 75% brightness).
+   */
   drawViewboxFuzz(surf: Surface): void {
     if (!this.viewbox) return;
     const [x, y, w, h] = this.viewbox;
-    const color = 'rgba(0,0,0,0.75)';
+    const color = `rgba(0,0,0,${(255 - Math.trunc(255 * 0.75)) / 255})`;
     if (w <= 0) {
       surf.fillRect(0, 0, WINWIDTH, WINHEIGHT, color);
       return;

@@ -409,6 +409,10 @@ test('trading returns to the action menu; BACK then commits and waits', async ({
   // reads unit.tags with class tags, so an adjacent ally can be rescued.
   expect(await topMenuLabels(page)).toEqual(['Rescue', 'Item', 'Trade', 'Wait']);
   await chooseMenuLabel(page, 'Trade');
+  // Python TargetingState: the cursor starts on the partner; SELECT opens the trade.
+  expect((await stackNames(page)).at(-1)).toBe('targeting');
+  await press(page, 'SELECT');
+  await stepFrames(page, 2);
   expect((await stackNames(page)).at(-1)).toBe('trade');
   const before = await page.evaluate(() => (window as any).__gameRef.getUnit('Vanessa').items.map((i: any) => i.nid));
   await press(page, 'SELECT');
@@ -443,6 +447,8 @@ test('Canto after a trade moves again and offers only canto_wait', async ({ page
     (window as any).__gameRef.getUnit('Vanessa').skills.some((s: any) => s.nid === 'Canto'))).toBe(true);
   await openUnitMenu(page, 'Vanessa');
   await chooseMenuLabel(page, 'Trade');
+  await press(page, 'SELECT');
+  await stepFrames(page, 2);
   await press(page, 'SELECT');
   await press(page, 'SELECT');
   await press(page, 'BACK');

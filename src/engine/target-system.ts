@@ -8,6 +8,7 @@ import {
   checkAlly,
   modifiedMaximumRange,
   modifiedMinimumRange,
+  noAttackAfterMove as skillNoAttackAfterMove,
   unitHasTag,
 } from '../combat/skill-system';
 import { getLine } from './line-of-sight';
@@ -23,6 +24,7 @@ import {
   allowLessThanMaxTargets,
   ignoreLineOfSight,
   allowTargetInFogOfWar,
+  noAttackAfterMove as itemNoAttackAfterMove,
   type SplashResult,
   type TargetPosition,
 } from '../combat/item-system';
@@ -260,4 +262,64 @@ export class TargetSystem {
     if (attackerPartner && attackerPartner === defenderPartner) return [null, null];
     return [attackerPartner, defenderPartner];
   }
+}
+
+/**
+ * Python TargetSystem._get_all_attackable_positions for one item: the tiles
+ * the item could strike from any of `moves` (only the unit's own tile for a
+ * no_attack_after_move item), within its range and eval_special_range
+ * squares. A maximum range of 99 or more is the whole map in EOtF's engine;
+ * upstream drops the minimum-range shell around the unit and keeps the
+ * squares filter. Used for the attack highlights.
+ */
+export function attackablePositions(
+  unit: UnitObject,
+  item: ItemObject,
+  moves: TargetPosition[],
+  board: GameBoard,
+  game?: any,
+): TargetPosition[] {
+  if (!unit.position) return [];
+  const minRange = modifiedMinimumRange(unit, item, game);
+  const maxRange = modifiedMaximumRange(unit, item, game);
+  if (minRange > maxRange) return [];
+  const origin: TargetPosition = [unit.position[0], unit.position[1]];
+  const noMove = itemNoAttackAfterMove(unit, item) ||
+    skillNoAttackAfterMove(unit, { game, item });
+  const from = noMove ? [origin] : moves;
+  const restriction = rangeRestrict(unit, item, maxRange);
+  const [left, top, right, bottom] = board.bounds;
+  const result = new Map<string, TargetPosition>();
+  const add = (x: number, y: number) => {
+    if (x < left || x > right || y < top || y > bottom) return;
+    result.set(`${x},${y}`, [x, y]);
+  };
+  if (maxRange >= 99) {
+    const fork = isForkEngine();
+    for (let x = left; x <= right; x++) {
+      for (let y = top; y <= bottom; y++) {
+        if (fork) {
+          add(x, y);
+          continue;
+        }
+        const dx = x - origin[0];
+        const dy = y - origin[1];
+        if (Math.abs(dx) + Math.abs(dy) < minRange) continue;
+        if (restriction && !restriction.has(`${dx},${dy}`)) continue;
+        add(x, y);
+      }
+    }
+    return [...result.values()];
+  }
+  for (const [mx, my] of from) {
+    for (let dx = -maxRange; dx <= maxRange; dx++) {
+      for (let dy = -maxRange; dy <= maxRange; dy++) {
+        const distance = Math.abs(dx) + Math.abs(dy);
+        if (distance < minRange || distance > maxRange) continue;
+        if (restriction && !restriction.has(`${dx},${dy}`)) continue;
+        add(mx + dx, my + dy);
+      }
+    }
+  }
+  return [...result.values()];
 }

@@ -215,7 +215,7 @@ test('BACK from the item promotion choice returns to the map without spending th
   });
 });
 
-/** Give the selected Mercenary a Canter (canto 1) skill and an Iron Sword after the crest. */
+/** Give the selected, already-moved Mercenary a Canter (canto 1) skill and an Iron Sword after the crest. */
 async function cantoMercenary(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const game = (window as any).__gameRef;
@@ -229,6 +229,10 @@ async function cantoMercenary(page: Page): Promise<void> {
     const sword = new ItemObject(game.db.items.get('Iron_Sword'));
     sword.owner = unit;
     unit.items.push(sword);
+    // As after a one-tile Move (MOV 4 -> 3). Python's movement_left property
+    // reads the live movement until has_moved, so the stored budget only
+    // counts once the unit has moved (unit.py movement_left).
+    unit.hasMoved = true;
     unit.movementLeft = 3;
     (window as any).__logStart = game.actionLog.actions.length;
   });

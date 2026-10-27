@@ -255,3 +255,26 @@ __qa.game;                                                        // the GameSta
 
 `tests/qa-tools.spec.ts` covers the Act 2 floor 16 jump and an auto-played
 floor 1.
+
+## Frame-time profiling (`npm run perf:frames`)
+
+`scripts/perf-frames.mjs` measures real-speed play: it jumps to a battle
+level (default `Loreia`, an Act 2 boss map with about 40 units), then runs
+at normal speed (one update and draw per 1/60 s, every frame drawn) and
+records the work time of every frame. It measures an idle player phase (the
+cursor moves to a new unit every 30 frames) and one full turn (the
+auto-played player phase, then the enemy AI phase). Results are grouped by
+phase and state (avg, p50, p95, p99, max, frames over 16.7 ms), and
+`--profile` adds the top CPU functions of each part.
+
+```bash
+npm run perf:frames -- --level Loreia --seconds 10                 # dev server
+LT_QA=1 npx vite build --outDir E:/BigData/lt-web-cache/perf-dist --emptyOutDir
+npm run perf:frames -- --dist E:/BigData/lt-web-cache/perf-dist --port 5198 --label prod --profile
+```
+
+`--dist` serves a production build plus the QA chunk, with `/game-data`
+mapped to `lt-maker/`. Results are written to
+`E:/BigData/lt-web-playtest/perf/<label>.json`. Headless Chromium rasterises
+the canvas in software, so `drawImage` costs more there than on a GPU.
+Compare builds on the same machine, run back to back.

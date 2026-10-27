@@ -210,6 +210,10 @@ export function initializeSkillData(
   if (isForkEngine() && skill.hasComponent('witch_warp_expression') && !skill.data.has('arbitrary')) {
     skill.data.set('arbitrary', '');
   }
+  // Python CombatArt.init: a combat art starts inactive.
+  if (skill.hasComponent('combat_art') && !skill.data.has('active')) {
+    skill.data.set('active', false);
+  }
   if (!skill.hasComponent('stat_change_at_apply_expression') ||
       skill.data.has('stat_changes')) return;
 
@@ -984,6 +988,10 @@ export function damagePreventionSkill(
   for (const skill of unit.skills) {
     if (alreadyTriggered.has(skill)) continue;
     if (!skillConditionActive(skill, unit, { game })) continue;
+    // EOtF's engine dispatches after_take_strike only while the skill's
+    // condition holds, CombatCondition's start-of-combat snapshot included.
+    if (isForkEngine() && skill.hasComponent('combat_condition') &&
+        skill.data.get('_combat_condition') !== true) continue;
     if (skill.hasComponent('build_charge')) {
       const charge = Number(skill.data.get('charge') ?? 0);
       const total = Number(skill.data.get('total_charge') ?? skill.getComponent('build_charge') ?? 0);
@@ -2050,6 +2058,9 @@ export function armsthriftRestoration(unit: UnitObject, item: ItemObject): numbe
   let restored = 0;
   for (const skill of unit.skills) {
     const value = skill.getComponent<number>('armsthrift');
+    // EOtF's engine dispatches Armsthrift.after_strike only while the skill's
+    // condition holds (e.g. Alpha Sanctuary needs Formation Alpha).
+    if (typeof value === 'number' && isForkEngine() && !isSkillActive(skill, unit)) continue;
     // Python writes `min(curr_uses + value - 1, max_uses)` after each
     // ordinary one-point use loss. At the max-uses boundary any positive
     // value cancels that strike's loss, but cannot restore more than one.

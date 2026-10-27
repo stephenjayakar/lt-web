@@ -18,7 +18,7 @@ import { reportUnimplemented } from '../engine/strict-mode';
 import { Lcg } from '../engine/static-random';
 import { RECORDS, isFavorited, setFavorited } from '../engine/records';
 import { itemIsMagic, pythonCombatCalcsModule } from '../combat/combat-calcs';
-import { inventoryCapacityOffsets, movementType, unitHasTag, unitTags } from '../combat/skill-system';
+import { inventoryCapacityOffsets, isSkillActive, movementType, unitHasTag, unitTags } from '../combat/skill-system';
 import { inventoryFull } from '../combat/item-system';
 import { isForkEngine } from '../engine/engine-flavor';
 import {
@@ -554,6 +554,444 @@ function counterVars(variables: Map<string, any> | undefined): Map<string, any> 
   return map;
 }
 
+/*
+ * Stateless pieces of the expression scope (Python evaluate.get_context),
+ * shared by every evaluation; buildEvalScope keeps only what depends on the
+ * game, the context or a per-evaluation wrapper cache.
+ */
+// Region wrapper: adds .contains() method and makes regions accessible via .get()
+function wrapRegion(r: any) {
+  if (!r) return null;
+  return {
+    nid: r.nid,
+    region_type: r.region_type,
+    position: r.position,
+    size: r.size,
+    sub_nid: r.sub_nid,
+    condition: r.condition,
+    contains(pos: [number, number] | null): boolean {
+      if (!pos || !r.position) return false;
+      const [px, py] = pos;
+      const [rx, ry] = r.position;
+      const [rw, rh] = r.size ?? [1, 1];
+      return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
+    },
+  };
+}
+
+// Regions collection wrapper: adds .get(nid) method
+function wrapRegions(regions: any[]) {
+  const wrapped: any = regions.map(wrapRegion);
+  wrapped.get = (nid: string) =>
+    wrapped.find((region: any) => region.nid === nid) ?? wrapRegion(null);
+  wrapped.values = () => wrapped;
+  return wrapped;
+}
+
+/**
+ * A Python dict view of an engine mapping. Engine Maps are exposed as-is;
+ * plain-object mappings become a Map so dict methods (get with a default,
+ * keys/values/items, `in`, iteration over keys) behave like Python's.
+ */
+function wrapMapping(value: any): Map<any, any> {
+  if (value instanceof Map) return value;
+  return new Map(Object.entries(value ?? {}));
+}
+
+function wrapRecordValue(value: any): any {
+  if (Array.isArray(value)) {
+    return new Proxy(value, {
+      get(target, property: string | symbol) {
+        if (property === 'remove') {
+          return (candidate: any) => {
+            const index = target.indexOf(candidate);
+            if (index >= 0) target.splice(index, 1);
+            RECORDS?.persist();
+            return target;
+          };
+        }
+        const result = target[property as keyof typeof target];
+        return typeof result === 'function' ? result.bind(target) : result;
+      },
+    });
+  }
+  if (value && typeof value === 'object') {
+    return new Proxy(value, {
+      get(target, property: string | symbol) {
+        if (property === 'get') {
+          return (key: string, fallback?: any) =>
+            key in target ? wrapRecordValue(target[key]) : fallback;
+        }
+        if (property === 'update') {
+          return (entries: Record<string, any>) => {
+            Object.assign(target, entries);
+            RECORDS?.persist();
+            return target;
+          };
+        }
+        if (property === 'map') {
+          return (mapper: (key: string, index: number) => unknown) =>
+            Object.keys(target).map(mapper);
+        }
+        if (property === 'filter') {
+          return (predicate: (key: string, index: number) => boolean) =>
+            Object.keys(target).filter(predicate);
+        }
+        if (property === 'some') {
+          return (predicate: (key: string, index: number) => boolean) =>
+            Object.keys(target).some(predicate);
+        }
+        if (property === 'every') {
+          return (predicate: (key: string, index: number) => boolean) =>
+            Object.keys(target).every(predicate);
+        }
+        if (property === 'includes') {
+          return (key: string) => key in target;
+        }
+        if (property === 'length') return Object.keys(target).length;
+        if (property === Symbol.iterator) {
+          return function* iterateKeys() {
+            yield* Object.keys(target);
+          };
+        }
+        const result = target[property as keyof typeof target];
+        return wrapRecordValue(result);
+      },
+    });
+  }
+  return value;
+}
+
+const recordsProxy = {
+  get(nid: string, fallback?: any) {
+    if (!RECORDS?.has(nid)) return fallback ?? null;
+    return wrapRecordValue(RECORDS.get(nid));
+  },
+  has(nid: string) {
+    return RECORDS?.has(nid) ?? false;
+  },
+};
+
+function componentEntries(candidate: any): [string, any][] {
+  const components = candidate?.components;
+  if (components instanceof Map) return [...components.entries()];
+  if (Array.isArray(components)) {
+    return components.filter((entry): entry is [string, any] =>
+      Array.isArray(entry) && typeof entry[0] === 'string');
+  }
+  return components && typeof components === 'object'
+    ? Object.entries(components)
+    : [];
+}
+
+function componentValue(candidate: any, nid: string): any {
+  if (typeof candidate?.getComponent === 'function') {
+    return candidate.hasComponent?.(nid) ? candidate.getComponent(nid) : undefined;
+  }
+  return componentEntries(candidate).find(([component]) => component === nid)?.[1];
+}
+
+/**
+ * Python @property accessors on component classes, by component nid:
+ * property name -> key of the component's value dict
+ * (item_components/extra_components.py EffectiveDamage).
+ */
+const COMPONENT_PROPERTIES: Record<string, Record<string, string>> = {
+  effective_damage: {
+    tags: 'effective_tags',
+    multiplier: 'effective_multiplier',
+    bonus_damage: 'effective_bonus_damage',
+    show_flash: 'show_effectiveness_flash',
+  },
+};
+
+function wrapComponent(nid: string, value: any) {
+  const aliases = COMPONENT_PROPERTIES[nid];
+  return new Proxy({
+    nid,
+    value: value && typeof value === 'object' && !Array.isArray(value)
+      ? wrapMapping(value)
+      : value,
+  }, {
+    get(target, property: string | symbol) {
+      if (property in target) return target[property as keyof typeof target];
+      if (aliases && typeof property === 'string' && property in aliases) {
+        const key = aliases[property];
+        return value instanceof Map ? value.get(key) ?? null : value?.[key] ?? null;
+      }
+      if (value && typeof value === 'object' && typeof property === 'string') {
+        return value[property];
+      }
+      return null;
+    },
+  });
+}
+
+function wrapComponents(candidate: any) {
+  const values = new Map(componentEntries(candidate).map(([nid, value]) =>
+    [nid, wrapComponent(nid, value)]));
+  return {
+    get(nid: string) {
+      return values.get(nid) ?? null;
+    },
+    has(nid: string) {
+      return values.has(nid);
+    },
+    values() {
+      return [...values.values()];
+    },
+    [Symbol.iterator]() {
+      return values.values();
+    },
+  };
+}
+
+function wrapWexpGain(value: unknown): object {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    get(nid: string, fallback?: unknown) {
+      const entry = nid in source ? Reflect.get(source, nid) : fallback;
+      return Array.isArray(entry)
+        ? {
+          usable: Boolean(entry[0]),
+          wexp_gain: Number(entry[1] ?? 0),
+          cap: Number(entry[2] ?? 0),
+        }
+        : entry;
+    },
+    map(mapper: (nid: string, index: number) => unknown) {
+      return Object.keys(source).map(mapper);
+    },
+    filter(predicate: (nid: string, index: number) => boolean) {
+      return Object.keys(source).filter(predicate);
+    },
+    some(predicate: (nid: string, index: number) => boolean) {
+      return Object.keys(source).some(predicate);
+    },
+    every(predicate: (nid: string, index: number) => boolean) {
+      return Object.keys(source).every(predicate);
+    },
+    *[Symbol.iterator]() {
+      yield* Object.keys(source);
+    },
+  };
+}
+
+function isDeadOrDying(unit: any): boolean {
+  return !!(unit?.isDead?.() ?? unit?.dead) || !!(unit?.isDying ?? unit?.is_dying);
+}
+
+/** What a PyUnitView needs from its evaluation scope (buildEvalScope). */
+interface UnitViewScope {
+  game: any;
+  wrapUnit(candidate: any): any;
+  wrapSkill(candidate: any): any;
+  wrapItem(candidate: any): any;
+  wrapMapping(value: any): Map<any, any>;
+  unitCanUnlock(unit: any, region: any): boolean;
+}
+
+const VIEW_SCOPE = Symbol('scope');
+const VIEW_MEMO = Symbol('memo');
+
+/**
+ * Python UnitObject for expressions. The plain fields are snapshots taken
+ * when the unit is wrapped (once per evaluation scope); expensive fields and
+ * the methods are materialized on first read and memoized for the life of
+ * the view, so wrapping costs one small object instead of rebuilding every
+ * accessor closure. Accessed through UNIT_VIEW_HANDLER (prefab fallback).
+ */
+class PyUnitView {
+  _raw: any;
+  nid: any;
+  name: any;
+  team: any;
+  position: any;
+  previous_position: any;
+  klass: any;
+  affinity: any;
+  traveler: any;
+  dead: boolean;
+  _finished: boolean;
+  is_dying: boolean;
+  level: any;
+  generic: boolean;
+  current_hp: any;
+  variant: any;
+  desc: any;
+  [VIEW_SCOPE]: UnitViewScope;
+  [VIEW_MEMO]: Map<string, unknown> | null;
+
+  constructor(u: any, scope: UnitViewScope) {
+    this._raw = u;
+    this.nid = u.nid;
+    this.name = u.name;
+    this.team = u.team;
+    this.position = u.position;
+    this.previous_position = u.previousPosition ?? u.previous_position ?? null;
+    this.klass = u.klass;
+    this.affinity = u.affinity ?? null;
+    this.traveler = u.traveler ?? u.rescuing ?? null;
+    this.dead = u.isDead?.() ?? u.dead ?? false;
+    this._finished = u._finished ?? false;
+    this.is_dying = u.isDying ?? u.is_dying ?? false;
+    this.level = u.level;
+    this.generic = u.generic ?? false;
+    this.current_hp = u.currentHp ?? u.current_hp;
+    this.variant = u.variant ?? null;
+    this.desc = u.desc ?? null;
+    this[VIEW_SCOPE] = scope;
+    this[VIEW_MEMO] = null;
+  }
+
+  private memo<T>(key: string, compute: () => T): T {
+    let values = this[VIEW_MEMO];
+    if (!values) values = this[VIEW_MEMO] = new Map();
+    if (!values.has(key)) values.set(key, compute());
+    return values.get(key) as T;
+  }
+
+  // Python UnitObject.tags: own tags | class tags | skill additional_tags.
+  get tags() {
+    const u = this._raw;
+    return this.memo('tags', () => (Array.isArray(u.skills) ? [...unitTags(u, this[VIEW_SCOPE].game)] : (u.tags ?? [])));
+  }
+  // Python UnitObject._tags: the unit's own tags (tags adds class/skill tags).
+  get _tags() { return [...(this._raw.tags ?? [])]; }
+  get stat_cap_modifiers() {
+    const u = this._raw;
+    return this.memo('stat_cap_modifiers', () => this[VIEW_SCOPE].wrapMapping(u.statCapModifiers ?? u.stat_cap_modifiers));
+  }
+  get strike_partner() {
+    const u = this._raw;
+    return this[VIEW_SCOPE].wrapUnit(u.strikePartner ?? u.strike_partner ?? null);
+  }
+  get stats() { return this.memo('stats', () => this[VIEW_SCOPE].wrapMapping(this._raw.stats)); }
+  get wexp() { return this.memo('wexp', () => this[VIEW_SCOPE].wrapMapping(this._raw.wexp)); }
+  get growths() { return this.memo('growths', () => this[VIEW_SCOPE].wrapMapping(this._raw.growths)); }
+  get skills() { return this.memo('skills', () => (this._raw.skills ?? []).map(this[VIEW_SCOPE].wrapSkill)); }
+  get items() { return this.memo('items', () => (this._raw.items ?? []).map(this[VIEW_SCOPE].wrapItem)); }
+  // UnitObject.accessories is a property in Python, so do not resolve
+  // every item's skill overrides merely to wrap a unit. Besides wasting
+  // work for expressions that never read accessories, eager resolution
+  // can recursively rebuild the entire game.units expression scope.
+  get accessories() {
+    return (this._raw.items ?? []).filter((candidate: any) =>
+      candidate.hasComponent?.('accessory') ||
+      candidate.hasComponent?.('equippable_accessory')).map(this[VIEW_SCOPE].wrapItem);
+  }
+  // Max HP runs every stat skill's condition; most expressions never
+  // read it, so resolve it (once) on first access.
+  get max_hp() { return this.memo('max_hp', () => this._raw.maxHp ?? this._raw.max_hp); }
+  // Python UnitObject attributes EOtF reads in event expressions
+  // (e.g. `table;portrait;u('Ophie').portrait_nid;...;expression`).
+  get portrait_nid() {
+    const u = this._raw;
+    return u.generic ? null : (u.portraitNid ?? u.portrait_nid ?? null);
+  }
+  get party() { return this._raw.party ?? null; }
+  get ai() { return this._raw.ai ?? null; }
+  get faction() { return this._raw.faction ?? null; }
+  get persistent() { return !!this._raw.persistent; }
+  get exp() { return this._raw.exp ?? 0; }
+  get _has_attacked() { return !!(this._raw.hasAttacked ?? this._raw._has_attacked); }
+  get _has_traded() { return !!(this._raw.hasTraded ?? this._raw._has_traded); }
+  get _has_moved() { return !!(this._raw.hasMoved ?? this._raw._has_moved); }
+
+  // Methods: plain closures (callable detached, like the engine's other
+  // wrapper methods), created on first read.
+  get get_hp() {
+    const u = this._raw;
+    return this.memo('get_hp', () => () => u.currentHp ?? u.current_hp ?? 0);
+  }
+  get get_max_hp() {
+    const u = this._raw;
+    return this.memo('get_max_hp', () => () => u.getMaxHp?.() ?? u.maxHp ?? u.max_hp ?? u.stats?.HP ?? 0);
+  }
+  get get_stat() {
+    const u = this._raw;
+    return this.memo('get_stat', () => (nid: string) =>
+      u.getStat?.(nid) ?? u.getStatValue?.(nid) ?? u.stats?.[nid] ?? 0);
+  }
+  get get_internal_level() {
+    const u = this._raw;
+    const game = this[VIEW_SCOPE].game;
+    return this.memo('get_internal_level', () => () => getInternalLevel(u, game.db));
+  }
+  get get_field() {
+    const u = this._raw;
+    return this.memo('get_field', () => (nid: string, fallback?: any) =>
+      u.fields?.has?.(nid) ? u.fields.get(nid) : (fallback ?? null));
+  }
+  get get_mana() {
+    const u = this._raw;
+    return this.memo('get_mana', () => () => u.currentMana ?? u.current_mana ?? 0);
+  }
+  // Python get_skill: the most recently added skill matching nid or uid.
+  get get_skill() {
+    const u = this._raw;
+    const scope = this[VIEW_SCOPE];
+    return this.memo('get_skill', () => (nid: any) => {
+      const skills = [...(u.skills ?? [])].reverse();
+      return scope.wrapSkill(skills.find((skill: any) =>
+        skill.nid === nid || String(skill.uid) === String(nid)) ?? null);
+    });
+  }
+  get get_weapon() {
+    const u = this._raw;
+    const scope = this[VIEW_SCOPE];
+    return this.memo('get_weapon', () => () => scope.wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null));
+  }
+  get get_accessory() {
+    const u = this._raw;
+    const scope = this[VIEW_SCOPE];
+    return this.memo('get_accessory', () => () => scope.wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null));
+  }
+  get check_flanking() {
+    const u = this._raw;
+    const game = this[VIEW_SCOPE].game;
+    return this.memo('check_flanking', () => (): boolean => {
+      if (!u.position || !game.board) return false;
+      const [x, y] = u.position;
+      const up = game.board.getUnit(x, y - 1);
+      const down = game.board.getUnit(x, y + 1);
+      const left = game.board.getUnit(x - 1, y);
+      const right = game.board.getUnit(x + 1, y);
+      const enemy = (other: any) =>
+        !!other && !(game.db?.areAllied?.(u.team, other.team) ?? u.team === other.team);
+      return (enemy(up) && enemy(down)) || (enemy(left) && enemy(right));
+    });
+  }
+  get can_unlock() {
+    const u = this._raw;
+    const scope = this[VIEW_SCOPE];
+    return this.memo('can_unlock', () => (region: any) => scope.unitCanUnlock(u, region?._raw ?? region));
+  }
+}
+// The expression runtime names host objects by constructor (typeName);
+// unit views read as plain 'object', as the earlier object literals did.
+Object.defineProperty(PyUnitView, 'name', { value: 'Object' });
+
+/**
+ * Python UnitObject.__getattr__ falls back to the unit prefab, so authored
+ * expressions read arbitrary data fields. Mirror that for plain values:
+ * snake_case -> camelCase runtime field, then the DB prefab.
+ */
+const UNIT_VIEW_HANDLER: ProxyHandler<PyUnitView> = {
+  get(target, property: string | symbol) {
+    if (typeof property !== 'string' || property in target) return (target as any)[property];
+    const u = target._raw;
+    const camel = property.replace(/_([a-z0-9])/g, (_m: string, c: string) => c.toUpperCase());
+    for (const key of [camel, property]) {
+      const value = u[key];
+      if (value !== undefined && typeof value !== 'function') return value;
+    }
+    const prefab = target[VIEW_SCOPE].game.db?.units?.get?.(u.nid);
+    const fromPrefab = prefab?.[property];
+    return typeof fromPrefab === 'function' ? undefined : fromPrefab;
+  },
+};
+
 /**
  * The typed trigger fields a Python trigger's to_args() carries (stat
  * changes, playback, ...), as event local args. Only the fields this
@@ -574,196 +1012,9 @@ export function triggerFieldArgs(trigger: Partial<EventTrigger> | null | undefin
   return fields.filter(([, value]) => value !== undefined);
 }
 
-/**
- * Python @property accessors on component classes, by component nid:
- * property name -> key of the component's value dict
- * (item_components/extra_components.py EffectiveDamage).
- */
-const COMPONENT_PROPERTIES: Record<string, Record<string, string>> = {
-  effective_damage: {
-    tags: 'effective_tags',
-    multiplier: 'effective_multiplier',
-    bonus_damage: 'effective_bonus_damage',
-    show_flash: 'show_effectiveness_flash',
-  },
-};
-
 function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   const game = ctx.game;
   if (!game) return {};
-
-  // Region wrapper: adds .contains() method and makes regions accessible via .get()
-  function wrapRegion(r: any) {
-    if (!r) return null;
-    return {
-      nid: r.nid,
-      region_type: r.region_type,
-      position: r.position,
-      size: r.size,
-      sub_nid: r.sub_nid,
-      condition: r.condition,
-      contains(pos: [number, number] | null): boolean {
-        if (!pos || !r.position) return false;
-        const [px, py] = pos;
-        const [rx, ry] = r.position;
-        const [rw, rh] = r.size ?? [1, 1];
-        return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
-      },
-    };
-  }
-
-  // Regions collection wrapper: adds .get(nid) method
-  function wrapRegions(regions: any[]) {
-    const wrapped: any = regions.map(wrapRegion);
-    wrapped.get = (nid: string) =>
-      wrapped.find((region: any) => region.nid === nid) ?? wrapRegion(null);
-    wrapped.values = () => wrapped;
-    return wrapped;
-  }
-
-  /**
-   * A Python dict view of an engine mapping. Engine Maps are exposed as-is;
-   * plain-object mappings become a Map so dict methods (get with a default,
-   * keys/values/items, `in`, iteration over keys) behave like Python's.
-   */
-  function wrapMapping(value: any): Map<any, any> {
-    if (value instanceof Map) return value;
-    return new Map(Object.entries(value ?? {}));
-  }
-
-  function wrapRecordValue(value: any): any {
-    if (Array.isArray(value)) {
-      return new Proxy(value, {
-        get(target, property: string | symbol) {
-          if (property === 'remove') {
-            return (candidate: any) => {
-              const index = target.indexOf(candidate);
-              if (index >= 0) target.splice(index, 1);
-              RECORDS?.persist();
-              return target;
-            };
-          }
-          const result = target[property as keyof typeof target];
-          return typeof result === 'function' ? result.bind(target) : result;
-        },
-      });
-    }
-    if (value && typeof value === 'object') {
-      return new Proxy(value, {
-        get(target, property: string | symbol) {
-          if (property === 'get') {
-            return (key: string, fallback?: any) =>
-              key in target ? wrapRecordValue(target[key]) : fallback;
-          }
-          if (property === 'update') {
-            return (entries: Record<string, any>) => {
-              Object.assign(target, entries);
-              RECORDS?.persist();
-              return target;
-            };
-          }
-          if (property === 'map') {
-            return (mapper: (key: string, index: number) => unknown) =>
-              Object.keys(target).map(mapper);
-          }
-          if (property === 'filter') {
-            return (predicate: (key: string, index: number) => boolean) =>
-              Object.keys(target).filter(predicate);
-          }
-          if (property === 'some') {
-            return (predicate: (key: string, index: number) => boolean) =>
-              Object.keys(target).some(predicate);
-          }
-          if (property === 'every') {
-            return (predicate: (key: string, index: number) => boolean) =>
-              Object.keys(target).every(predicate);
-          }
-          if (property === 'includes') {
-            return (key: string) => key in target;
-          }
-          if (property === 'length') return Object.keys(target).length;
-          if (property === Symbol.iterator) {
-            return function* iterateKeys() {
-              yield* Object.keys(target);
-            };
-          }
-          const result = target[property as keyof typeof target];
-          return wrapRecordValue(result);
-        },
-      });
-    }
-    return value;
-  }
-
-  const recordsProxy = {
-    get(nid: string, fallback?: any) {
-      if (!RECORDS?.has(nid)) return fallback ?? null;
-      return wrapRecordValue(RECORDS.get(nid));
-    },
-    has(nid: string) {
-      return RECORDS?.has(nid) ?? false;
-    },
-  };
-
-  function componentEntries(candidate: any): [string, any][] {
-    const components = candidate?.components;
-    if (components instanceof Map) return [...components.entries()];
-    if (Array.isArray(components)) {
-      return components.filter((entry): entry is [string, any] =>
-        Array.isArray(entry) && typeof entry[0] === 'string');
-    }
-    return components && typeof components === 'object'
-      ? Object.entries(components)
-      : [];
-  }
-
-  function componentValue(candidate: any, nid: string): any {
-    if (typeof candidate?.getComponent === 'function') {
-      return candidate.hasComponent?.(nid) ? candidate.getComponent(nid) : undefined;
-    }
-    return componentEntries(candidate).find(([component]) => component === nid)?.[1];
-  }
-
-  function wrapComponent(nid: string, value: any) {
-    const aliases = COMPONENT_PROPERTIES[nid];
-    return new Proxy({
-      nid,
-      value: value && typeof value === 'object' && !Array.isArray(value)
-        ? wrapMapping(value)
-        : value,
-    }, {
-      get(target, property: string | symbol) {
-        if (property in target) return target[property as keyof typeof target];
-        if (aliases && typeof property === 'string' && property in aliases) {
-          const key = aliases[property];
-          return value instanceof Map ? value.get(key) ?? null : value?.[key] ?? null;
-        }
-        if (value && typeof value === 'object' && typeof property === 'string') {
-          return value[property];
-        }
-        return null;
-      },
-    });
-  }
-
-  function wrapComponents(candidate: any) {
-    const values = new Map(componentEntries(candidate).map(([nid, value]) =>
-      [nid, wrapComponent(nid, value)]));
-    return {
-      get(nid: string) {
-        return values.get(nid) ?? null;
-      },
-      has(nid: string) {
-        return values.has(nid);
-      },
-      values() {
-        return [...values.values()];
-      },
-      [Symbol.iterator]() {
-        return values.values();
-      },
-    };
-  }
 
   const wrappedItems = new WeakMap<object, any>();
   function wrapItem(item: any): any {
@@ -864,37 +1115,6 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     return wrapped;
   }
 
-  function wrapWexpGain(value: unknown): object {
-    const source = value && typeof value === 'object' ? value : {};
-    return {
-      get(nid: string, fallback?: unknown) {
-        const entry = nid in source ? Reflect.get(source, nid) : fallback;
-        return Array.isArray(entry)
-          ? {
-            usable: Boolean(entry[0]),
-            wexp_gain: Number(entry[1] ?? 0),
-            cap: Number(entry[2] ?? 0),
-          }
-          : entry;
-      },
-      map(mapper: (nid: string, index: number) => unknown) {
-        return Object.keys(source).map(mapper);
-      },
-      filter(predicate: (nid: string, index: number) => boolean) {
-        return Object.keys(source).filter(predicate);
-      },
-      some(predicate: (nid: string, index: number) => boolean) {
-        return Object.keys(source).some(predicate);
-      },
-      every(predicate: (nid: string, index: number) => boolean) {
-        return Object.keys(source).every(predicate);
-      },
-      *[Symbol.iterator]() {
-        yield* Object.keys(source);
-      },
-    };
-  }
-
   const wrappedClasses = new WeakMap<object, object>();
   function wrapClass(klass: unknown): unknown {
     if (!klass || typeof klass !== 'object') return klass;
@@ -956,132 +1176,24 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   }
 
   const wrappedUnits = new WeakMap<object, any>();
+  // Python UnitObject as expressions see it: a PyUnitView (one small object
+  // per unit per evaluation scope; the class is defined above buildEvalScope).
+  const unitViewScope: UnitViewScope = {
+    game,
+    wrapUnit: (candidate: any) => wrapUnit(candidate),
+    wrapSkill: (candidate: any) => wrapSkill(candidate),
+    wrapItem: (candidate: any) => wrapItem(candidate),
+    wrapMapping: (value: any) => wrapMapping(value),
+    unitCanUnlock: (unit: any, region: any) => unitCanUnlock(unit, region),
+  };
   function wrapUnit(u: any): any {
     if (!u) return null;
     if (typeof u !== 'object') return u;
     const existing = wrappedUnits.get(u);
     if (existing) return existing;
-    const checkFlanking = (): boolean => {
-      if (!u.position || !game.board) return false;
-      const [x, y] = u.position;
-      const up = game.board.getUnit(x, y - 1);
-      const down = game.board.getUnit(x, y + 1);
-      const left = game.board.getUnit(x - 1, y);
-      const right = game.board.getUnit(x + 1, y);
-      const enemy = (other: any) =>
-        !!other && !(game.db?.areAllied?.(u.team, other.team) ?? u.team === other.team);
-      return (enemy(up) && enemy(down)) || (enemy(left) && enemy(right));
-    };
-    // Expensive fields are materialized on first read and memoized for the
-    // life of this wrapper (one expression scope), like wrapSkill's
-    // components. Expressions read only a few fields, while units are wrapped
-    // wholesale (game.units, unit lists, the evaluated unit itself).
-    const memoValues = new Map<string, unknown>();
-    const memo = <T>(key: string, compute: () => T): T => {
-      if (!memoValues.has(key)) memoValues.set(key, compute());
-      return memoValues.get(key) as T;
-    };
-    const wrapped = {
-      _raw: u,
-      nid: u.nid,
-      name: u.name,
-      team: u.team,
-      position: u.position,
-      previous_position: u.previousPosition ?? u.previous_position ?? null,
-      // Python UnitObject.tags: own tags | class tags | skill additional_tags.
-      get tags() {
-        return memo('tags', () => (Array.isArray(u.skills) ? [...unitTags(u, game)] : (u.tags ?? [])));
-      },
-      klass: u.klass,
-      // Python UnitObject._tags: the unit's own tags (tags adds class/skill tags).
-      get _tags() { return [...(u.tags ?? [])]; },
-      affinity: u.affinity ?? null,
-      traveler: u.traveler ?? u.rescuing ?? null,
-      get stat_cap_modifiers() {
-        return memo('stat_cap_modifiers', () => wrapMapping(u.statCapModifiers ?? u.stat_cap_modifiers));
-      },
-      get strike_partner() {
-        return wrapUnit(u.strikePartner ?? u.strike_partner ?? null);
-      },
-      dead: u.isDead?.() ?? u.dead ?? false,
-      _finished: u._finished ?? false,
-      is_dying: u.isDying ?? u.is_dying ?? false,
-      level: u.level,
-      get stats() { return memo('stats', () => wrapMapping(u.stats)); },
-      get wexp() { return memo('wexp', () => wrapMapping(u.wexp)); },
-      get growths() { return memo('growths', () => wrapMapping(u.growths)); },
-      generic: u.generic ?? false,
-      get skills() { return memo('skills', () => (u.skills ?? []).map(wrapSkill)); },
-      get items() { return memo('items', () => (u.items ?? []).map(wrapItem)); },
-      // UnitObject.accessories is a property in Python, so do not resolve
-      // every item's skill overrides merely to wrap a unit. Besides wasting
-      // work for expressions that never read accessories, eager resolution
-      // can recursively rebuild the entire game.units expression scope.
-      get accessories() {
-        return (u.items ?? []).filter((candidate: any) =>
-          candidate.hasComponent?.('accessory') ||
-          candidate.hasComponent?.('equippable_accessory')).map(wrapItem);
-      },
-      current_hp: u.currentHp ?? u.current_hp,
-      // Max HP runs every stat skill's condition; most expressions never
-      // read it, so resolve it (once) on first access.
-      get max_hp() { return memo('max_hp', () => u.maxHp ?? u.max_hp); },
-      get_hp: () => u.currentHp ?? u.current_hp ?? 0,
-      get_max_hp: () => u.getMaxHp?.() ?? u.maxHp ?? u.max_hp ?? u.stats?.HP ?? 0,
-      get_stat: (nid: string) =>
-        u.getStat?.(nid) ?? u.getStatValue?.(nid) ?? u.stats?.[nid] ?? 0,
-      get_internal_level: () => getInternalLevel(u, game.db),
-      get_field: (nid: string, fallback?: any) =>
-        u.fields?.has?.(nid) ? u.fields.get(nid) : (fallback ?? null),
-      // Python UnitObject attributes EOtF reads in event expressions
-      // (e.g. `table;portrait;u('Ophie').portrait_nid;...;expression`).
-      get portrait_nid() {
-        return u.generic ? null : (u.portraitNid ?? u.portrait_nid ?? null);
-      },
-      get party() { return u.party ?? null; },
-      get ai() { return u.ai ?? null; },
-      get faction() { return u.faction ?? null; },
-      get persistent() { return !!u.persistent; },
-      get exp() { return u.exp ?? 0; },
-      get _has_attacked() { return !!(u.hasAttacked ?? u._has_attacked); },
-      get _has_traded() { return !!(u.hasTraded ?? u._has_traded); },
-      get _has_moved() { return !!(u.hasMoved ?? u._has_moved); },
-      get_mana: () => u.currentMana ?? u.current_mana ?? 0,
-      // Python get_skill: the most recently added skill matching nid or uid.
-      get_skill: (nid: any) => {
-        const skills = [...(u.skills ?? [])].reverse();
-        return wrapSkill(skills.find((skill: any) =>
-          skill.nid === nid || String(skill.uid) === String(nid)) ?? null);
-      },
-      get_weapon: () => wrapItem(u.getWeapon?.() ?? u.equippedWeapon ?? null),
-      get_accessory: () => wrapItem(u.getAccessory?.() ?? u.equippedAccessory ?? null),
-      check_flanking: checkFlanking,
-      can_unlock: (region: any) => unitCanUnlock(u, region?._raw ?? region),
-      variant: u.variant ?? null,
-      desc: u.desc ?? null,
-    };
-    // Python UnitObject.__getattr__ falls back to the unit prefab, so authored
-    // expressions read arbitrary data fields. Mirror that for plain values:
-    // snake_case -> camelCase runtime field, then the DB prefab.
-    const proxied = new Proxy(wrapped as Record<string, any>, {
-      get(target, property: string | symbol) {
-        if (typeof property !== 'string' || property in target) return target[property as string];
-        const camel = property.replace(/_([a-z0-9])/g, (_m: string, c: string) => c.toUpperCase());
-        for (const key of [camel, property]) {
-          const value = u[key];
-          if (value !== undefined && typeof value !== 'function') return value;
-        }
-        const prefab = game.db?.units?.get?.(u.nid);
-        const fromPrefab = prefab?.[property];
-        return typeof fromPrefab === 'function' ? undefined : fromPrefab;
-      },
-    });
+    const proxied = new Proxy(new PyUnitView(u, unitViewScope), UNIT_VIEW_HANDLER);
     wrappedUnits.set(u, proxied);
     return proxied;
-  }
-
-  function isDeadOrDying(unit: any): boolean {
-    return !!(unit?.isDead?.() ?? unit?.dead) || !!(unit?.isDying ?? unit?.is_dying);
   }
 
   function getAllUnits(onlyOnField: boolean = true): any[] {
@@ -1151,8 +1263,18 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       .map(({ unit }) => unit);
   }
 
+  // The game proxy and the engine-module stand-ins below are large object
+  // literals (hundreds of closures). Most expressions only touch the unit
+  // wrappers, RECORDS and maybe `game`, so each group is built on first use
+  // within this evaluation scope rather than for every evaluation.
+  let gameProxyCache: any = null;
+  let modulesCache: Record<string, any> | null = null;
+  const getModules = (): Record<string, any> => (modulesCache ??= buildModules());
+  const getGameProxy = (): any => (gameProxyCache ??= buildGameProxy());
+  const buildGameProxy = (): any => {
   // Build the game proxy object
   const regions = game.currentLevel?.regions ?? [];
+  let levelRegions: any = null;
   const gameProxy: any = {
     turncount: game.turnCount ?? game.turncount ?? 0,
     turn_count: game.turnCount ?? game.turncount ?? 0,
@@ -1204,7 +1326,8 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       },
     },
     level: {
-      regions: wrapRegions(regions),
+      // Wrapped on first read (once per scope), not with every game proxy.
+      get regions() { return (levelRegions ??= wrapRegions(regions)); },
       nid: game.currentLevel?.nid ?? '',
       objective: {
         ...(game.currentLevel?.objective ?? {}),
@@ -1417,6 +1540,16 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
 
   gameProxy._current_level = gameProxy.level;
   gameProxy.level.name = game.currentLevel?.name ?? '';
+  // Python Game.target_system is the same module evaluate.py exposes.
+  Object.defineProperty(gameProxy, 'target_system', {
+    configurable: true,
+    enumerable: true,
+    get: () => getModules().target_system,
+  });
+  return gameProxy;
+  };
+  const buildModules = (): Record<string, any> => {
+  const gameProxy = getGameProxy();
   const unwrapUnit = (candidate: any) => {
     if (typeof candidate === 'string') return game.units?.get(candidate) ?? null;
     return candidate?._raw ?? game.units?.get(candidate?.nid) ?? candidate;
@@ -1518,9 +1651,16 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     check_enemy(left: any, right: any) {
       return !skillSystem.check_ally(left, right);
     },
-    hidden(candidate: any) {
+    hidden(candidate: any, owner?: any) {
       const raw = candidate?._raw ?? candidate;
-      return componentValue(raw, 'hidden') !== undefined;
+      if (componentValue(raw, 'hidden') !== undefined) return true;
+      if (!isForkEngine()) return false;
+      // EOtF's engine: skill.hidden or skill.is_terrain or
+      // (skill.hidden_if_inactive and not condition(skill, unit)).
+      if (componentValue(raw, 'is_terrain') !== undefined) return true;
+      if (componentValue(raw, 'hidden_if_inactive') === undefined) return false;
+      const unit = unwrapUnit(owner) ?? (raw?.ownerNid ? game.units?.get?.(raw.ownerNid) : null);
+      return !!unit && !isSkillActive(raw, unit, game);
     },
     empower_heal(candidate: any) {
       const raw = unwrapUnit(candidate);
@@ -1663,8 +1803,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     DB: databaseProxy,
     RECORDS: recordsProxy,
     utils: {
-      clamp(value: number, minimum: number, maximum: number) {
-        return Math.max(minimum, Math.min(maximum, value));
+      // Python utils.clamp(i, bound_a, bound_b): the bounds may come in
+      // either order (EOtF writes utils.clamp(0, 10, x)).
+      clamp(value: number, boundA: number, boundB: number) {
+        const high = Math.max(boundA, boundB);
+        const low = Math.min(boundA, boundB);
+        return Math.min(high, Math.max(low, value));
       },
       calculate_distance(left: [number, number] | null, right: [number, number] | null) {
         if (!left || !right) return 0;
@@ -1717,9 +1861,52 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       },
     },
   };
-  // Python Game.target_system is the same module evaluate.py exposes.
-  gameProxy.target_system = scope.target_system;
   return scope;
+  };
+  return new EvalScope(wrapUnit, wrapItem, wrapSkill, wrapClass, getGameProxy, getModules);
+}
+
+/**
+ * buildEvalScope's result: the per-evaluation wrappers, RECORDS, and the
+ * game proxy / engine modules, which are built on first read.
+ */
+class EvalScope {
+  readonly wrapUnit: (candidate: any) => any;
+  readonly wrapItem: (candidate: any) => any;
+  readonly wrapSkill: (candidate: any) => any;
+  readonly wrapClass: (candidate: any) => any;
+  readonly RECORDS = recordsProxy;
+  private readonly getGame: () => any;
+  private readonly getModules: () => Record<string, any>;
+  [name: string]: any;
+
+  constructor(
+    wrapUnit: (candidate: any) => any,
+    wrapItem: (candidate: any) => any,
+    wrapSkill: (candidate: any) => any,
+    wrapClass: (candidate: any) => any,
+    getGame: () => any,
+    getModules: () => Record<string, any>,
+  ) {
+    this.wrapUnit = wrapUnit;
+    this.wrapItem = wrapItem;
+    this.wrapSkill = wrapSkill;
+    this.wrapClass = wrapClass;
+    this.getGame = getGame;
+    this.getModules = getModules;
+  }
+
+  get game() { return this.getGame(); }
+  get DB() { return this.getModules().DB; }
+  get utils() { return this.getModules().utils; }
+  get item_funcs() { return this.getModules().item_funcs; }
+  get item_system() { return this.getModules().item_system; }
+  get skill_system() { return this.getModules().skill_system; }
+  get unit_funcs() { return this.getModules().unit_funcs; }
+  get combat_calcs() { return this.getModules().combat_calcs; }
+  get movement_funcs() { return this.getModules().movement_funcs; }
+  get target_system() { return this.getModules().target_system; }
+  get path_system() { return this.getModules().path_system; }
 }
 
 /** Names whose value comes from the context even when a local shadows them. */
@@ -1887,7 +2074,9 @@ function buildPythonGlobals(ctx: ConditionContext): RootScope {
         };
       case 'cf': return { SETTINGS: { debug: false } };
       case 'math': return MATH_MODULE;
-      case 'DB': case 'RECORDS': case 'utils': case 'item_funcs': case 'item_system':
+      // RECORDS needs no per-evaluation scope (the same recordsProxy).
+      case 'RECORDS': return game ? recordsProxy : NOT_FOUND;
+      case 'DB': case 'utils': case 'item_funcs': case 'item_system':
       case 'skill_system': case 'unit_funcs': case 'combat_calcs': case 'movement_funcs':
       case 'target_system':
         return game ? evalScope()[name] : NOT_FOUND;

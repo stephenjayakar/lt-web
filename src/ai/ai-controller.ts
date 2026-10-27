@@ -31,6 +31,7 @@ import {
   healAmount as itemHealAmount,
   isStealItem,
   noAttackAfterMove as itemNoAttackAfterMove,
+  rangeRestrict,
   stealItemRestrict,
   stealTargetStatRestrict,
 } from '../combat/item-system';
@@ -1013,6 +1014,10 @@ export class AIController {
       : this.getEnemies(unit).map((enemy) => enemy.position!);
     const minRange = modifiedMinimumRange(unit, item, this.gameRef);
     const maxRange = modifiedMaximumRange(unit, item, this.gameRef);
+    // Python get_possible_attack_positions: the strike shell around each move
+    // honours the item's eval_special_range squares, even at 99 range (where
+    // EOtF's engine skips that filter only for the targets themselves).
+    const restriction = rangeRestrict(unit, item, maxRange);
     const result: Array<[[number, number], [number, number][]]> = [];
     const seen = new Set<string>();
     for (const position of positions) {
@@ -1021,7 +1026,8 @@ export class AIController {
       seen.add(key);
       const moves = validMoves.filter((move) => {
         const distance = this.distance(move, position);
-        return distance >= minRange && distance <= maxRange;
+        if (distance < minRange || distance > maxRange) return false;
+        return !restriction || restriction.has(`${position[0] - move[0]},${position[1] - move[1]}`);
       });
       if (moves.length > 0) result.push([[position[0], position[1]], moves]);
     }
@@ -1355,16 +1361,20 @@ export class AIController {
 
   /**
    * Python PrimaryAI equips every candidate item it can while testing it
-   * (Attack and Support test each available item; Steal only its ability)
-   * and, when done, re-equips unit.items[0] if it can. So after thinking each
-   * slot holds items[0] when that is equippable, otherwise the last
-   * equippable item tested -- not necessarily the weapon held before. The net
-   * result is applied as at most one EquipItem per slot.
+   * (Attack and Support test each available item, then every skill ability;
+   * Steal only its ability) and, when done, re-equips unit.items[0] if it
+   * can. So after thinking each slot holds items[0] when that is equippable,
+   * otherwise the last equippable item tested -- which can be an equippable
+   * ability item, kept as the equipped weapon as in Python. The net result
+   * is applied as at most one EquipItem per slot.
    */
   private applyPrimaryEquipState(unit: UnitObject, action: string): void {
     const tested = action === 'Steal'
       ? []
-      : this.allItems(unit).filter((item) => itemAvailable(unit, item, this.db, this.gameRef));
+      : [
+        ...this.allItems(unit).filter((item) => itemAvailable(unit, item, this.db, this.gameRef)),
+        ...this.abilityItems(unit),
+      ];
     let weapon = unit.equippedWeapon;
     let accessory = unit.equippedAccessory;
     const equip = (item: ItemObject | undefined) => {

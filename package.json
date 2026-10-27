@@ -19,6 +19,7 @@
     "test:harness": "playwright test tests/harness.spec.ts",
     "qa:run": "node scripts/qa-run.mjs",
     "qa:summary": "node scripts/qa-summary.mjs",
+    "perf:frames": "node scripts/perf-frames.mjs",
     "test:ss:soak": "node scripts/sacred-stones-soak.mjs",
     "test:soak:seeded": "SOAK_SEED_BASE=1000 node scripts/sacred-stones-soak.mjs",
     "audit:parity": "node scripts/parity-audit.mjs --check",

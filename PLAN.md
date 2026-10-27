@@ -191,9 +191,12 @@ The release gate is green: build, all four audits, the full serial suite,
 - [x] EOtF engine UI: weather window, forecast digits 100-998, four window
   skins (startup/New Game baked parts), forced skin on Choice/Table, red
   sold-out stock, item help grid offsets, Gallery dex entries.
-- [ ] Map ability targeting (Trade/Rescue/Take/Give/Steal) uses list menus;
-  Python's TargetingState moves the cursor with a pennant and draws the
-  trade_window / rescue_window / give_window previews.
+- [x] Map ability targeting (Trade/Rescue/Take/Give/Drop/Talk/Support...)
+  is Python's TargetingState: SelectionHelper cursor (CPython set order),
+  pennant, trade/rescue/give previews; combat and spell targeting move by
+  direction too and steal shows the trade preview.
+- [ ] Targeting highlights: Python draws light spell/attack highlight sprites
+  over the whole range plus the cursor tile; the web fills target tiles.
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in
@@ -219,6 +222,7 @@ The release gate is green: build, all four audits, the full serial suite,
   `choice;...;expression` re-evaluates every frame; battle animations draw no
   extra-damage digits (the fork's AnimationCombat has none).
 - [x] Fork events from the engine source (`tests/fork-events.spec.ts`): heal scaling, get_tile_units, baked objectives, choice/table rows and skin, interact_unit item, StyleNid cursor, skip drops tables, find_item.
+- [x] Level-start differential (`tools/oracle/level-sweep.mjs`, run state from a real run start): all 158 EOtF levels reach turn 1 on both engines; fixed false-`if` double evaluation, carried-unit order, item-sourced timed statuses; generic unit setup diffs remain (fix/oracle-units).
 - [x] Fork AI/flow (`tests/fork-ai-flow.spec.ts`): list-valued unit tags,
   Reset (on_refresh) after event moves/reset/resurrect and for a dying
   rescuer's traveler, Drop waits same-phase droppees, main-target

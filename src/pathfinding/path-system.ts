@@ -8,6 +8,8 @@ import type { GameBoard } from '../objects/game-board';
 import type { UnitObject } from '../objects/unit';
 import type { Database } from '../data/database';
 import { Dijkstra, AStar } from './pathfinding';
+import { attackablePositions } from '../engine/target-system';
+import { available as itemAvailable } from '../combat/item-system';
 import {
   modifiedMaximumRange,
   modifiedMinimumRange,
@@ -82,46 +84,26 @@ export class PathSystem {
   }
 
   /**
-   * Get all positions that can be attacked from the given set of valid moves.
-   * This is the union of attack ranges from every valid move position,
-   * excluding tiles that are already in validMoves (you attack *from* a
-   * move position, not *at* one).
+   * Get all positions that can be attacked from the given set of valid moves
+   * (Python get_all_attackable_positions_weapons): the union over every
+   * available weapon of its strike tiles, excluding tiles that are already in
+   * validMoves (you attack *from* a move position, not *at* one).
    */
   getAttackPositions(
     unit: UnitObject,
     board: GameBoard,
     validMoves: [number, number][],
   ): [number, number][] {
-    const [minRange, maxRange] = this.getAttackRange(unit);
-    if (maxRange <= 0) return [];
-
-    const { width, height } = board;
     const moveSet = new Set<string>(validMoves.map(([x, y]) => `${x},${y}`));
-    const attackSet = new Set<string>();
-
-    for (const [mx, my] of validMoves) {
-      // For each move position, add all tiles within attack range
-      for (let dx = -maxRange; dx <= maxRange; dx++) {
-        for (let dy = -maxRange; dy <= maxRange; dy++) {
-          const dist = Math.abs(dx) + Math.abs(dy);
-          if (dist < minRange || dist > maxRange) continue;
-
-          const ax = mx + dx;
-          const ay = my + dy;
-          if (ax < 0 || ax >= width || ay < 0 || ay >= height) continue;
-
-          const key = `${ax},${ay}`;
-          if (!moveSet.has(key)) {
-            attackSet.add(key);
-          }
-        }
+    const attackSet = new Map<string, [number, number]>();
+    for (const item of unit.getAllItems()) {
+      if (!item.isWeapon() || !itemAvailable(unit, item, this.db, this.game)) continue;
+      for (const position of attackablePositions(unit, item, validMoves, board, this.game)) {
+        const key = `${position[0]},${position[1]}`;
+        if (!moveSet.has(key)) attackSet.set(key, position);
       }
     }
-
-    return Array.from(attackSet).map((key) => {
-      const [x, y] = key.split(',').map(Number);
-      return [x, y] as [number, number];
-    });
+    return [...attackSet.values()];
   }
 
   /**
@@ -301,19 +283,4 @@ export class PathSystem {
     );
   }
 
-  /**
-   * Get the [minRange, maxRange] for a unit's equipped weapon.
-   * Falls back to [0, 0] if the unit has no usable weapon.
-   */
-  private getAttackRange(unit: UnitObject): [number, number] {
-    for (const item of unit.items) {
-      if (item.isWeapon()) {
-        return [
-          modifiedMinimumRange(unit, item, this.game),
-          modifiedMaximumRange(unit, item, this.game),
-        ];
-      }
-    }
-    return [0, 0];
-  }
 }
