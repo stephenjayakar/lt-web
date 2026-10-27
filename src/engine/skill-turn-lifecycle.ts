@@ -143,18 +143,6 @@ function evaluatedTurnAmount(
   }, 0);
 }
 
-/**
- * Python SourceType.removable: a RemoveSkill with the default source leaves
- * an aura, terrain, region, item or global skill in place (unit.remove_skill
- * only takes removable or same-source instances), so such a timed skill
- * keeps counting down past 0.
- */
-function skillIsRemovable(skill: SkillObject): boolean {
-  const data = skill.data;
-  return !(data.get('sourceType') === 'global' || data.has('auraSourceType') ||
-    data.has('positionStatusSourceType') || data.has('itemSourceType'));
-}
-
 /** One entry of Python StatusUpkeepState's per-unit `actions` list. */
 type PendingTurnAction =
   | { kind: 'hp'; unit: UnitObject; num: number; oldHp: number }
@@ -455,7 +443,7 @@ export function collectSkillTurnHooks(
           }
         } else if (phase === 'upkeep' && component === 'purge_ailments' && conditional) {
           for (const ailment of [...unit.skills]) {
-            if (ailment.hasComponent('negative') && skillIsRemovable(ailment)) {
+            if (ailment.hasComponent('negative') && sourceAllowsPlainRemoval(ailment)) {
               game.actionLog.doAction(new RemoveSkillAction(unit, ailment));
             }
           }
