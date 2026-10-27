@@ -19,6 +19,7 @@ import { skillCondition } from '../combat/item-system';
 import { applyExpGain, autoLevelUnit } from './leveling';
 import { triggerInterruptRegions } from '../movement/region-interrupt';
 import { isForkEngine } from './engine-flavor';
+import { setCombatRandomState, type RandomGameState } from './static-random';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
 import type { GameState } from './game-state';
@@ -2293,11 +2294,43 @@ export class ProcessStatusEffectsAction extends Action {
 }
 
 /**
+ * Python action.RecordRandomState: the combat stream moved from `before` to
+ * `after` outside the solver (gba_poison, item-use strikes). The first do is
+ * a no-op in Python; execute here sets the after-state, which is already the
+ * live state the first time, so redo and the first run agree.
+ */
+export class RecordCombatRandomStateAction extends Action {
+  private game: RandomGameState;
+  private before: number;
+  private after: number;
+
+  constructor(game: RandomGameState, before: number, after: number) {
+    super();
+    this.game = game;
+    this.before = before;
+    this.after = after;
+  }
+
+  execute(): void {
+    setCombatRandomState(this.game, this.after);
+  }
+
+  reverse(): void {
+    setCombatRandomState(this.game, this.before);
+  }
+}
+
+/**
  * WaitAction - Mark a unit as finished for the turn.
  */
 export class WaitAction extends Action {
   private unit: UnitObject;
-  private previous: boolean = false;
+  private previous: {
+    finished: boolean;
+    hasAttacked: boolean;
+    hasTraded: boolean;
+    hasMoved: boolean;
+  } | null = null;
   private regionRemovals: RemoveRegionAction[] | null = null;
 
   constructor(unit: UnitObject) {
@@ -2317,14 +2350,24 @@ export class WaitAction extends Action {
           .map((region) => new RemoveRegionAction(region.nid, regions))
         : [];
     }
-    this.previous = this.unit.finished;
+    // Python Wait.do sets has_moved, has_traded and has_attacked along with
+    // finished; reverse restores the whole get_action_state() tuple.
+    this.previous = {
+      finished: this.unit.finished,
+      hasAttacked: this.unit.hasAttacked,
+      hasTraded: this.unit.hasTraded,
+      hasMoved: this.unit.hasMoved,
+    };
+    this.unit.hasMoved = true;
+    this.unit.hasTraded = true;
+    this.unit.hasAttacked = true;
     this.unit.finished = true;
     for (const removal of this.regionRemovals) removal.execute();
   }
 
   reverse(): void {
     for (const removal of [...(this.regionRemovals ?? [])].reverse()) removal.reverse();
-    this.unit.finished = this.previous;
+    if (this.previous) Object.assign(this.unit, this.previous);
   }
 }
 
@@ -2481,12 +2524,15 @@ export class GainExpAction extends Action {
   private startGrowthPoints: Record<string, number> = {};
   private startHp: number = 0;
   private applied: number = 0;
+  /** Python's `bonus_exp` ExpState: its level-ups also raise current HP. */
+  private bonusExp: boolean;
 
-  constructor(unit: UnitObject, amount: number, growthMode: string = 'random') {
+  constructor(unit: UnitObject, amount: number, growthMode: string = 'random', bonusExp: boolean = false) {
     super();
     this.unit = unit;
     this.amount = amount;
     this.growthMode = growthMode;
+    this.bonusExp = bonusExp;
   }
 
   execute(): void {
@@ -2497,7 +2543,7 @@ export class GainExpAction extends Action {
     this.startHp = this.unit.currentHp;
     // Python routes exp through ExpState, which clamps the gain at the level
     // cap (get_level_cap) and grants nothing when can_give_exp fails.
-    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.());
+    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.(), this.bonusExp);
     this.applied = result.applied;
     this.levelUps = result.levelUps;
   }
@@ -4132,6 +4178,38 @@ export class AutoLevelAction extends Action {
   }
 }
 
+/** A unit's equipped slots and item order, for exact rewind of recalc_unit. */
+interface EquipState {
+  weapon: ItemObject | null;
+  accessory: ItemObject | null;
+  items: ItemObject[];
+}
+
+function captureEquipState(unit: UnitObject): EquipState {
+  return { weapon: unit.equippedWeapon, accessory: unit.equippedAccessory, items: [...unit.items] };
+}
+
+/**
+ * Python AddSkill/RemoveSkill are wrapped in @recalculate_unit, whose
+ * recalc_unit calls unit.autoequip(): a status that makes the weapon
+ * unavailable (cannot_use_items on Stunned/Sleep) unequips it, and losing it
+ * equips the first usable weapon again. Python's reverse autoequips too; the
+ * web restores the exact prior slots and order so the turnwheel replays.
+ */
+function restoreEquipState(unit: UnitObject, state: EquipState): void {
+  if (unit.equippedWeapon !== state.weapon) {
+    if (state.weapon) unit.equip(state.weapon);
+    else if (unit.equippedWeapon) unit.unequip(unit.equippedWeapon);
+  }
+  if (unit.equippedAccessory !== state.accessory) {
+    if (state.accessory) unit.equip(state.accessory);
+    else if (unit.equippedAccessory) unit.unequip(unit.equippedAccessory);
+  }
+  if (state.items.length === unit.items.length && state.items.every((item) => unit.items.includes(item))) {
+    unit.items.splice(0, unit.items.length, ...state.items);
+  }
+}
+
 /** Add an already-created skill object, avoiding duplicates, reversibly. */
 export class AddSkillAction extends Action {
   private unit: UnitObject;
@@ -4145,6 +4223,8 @@ export class AddSkillAction extends Action {
   private statusReactionActions: Action[] = [];
   private initializedStatusReactions = false;
 
+  private equipBefore: EquipState | null = null;
+
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
     this.unit = unit;
@@ -4153,6 +4233,12 @@ export class AddSkillAction extends Action {
   }
 
   execute(): void {
+    this.equipBefore = captureEquipState(this.unit);
+    this.addSkill();
+    this.unit.autoequip();
+  }
+
+  private addSkill(): void {
     const sameNid = this.unit.skills.filter((skill) => skill.nid === this.skill.nid);
     const hasStackComponent = this.skill.hasComponent('stack') || this.skill.hasComponent('stax');
     const configuredStack = Number(
@@ -4325,6 +4411,11 @@ export class AddSkillAction extends Action {
   }
 
   reverse(): void {
+    this.removeAddedSkill();
+    if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
+  }
+
+  private removeAddedSkill(): void {
     if (this.added) {
       for (const action of [...this.statusReactionActions].reverse()) action.reverse();
       const index = this.unit.skills.indexOf(this.skill);
@@ -4382,6 +4473,14 @@ export class RemoveSkillAction extends Action {
     });
   }
   execute(): void {
+    this.equipBefore = captureEquipState(this.unit);
+    this.removeSkill();
+    this.unit.autoequip();
+  }
+
+  private equipBefore: EquipState | null = null;
+
+  private removeSkill(): void {
     this.index = this.unit.skills.indexOf(this.skill);
     if (this.index >= 0) this.unit.skills.splice(this.index, 1);
     if (this.index >= 0) this.skill.ownerNid = null;
@@ -4406,6 +4505,7 @@ export class RemoveSkillAction extends Action {
     for (const action of [...this.multiSkillActions].reverse()) action.reverse();
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
     this.refreshVariantSprite();
+    if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
   }
 
   private refreshVariantSprite(): void {

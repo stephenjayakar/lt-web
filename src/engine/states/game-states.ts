@@ -7,6 +7,7 @@
  * units, tilemap, mapView, etc.) without creating circular imports.
  */
 
+import { drawItemUseRolls } from '../../combat/item-use-rolls';
 import type { SongObject } from '../../audio/music-controller';
 import { State, MapState, type StateResult } from '../state';
 import { isForkEngine } from '../engine-flavor';
@@ -1003,14 +1004,16 @@ function getTradePartners(unit: UnitObject): UnitObject[] {
  * mark the unit finished.
  */
 function waitUnit(game: any, unit: UnitObject, activelyChosen: boolean): void {
-  if (unit.position && game.eventManager) {
+  // A unit that died in combat still waits (Python WaitState skips no dead
+  // unit); its unit_wait has no position and no region.
+  if (game.eventManager) {
     const levelNid = game.currentLevel?.nid ?? '';
-    const region = getRegionUnderPos(unit.position[0], unit.position[1]);
+    const region = unit.position ? getRegionUnderPos(unit.position[0], unit.position[1]) : null;
     const ctx = { game, unit1: unit, region, gameVars: game.gameVars, levelVars: game.levelVars };
     game.eventManager.trigger(
       {
         type: 'unit_wait', levelNid, unitNid: unit.nid, unit1: unit,
-        position: [unit.position[0], unit.position[1]],
+        position: unit.position ? [unit.position[0], unit.position[1]] : undefined,
         region: region ?? undefined,
         localArgs: new Map<string, any>([['actively_chosen', activelyChosen]]),
       },
@@ -4308,7 +4311,9 @@ export class WaitState extends State {
     const game = getGame();
     game.state.back();
     for (const unit of game.getAllUnits() as UnitObject[]) {
-      if (unit.hasAttacked && !unit.finished && !unit.isDead()) waitUnit(game, unit, false);
+      // Python iterates game.units, dead ones included: a unit killed in
+      // combat after attacking is waited (finished) too.
+      if (unit.hasAttacked && !unit.finished) waitUnit(game, unit, false);
     }
     if (game.eventManager?.hasActiveEvents()) game.state.change('event');
     return 'repeat';
@@ -4355,6 +4360,7 @@ export function applyCoreTargetedItem(
   const game = getGame();
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, [{ item, positions: [position] }]);
   const targets = effectUnits(unit, item, position);
   const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
   const canto = classChangeCanto(game, unit, item, targets[0] ?? null);
@@ -4389,6 +4395,7 @@ export function applyCoreMultiTargetedItem(
   const game = getGame();
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, [{ item, positions }]);
   let applied = false;
   const targets = new Map<string, UnitObject>();
   const hpBefore = new Map<UnitObject, number>();
@@ -4424,6 +4431,10 @@ export function applyCoreSequenceItem(
   if (!item.hasComponent('sequence_item') || item.subitems.length === 0) return false;
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, item.subitems.map((child, childIndex) => ({
+    item: child,
+    positions: targetsByItem[childIndex] ?? [],
+  })));
   let storedUnit: UnitObject | null = null;
   let applied = false;
   const targets = new Map<string, UnitObject>();
@@ -8258,7 +8269,9 @@ export class CombatState extends State {
         if (!wasEventCombat && !hasCanto) {
           if (aiCombat) {
             game.state.change('wait');
-          } else if (!attacker.isDead() && !returnsToMenu) {
+          } else if (attacker.isDead() || !returnsToMenu) {
+            // Python checks attacker.is_dying before the menu/Canto routing:
+            // a player attacker that died also clears to free + wait.
             game.selectedUnit = null;
             game._moveOrigin = null;
             game._moveAction = null;
@@ -12753,6 +12766,10 @@ export class EventState extends State {
         // action.Reset, so the walker is fully refreshed (a unit that had
         // already acted can act again; EOtF's engine also runs on_refresh).
         game.actionLog.doAction(new ResetAction(unit));
+        // Python arrives the unit when its move finishes (terrain and region
+        // statuses). A refresh from another unit moving meanwhile (move_group)
+        // saw this one mid-path and dropped them; re-derive now it's arrived.
+        game.refreshPositionSkills?.();
         onComplete();
       },
       // Python MovementSystem.update: a following event move puts the
