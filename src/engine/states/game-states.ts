@@ -233,6 +233,7 @@ import {
   applyCombatSkillEndHooks,
   triggerAbilityItemCharge,
   triggerSkillCharge,
+  combatPlaybackMarks,
 } from '../../combat/combat-lifecycle';
 import { internalLevel } from '../../combat/combat-components';
 import { applySkillTurnHooks } from '../skill-turn-lifecycle';
@@ -8218,7 +8219,8 @@ export class CombatState extends State {
               position: this.results?.deathPositions?.get(attacker) ?? attacker.position,
               item: activeCombat!.attackItem,
               isAnimationCombat: this.isAnimationCombat,
-              playback: activeCombat!.strikes,
+              // Python CombatEnd carries full_playback (Mark* brushes).
+              playback: combatPlaybackMarks(activeCombat!.strikes, attacker, this.getPrimaryCombatDefender()),
             },
             { ...ctx, position: attacker.position, item: activeCombat!.attackItem },
           ));
