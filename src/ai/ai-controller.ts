@@ -24,7 +24,6 @@ import {
   computeStrikeCount,
   getEquippedWeapon,
   evaluateEquation,
-  weaponTriangle,
 } from '../combat/combat-calcs';
 import {
   available as itemAvailable,
@@ -40,18 +39,17 @@ import {
   changeAi,
   checkAlly,
   checkEnemy,
-  criticalAdditionFormula,
-  criticalMultiplierFormula,
-  dynamicCritDamageAddition,
   modifiedMaximumRange,
   modifiedMinimumRange,
   unitHasTag,
-  modifyCritDamage,
   noAttackAfterMove as skillNoAttackAfterMove,
 } from '../combat/skill-system';
 import { isForkEngine } from '../engine/engine-flavor';
 import { EquipItemAction } from '../engine/action';
 import { getSkillAbilityOptions } from '../combat/skill-abilities';
+import { PyPairSet, pySetOrder } from '../engine/py-set-order';
+import { refreshAuras } from '../combat/aura-system';
+import { refreshPositionStatuses } from '../engine/position-status-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
 import { SkillObject } from '../objects/skill';
@@ -232,7 +230,10 @@ export class AIController {
     if (action === 'Attack') {
       // Get targets based on target type and spec
       const targets = this.getTargets(unit, behaviour);
-      const enemies = this.filterByViewRange(unit, targets, behaviour.view_range);
+      // Python PrimaryAI has no view-range filter: anything its valid moves
+      // and items reach counts (view_range only limits valid moves for a
+      // guard, and the SecondaryAI).
+      const enemies = targets;
 
       // Try primary AI (attack)
       const primaryAction = this.primaryAI(unit, validMoves, enemies, offenseBias);
@@ -254,7 +255,7 @@ export class AIController {
       // Also include self if the unit is damaged (for self-heal consumables)
       const selfDamaged = unit.currentHp < unit.maxHp;
       const filtered = this.filterByTargetSpec(allies, behaviour);
-      const inRange = this.filterByViewRange(unit, filtered, behaviour.view_range);
+      const inRange = filtered;
 
       // Try primary AI: use a healing item/staff on an ally (or self)
       const primaryAction = this.supportPrimaryAI(unit, validMoves, inRange, selfDamaged);
@@ -271,7 +272,7 @@ export class AIController {
 
     if (action === 'Steal') {
       const targets = this.getTargets(unit, behaviour);
-      const enemies = this.filterByViewRange(unit, targets, behaviour.view_range);
+      const enemies = targets;
       const primaryAction = this.stealPrimaryAI(unit, validMoves, enemies);
       this.applyPrimaryEquipState(unit, action);
       // PrimaryAI.run ends with quick_move(orig_pos): the unit re-arrives.
@@ -645,6 +646,9 @@ export class AIController {
           }
         }
       }
+      // Python get_targets: list(set(all_targets)). EOtF's engine keeps that
+      // CPython set order, which decides ties between equally good tiles.
+      if (isForkEngine()) return pySetOrder(positions);
       // Deduplicate
       const seen = new Set<string>();
       return positions.filter(([x, y]) => {
@@ -747,57 +751,7 @@ export class AIController {
   // View range filtering
   // ====================================================================
 
-  /**
-   * Filter targets by view range.
-   *
-   * View range semantics:
-   *   -1: Guard mode -- only targets reachable from current position (weapon range only)
-   *   -2: Single move -- targets within (max_item_range + MOV)
-   *   -3: Double move -- targets within (max_item_range + 2*MOV)
-   *   -4: Entire map -- all targets
-   *    0: Disabled -- no targets
-   *   >0: Custom range -- targets within that many tiles
-   */
-  private filterByViewRange(
-    unit: UnitObject,
-    targets: UnitObject[],
-    viewRange: number,
-  ): UnitObject[] {
-    if (viewRange === -4) return targets; // All targets
-    if (viewRange === 0) return []; // Disabled
 
-    const unitPos = unit.position;
-    if (!unitPos) return [];
-
-    const maxItemRange = this.getMaxItemRange(unit);
-    const mov = unit.getStatValue('MOV');
-
-    let limit: number;
-
-    switch (viewRange) {
-      case -1:
-        // Guard: only targets within weapon range from current position
-        limit = maxItemRange;
-        break;
-      case -2:
-        // Single move range
-        limit = maxItemRange + mov;
-        break;
-      case -3:
-        // Double move range
-        limit = maxItemRange + mov * 2;
-        break;
-      default:
-        // Positive: literal tile range
-        limit = viewRange > 0 ? viewRange : 99;
-        break;
-    }
-
-    return targets.filter(t => {
-      if (!t.position) return false;
-      return this.distance(unitPos, t.position) <= limit;
-    });
-  }
 
   /**
    * Get the maximum range of any weapon or usable item the unit has.
@@ -923,7 +877,10 @@ export class AIController {
     // Python PrimaryAI tests the inventory and then the unit's extra
     // abilities (skill-granted items such as Self Destruct or Rush Pulse).
     for (const item of [...this.allItems(unit), ...this.abilityItems(unit)]) {
-      if (!item.isWeapon() && !item.isSpell()) continue;
+      // Python tests every available item, not only weapons and spells (a
+      // usable damaging item such as a thrown bomb counts too); items that
+      // reach no behaviour target simply score nothing.
+      if (!isForkEngine() && !item.isWeapon() && !item.isSpell()) continue;
       if (item.hasComponent('sequence_item')) continue;
       if (itemAvailable(unit, item, this.db, this.gameRef)) variants.push({ weapon: item });
     }
@@ -1024,20 +981,81 @@ export class AIController {
     // honours the item's eval_special_range squares, even at 99 range (where
     // EOtF's engine skips that filter only for the targets themselves).
     const restriction = rangeRestrict(unit, item, maxRange);
+    // EOtF's engine walks these as CPython sets of positions (valid moves,
+    // get_ai_targets, get_possible_attack_positions) and keeps the first of
+    // equally scored choices, so ties break in CPython's set order.
+    const pyOrder = isForkEngine();
+    const moveList = pyOrder ? pySetOrder(validMoves) : validMoves;
     const result: Array<[[number, number], [number, number][]]> = [];
     const seen = new Set<string>();
-    for (const position of positions) {
+    for (const position of pyOrder ? pySetOrder(positions) : positions) {
       const key = `${position[0]},${position[1]}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const moves = validMoves.filter((move) => {
+      let moves = moveList.filter((move) => {
         const distance = this.distance(move, position);
         if (distance < minRange || distance > maxRange) return false;
         return !restriction || restriction.has(`${position[0] - move[0]},${position[1] - move[1]}`);
       });
+      if (pyOrder) moves = pySetOrder(moves);
       if (moves.length > 0) result.push([[position[0], position[1]], moves]);
     }
-    return result;
+    if (!pyOrder) return result;
+    const byKey = new Map(result.map((entry) => [`${entry[0][0]},${entry[0][1]}`, entry] as const));
+    return this.pyAiTargetOrder(unit, item, positions, moveList, minRange, maxRange, restriction, byKey)
+      .map(([x, y]) => byKey.get(`${x},${y}`)!);
+  }
+
+  /**
+   * The order of Python get_ai_targets(unit, valid_moves, [item]):
+   * `valid_targets & attackable` where attackable is built move by move from
+   * the cached Manhattan sphere of the item's ranges (each a set
+   * comprehension), and CPython's intersection walks the smaller set.
+   */
+  private pyAiTargetOrder(
+    unit: UnitObject,
+    item: ItemObject,
+    componentTargets: [number, number][],
+    moveList: [number, number][],
+    minRange: number,
+    maxRange: number,
+    restriction: Set<string> | null,
+    reachable: Map<string, unknown>,
+  ): [number, number][] {
+    const fallback = () => pySetOrder([...reachable.keys()].map((key) => key.split(',').map(Number) as [number, number]));
+    if (maxRange >= 99 || maxRange - minRange > 30) return fallback();
+    const base: [number, number][] = [];
+    for (let r = minRange; r <= maxRange; r++) {
+      for (let i = -r; i <= r; i++) {
+        const dy = r - Math.abs(i);
+        base.push([i, dy], [i, -dy]);
+      }
+    }
+    const baseOrder = pySetOrder(base);
+    const bounds = this.board.bounds;
+    const attackable = new PyPairSet();
+    const noMove = itemNoAttackAfterMove(unit, item) ||
+      skillNoAttackAfterMove(unit, { game: this.gameRef, item });
+    const from: [number, number][] = noMove && unit.position ? [[unit.position[0], unit.position[1]]] : moveList;
+    for (const [mx, my] of from) {
+      const sphere = pySetOrder(baseOrder
+        .filter(([a, b]) => !restriction || restriction.has(`${a},${b}`))
+        .map(([a, b]) => [a + mx, b + my] as [number, number]));
+      for (const position of sphere) {
+        if (position[0] < bounds[0] || position[0] > bounds[2] ||
+            position[1] < bounds[1] || position[1] > bounds[3]) continue;
+        attackable.add(position);
+      }
+    }
+    const attackableOrder = attackable.values();
+    const possibleOrder = pySetOrder(componentTargets);
+    const attackableKeys = new Set(attackableOrder.map(([x, y]) => `${x},${y}`));
+    const possibleKeys = new Set(possibleOrder.map(([x, y]) => `${x},${y}`));
+    const walk = possibleOrder.length > attackableOrder.length ? attackableOrder : possibleOrder;
+    const other = walk === attackableOrder ? possibleKeys : attackableKeys;
+    const intersection = pySetOrder(walk.filter(([x, y]) => other.has(`${x},${y}`)));
+    const ordered = intersection.filter(([x, y]) => reachable.has(`${x},${y}`));
+    return ordered.length === reachable.size ? ordered : fallback();
   }
 
   /** Targets the item can legally hit from `move` (range, restrictions, splash). */
@@ -1127,7 +1145,11 @@ export class AIController {
   ): number {
     const targetHp = Math.max(1, target.currentHp);
     const rawDamage = this.predictedDamage(unit, item, target);
-    const critDamage = this.predictedCritDamage(unit, item, target, rawDamage);
+    // Python: compute_damage(..., crit=True).
+    const critDamage = Math.max(0, computeDamage(
+      unit, item, target, this.db, this.board, this.gameRef, 'attack', false, [0, 0], true,
+      getEquippedWeapon(target, this.db, this.gameRef),
+    ));
     const lethality = clamp01(rawDamage / targetHp);
     const critLethality = clamp01(critDamage / targetHp);
     const accuracy = clamp01(this.predictedHit(unit, item, target) / 100);
@@ -1297,9 +1319,12 @@ export class AIController {
     mode: 'attack' | 'defense' = 'attack',
     targetItem: ItemObject | null = getEquippedWeapon(target, this.db, this.gameRef),
   ): number {
-    const triangle = weaponTriangle(item, targetItem, this.db, unit, target);
-    const damage = computeDamage(unit, item, target, this.db, this.board, this.gameRef, mode);
-    return Math.max(0, damage + triangle.damageBonus);
+    // Python combat_calcs.compute_damage already applies the weapon
+    // triangle against the other side's item.
+    const damage = computeDamage(
+      unit, item, target, this.db, this.board, this.gameRef, mode, false, [0, 0], false, targetItem,
+    );
+    return Math.max(0, damage);
   }
 
   /** Hit chance of one strike, as the combat solver resolves it. */
@@ -1310,33 +1335,9 @@ export class AIController {
     mode: 'attack' | 'defense' = 'attack',
     targetItem: ItemObject | null = getEquippedWeapon(target, this.db, this.gameRef),
   ): number {
-    const triangle = weaponTriangle(item, targetItem, this.db, unit, target);
-    const hit = computeHit(unit, item, target, this.db, this.board, this.gameRef, mode);
-    return Math.max(0, Math.min(100, hit + triangle.hitBonus));
-  }
-
-  /** Critical damage of one strike, mirroring the combat solver's crit path. */
-  private predictedCritDamage(
-    unit: UnitObject,
-    item: ItemObject,
-    target: UnitObject,
-    damage: number,
-  ): number {
-    const context = { game: this.gameRef, item, target };
-    const multiplierFormula = criticalMultiplierFormula(unit, context) ?? 'CRIT_MULT';
-    const multiplierExpression = this.db.getEquation(multiplierFormula) ??
-      (multiplierFormula === 'CRIT_MULT' ? '3' : multiplierFormula);
-    const additionFormula = criticalAdditionFormula(unit, context) ?? 'CRIT_ADD';
-    const additionExpression = this.db.getEquation(additionFormula) ??
-      (additionFormula === 'CRIT_ADD' ? '0' : additionFormula);
-    let crit = damage * Math.max(0, evaluateEquation(multiplierExpression, unit, { db: this.db, item }));
-    crit += evaluateEquation(additionExpression, unit, { db: this.db, item });
-    crit += modifyCritDamage(unit, item, this.gameRef);
-    const targetWeapon = getEquippedWeapon(target, this.db, this.gameRef);
-    crit += dynamicCritDamageAddition(
-      unit, item, target, targetWeapon, 'attack', [0, 0], crit, this.gameRef,
-    );
-    return Math.max(0, crit);
+    // Python compute_hit includes the weapon triangle too.
+    const hit = computeHit(unit, item, target, this.db, this.board, this.gameRef, mode, [0, 0], targetItem);
+    return Math.max(0, Math.min(100, hit));
   }
 
   private withCombatArt(
@@ -1426,11 +1427,40 @@ export class AIController {
     }
     const origin: [number, number] = [unit.position[0], unit.position[1]];
     this.board.moveUnit(unit, position[0], position[1]);
+    const restore = this.testArrive(unit);
     try {
       return callback();
     } finally {
+      restore();
       this.board.moveUnit(unit, origin[0], origin[1]);
     }
+  }
+
+  /**
+   * Python quick_move's PickUnitUp/PutUnitDown with test=True: at the tested
+   * tile the unit drops the aura children it had and pulls those that cover
+   * the tile, and takes that tile's terrain and region statuses; its own
+   * auras stay where they were. Returns the undo.
+   */
+  private testArrive(unit: UnitObject): () => void {
+    const game = this.gameRef;
+    if (!game?.getAllUnits) return () => {};
+    const units = game.getAllUnits() as UnitObject[];
+    const saved = units.map((u) => ({
+      u, skills: u.skills, copy: u.skills.slice(),
+      owners: u.skills.map((skill) => skill.ownerNid), canto: u.hasCanto,
+    }));
+    refreshAuras(units, this.board, this.db, unit);
+    refreshPositionStatuses(units, this.board, this.db, game);
+    return () => {
+      for (const entry of saved) {
+        entry.skills.length = 0;
+        entry.skills.push(...entry.copy);
+        entry.u.skills = entry.skills;
+        entry.copy.forEach((skill, index) => { skill.ownerNid = entry.owners[index]; });
+        entry.u.hasCanto = entry.canto;
+      }
+    };
   }
 
   // ====================================================================

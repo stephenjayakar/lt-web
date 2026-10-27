@@ -145,6 +145,7 @@ export function refreshAuras(
   units: Iterable<UnitObject>,
   board: GameBoard | null,
   db: Database,
+  frozenOwner: UnitObject | null = null,
 ): void {
   if (!board) return;
 
@@ -155,7 +156,9 @@ export function refreshAuras(
   // should carry the child skill.
   const desired: DesiredEntry[] = [];
   for (const owner of positionedUnits) {
-    if (!owner.position) continue;
+    // A test move (Python leave/arrive with test=True) neither releases nor
+    // propagates the moving unit's own auras: its children stay as they are.
+    if (!owner.position || owner === frozenOwner) continue;
     for (const info of getAuraInfos(owner)) {
       const positions = getShellPositions(owner.position, info.range, board);
       for (const [x, y] of positions) {
@@ -210,6 +213,7 @@ export function refreshAuras(
     for (let i = unit.skills.length - 1; i >= 0; i--) {
       const skill = unit.skills[i];
       if (!isAuraSourcedSkill(skill)) continue;
+      if (frozenOwner && skill.data.get(AURA_OWNER_NID_KEY) === frozenOwner.nid) continue;
       const key = `${unit.nid}|${skill.data.get(AURA_OWNER_NID_KEY)}|${skill.data.get(
         AURA_PARENT_SKILL_UID_KEY,
       )}|${skill.nid}`;

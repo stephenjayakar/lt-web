@@ -2614,14 +2614,15 @@ export class OptionMenuState extends State {
           break;
         }
         case 'end_turn': {
-          // Mark all player units as finished and trigger turn change
-          const playerUnits: UnitObject[] = game.board?.getTeamUnits('player') ?? [];
-          for (const unit of playerUnits) {
-            game.actionLog.doAction(new WaitAction(unit));
-          }
+          // Python OptionMenuState End: back, then turn_change, status_endstep
+          // and ai on top. The AI state runs first, for the player team: units
+          // with an AI preset act on their own and nobody is made to wait.
+          // The web's turn_change runs status_endstep itself.
           this.menu = null;
           game.state.back();
-          game.state.change('turn_change');
+          // Python also pushes turn_change beneath; the web AI state pushes
+          // turn_change itself when it finishes.
+          game.state.change('ai');
           break;
         }
         case 'turnwheel': {
@@ -2940,9 +2941,12 @@ export class FreeState extends MapState {
       const fieldUnits: UnitObject[] = game.getAllUnits().filter((u: UnitObject) => u.position && !u.isDead());
       const playerUnits = fieldUnits.filter((u) => u.team === 'player');
       if (fieldUnits.length > 0 && getSetting('autoend_turn')) {
-        const allFinished = playerUnits.every((u) => u.finished || u.isDead() || unitHasTag(u, 'Tile'));
+        const allFinished = playerUnits.every((u) =>
+          u.finished || u.isDead() || unitHasTag(u, 'Tile') || !canSelect(u, game));
         if (allFinished) {
-          game.state.change('turn_change');
+          // Python FreeState: turn_change, status_endstep, then the player
+          // team's AI state on top (unselectable units act on their own).
+          game.state.change('ai');
           return;
         }
       }

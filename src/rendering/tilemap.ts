@@ -275,6 +275,9 @@ export class TileMapObject {
       tilemap.layers.push(layer);
       if (layer.hasAutotiles) tilemap.hasAutotiles = true;
     }
+    // Python TileMapObject.from_prefab: only the base layer starts visible;
+    // the others (and their terrain) appear when an event shows them.
+    for (const layer of tilemap.layers) layer.visible = layer.nid === 'base';
 
     return tilemap;
   }

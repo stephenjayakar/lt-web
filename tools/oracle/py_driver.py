@@ -1079,6 +1079,64 @@ class Runner:
 
 
 # --------------------------------------------------------------------------
+# AI decision trace
+# --------------------------------------------------------------------------
+
+def install_ai_trace(e: Engine) -> None:
+    """Record every AI decision (AIController.think finishing a unit), canto
+    retreat and AI group ping, so snapshots can carry the AI phase's choices
+    in order. The web driver records the same entries from its AI controller."""
+    from app.engine import ai_controller
+    e.ai_trace = []
+    C = ai_controller.AIController
+
+    def here(u):
+        return _pos(u.position) if u and u.position else None
+
+    orig_think = C.think
+
+    def board_hp():
+        return sorted([u.nid, u.get_hp()] for u in e.game.units if u.position)
+
+    def think(self):
+        unit = self.unit
+        start = here(unit)
+        hps = board_hp()
+        done = orig_think(self)
+        if done and unit:
+            move = _pos(self.goal_position) if self.goal_position else None
+            if move == start:
+                move = None
+            e.ai_trace.append({
+                'unit': unit.nid,
+                'from': start,
+                'did': bool(self.did_something),
+                'move': move,
+                'target': _pos(self.goal_target) if self.goal_target else None,
+                'item': self.goal_item.nid if self.goal_item else None,
+                'hp': hps,
+            })
+        return done
+    C.think = think
+
+    orig_canto = C.canto_retreat
+
+    def canto_retreat(self):
+        start = here(self.unit)
+        orig_canto(self)
+        goal = _pos(self.goal_position) if self.goal_position else None
+        e.ai_trace.append({'unit': self.unit.nid, 'canto': None if goal == start else goal})
+    C.canto_retreat = canto_retreat
+
+    orig_ping = C.ai_group_ping
+
+    def ai_group_ping(self, ai_group):
+        e.ai_trace.append({'group': ai_group.nid, 'by': self.unit.nid})
+        return orig_ping(self, ai_group)
+    C.ai_group_ping = ai_group_ping
+
+
+# --------------------------------------------------------------------------
 # Snapshot
 # --------------------------------------------------------------------------
 
@@ -1189,7 +1247,17 @@ def snapshot(e: Engine) -> dict:
         'already_triggered': sorted(g.already_triggered_events),
         'rng': {'combat': sr.combat_random.state, 'growth': sr.growth_random.state,
                 'other': sr.other_random.state},
+        'ai_trace': _take_ai_trace(e),
     }
+
+
+def _take_ai_trace(e: Engine) -> list:
+    trace = getattr(e, 'ai_trace', None)
+    if trace is None:
+        return []
+    out = list(trace)
+    trace.clear()
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -1232,6 +1300,7 @@ def run_scenario(scn: dict, backend: str = 'upstream', base: Path | None = None)
     try:
         e = Engine(scn.get('project', 'default.ltproj'), backend)
         e.boot(scn.get('settings'))
+        install_ai_trace(e)
         if e.shims:
             out['shims'] = e.shims
         if scn.get('startup_events', True):

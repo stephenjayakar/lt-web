@@ -82,6 +82,82 @@ class MinHeap {
   }
 }
 
+/**
+ * CPython heapq over `(f, node)` tuples, as Python's AStar keeps its open
+ * list: each push stores the f the node had then, ties on f compare the
+ * nodes by terrain cost (Node.__lt__), and full ties fall out of heapq's own
+ * sift order (push sifts up on strict less-than; pop moves the smaller child
+ * up to a leaf, then sifts the last item back up).
+ */
+class PyTupleHeap {
+  private data: Array<{ f: number; node: PathNode }> = [];
+
+  get size(): number {
+    return this.data.length;
+  }
+
+  private static lt(a: { f: number; node: PathNode }, b: { f: number; node: PathNode }): boolean {
+    if (a.f !== b.f) return a.f < b.f;
+    return a.node.cost < b.node.cost;
+  }
+
+  push(node: PathNode): void {
+    this.data.push({ f: node.f, node });
+    this.siftDown(0, this.data.length - 1);
+  }
+
+  pop(): PathNode | undefined {
+    const last = this.data.pop();
+    if (!last) return undefined;
+    if (this.data.length === 0) return last.node;
+    const top = this.data[0];
+    this.data[0] = last;
+    this.siftUp(0);
+    return top.node;
+  }
+
+  private siftDown(startPos: number, pos: number): void {
+    const heap = this.data;
+    const item = heap[pos];
+    while (pos > startPos) {
+      const parentPos = (pos - 1) >> 1;
+      const parent = heap[parentPos];
+      if (PyTupleHeap.lt(item, parent)) {
+        heap[pos] = parent;
+        pos = parentPos;
+        continue;
+      }
+      break;
+    }
+    heap[pos] = item;
+  }
+
+  private siftUp(pos: number): void {
+    const heap = this.data;
+    const endPos = heap.length;
+    const startPos = pos;
+    const item = heap[pos];
+    let childPos = 2 * pos + 1;
+    while (childPos < endPos) {
+      const rightPos = childPos + 1;
+      if (rightPos < endPos && !PyTupleHeap.lt(heap[childPos], heap[rightPos])) childPos = rightPos;
+      heap[pos] = heap[childPos];
+      pos = childPos;
+      childPos = 2 * pos + 1;
+    }
+    heap[pos] = item;
+    this.siftDown(startPos, pos);
+  }
+}
+
+/** Python AStar._get_manhattan_adj_nodes: down, right, left, up. */
+const ASTAR_DIRS: [number, number][] = [
+  [0, 1],
+  [1, 0],
+  [-1, 0],
+  [0, -1],
+];
+
 // ---------------------------------------------------------------------------
 // Cardinal direction offsets
 // ---------------------------------------------------------------------------
@@ -347,7 +423,7 @@ export class AStar {
     startNode.f = startNode.h;
     startNode.true_f = this.trueHeuristic(startX, startY, goalX, goalY);
 
-    const open = new MinHeap();
+    const open = new PyTupleHeap();
     open.push(startNode);
 
     // Track which nodes have been finalized (closed set)
@@ -380,7 +456,7 @@ export class AStar {
         }
       }
 
-      for (const [dx, dy] of DIRS) {
+      for (const [dx, dy] of ASTAR_DIRS) {
         const nx = current.x + dx;
         const ny = current.y + dy;
 
