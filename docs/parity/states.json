@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 74,
-    "merged": 39,
+    "exact": 75,
+    "merged": 38,
     "open": 0,
-    "web": 90
+    "web": 91
   },
   "rows": [
     {
@@ -876,9 +876,9 @@
       "name": "unit_menu",
       "className": "UnitMenuState",
       "source": "lt-maker/app/engine/game_menus/menu_states/unit_menu_state.py",
-      "status": "merged",
-      "webState": "menu",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "unit_menu",
+      "webSource": "src/engine/states/unit-menu-state.ts"
     },
     {
       "name": "unlock_select",

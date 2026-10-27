@@ -489,8 +489,11 @@ export class MapCombat implements StrikeEventCombat {
         // CombatState runs pendingStrikeEvents, then resumeAfterStrikeEvents.
         break;
       case 'proc_animations':
-        // Python red_cursor runs once MoveCameraState has popped.
-        if (this.cameraHold && !skip && this.game?.camera?.isAtTarget && !this.game.camera.isAtTarget()) break;
+        // Python red_cursor runs once MoveCameraState has popped. (A camera
+        // nobody updates, as when a combat is played out directly, gives up
+        // after a second.)
+        if (this.cameraHold && !skip && this.game?.camera?.isAtTarget && !this.game.camera.isAtTarget() &&
+            this.clock - this.stateStart < 1000) break;
         this.cameraHold = false;
         this.setState('start_anim');
         break;

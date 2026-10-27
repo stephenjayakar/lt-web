@@ -664,12 +664,13 @@ test.describe('Overworld option menus', () => {
       state.menu.selectedIndex = idx;
     });
     await stepFrames(page, 3, 'SELECT');
-    await stepFrames(page, 5);
+    // Python SettingsMenuState fades in (transition_in) and out (transition_pop).
+    await stepFrames(page, 14);
 
     expect((await getState(page)).currentStateName).toBe('settings_menu');
 
     await stepFrames(page, 3, 'BACK');
-    await stepFrames(page, 5);
+    await stepFrames(page, 14);
     expect((await getState(page)).currentStateName).toBe('overworld_game_option_menu');
   });
 

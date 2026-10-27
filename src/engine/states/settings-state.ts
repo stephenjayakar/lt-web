@@ -419,6 +419,9 @@ export class SettingsMenuState extends State {
         this.choiceArrows.set(def.name, [new ScrollArrow('left', 0, 0, 0), new ScrollArrow('right', 0, 0, 0.5)]);
       }
     }
+    // Python SettingsMenuState.start: fade in.
+    game.state.change('transition_in');
+    return 'repeat';
   }
 
   private get currentMenu(): SimpleList {
@@ -584,7 +587,8 @@ export class SettingsMenuState extends State {
   private back(): void {
     const game = getGame();
     game.audioManager?.playSfx?.('Select 4');
-    game.state.back();
+    // Python SettingsMenuState.back: transition_pop.
+    game.state.change('transition_pop');
   }
 
   override update(): StateResult {

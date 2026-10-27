@@ -46,6 +46,7 @@ test.describe('EOtF fork event commands', () => {
       g.eventManager.triggerSpecific('QaEndTurn', { type: 'QaEndTurn' }, true);
       g.eventManager.triggerSpecific('QaQueuedBehind', { type: 'QaQueuedBehind' }, true);
       const phase = g.phase.getCurrent();
+      (window as any).__turnBefore = g.turnCount;
       g.state.change('event');
       (window as any).__harness.stepFrames(20, null);
       return phase;
@@ -53,7 +54,7 @@ test.describe('EOtF fork event commands', () => {
     const result = await page.evaluate(() => {
       const g = (window as any).__gameRef;
       return {
-        phase: g.phase.getCurrent(),
+        turnChanged: g.turnCount > (window as any).__turnBefore || g.phase.getCurrent() !== 'player',
         after: g.gameVars.get('qa_after_end_turn') ?? null,
         nested: g.gameVars.get('qa_nested_phase') ?? null,
         afterNested: g.gameVars.get('qa_after_nested') ?? null,
@@ -67,7 +68,9 @@ test.describe('EOtF fork event commands', () => {
     expect(result.nested).toBe('player');
     expect(result.afterNested).toBe(1);
     expect(result.queued).toBe(1);
-    expect(result.phase).not.toBe('player');
+    // Free roam skips the phase banners, so the other phases pass within
+    // the 20 frames (each hand-off runs in its frame, as Python's repeats).
+    expect(result.turnChanged).toBe(true);
   });
 
   test('silent give_exp uses the fork level cap and parks capped units at 99 exp', async ({ page }) => {

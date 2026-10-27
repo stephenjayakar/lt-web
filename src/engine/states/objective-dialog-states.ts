@@ -113,6 +113,9 @@ export class ObjectiveMenuState extends State {
     this.options = [...conditionLines(win), ...conditionLines(loss)];
     this.currentIndex = 0;
     this.scroll = 0;
+    // Python ObjectiveMenuState.start: fade in.
+    game.state.change('transition_in');
+    return 'repeat';
   }
 
   // -- menus.Table move_down/move_up in 'objective_menu' mode (columns = 1) --
@@ -153,7 +156,8 @@ export class ObjectiveMenuState extends State {
     }
     if (event === 'BACK' || game.input?.mouseClick === 'BACK') {
       game.audioManager?.playSfx?.('Select 4');
-      game.state.back();
+      // Python: transition_pop (fade out, then back to the option menu).
+      game.state.change('transition_pop');
     }
   }
 

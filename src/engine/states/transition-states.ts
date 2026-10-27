@@ -26,19 +26,26 @@ abstract class TransitionBase extends State {
   override readonly transparent = true;
   protected elapsed = 0;
   protected waitTime = BASE_WAIT;
+  private updated = false;
 
   override start(): StateResult {
     const game = gameRef?.();
     this.elapsed = 0;
+    this.updated = false;
     const speed = Number(game?.memory?.get?.('transition_speed')) || TRANSITION_SPEED;
     this.waitTime = speed * BASE_WAIT;
   }
 
-  /** Python `engine.get_time() >= start_time + wait_time`. */
+  /**
+   * Python `engine.get_time() >= start_time + wait_time`, timed from the
+   * start frame (whose update sees 0 ms) on the integer millisecond clock:
+   * 133 ms ends on the eighth frame after it.
+   */
   protected done(): boolean {
     const game = gameRef?.();
-    this.elapsed += Number(game?.frameDeltaMs) || 1000 / 60;
-    return this.elapsed >= this.waitTime;
+    if (this.updated) this.elapsed += Number(game?.frameDeltaMs) || 1000 / 60;
+    this.updated = true;
+    return Math.floor(this.elapsed + 1e-6) >= this.waitTime;
   }
 
   protected progress(): number {

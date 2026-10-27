@@ -202,6 +202,7 @@ export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
 import { requestExp } from './exp-state';
+import { preloadUnitMenuAssets } from './unit-menu-state';
 import { SelectionHelper } from '../selection-helper';
 import { drawCarryPreview, drawTradePreview } from '../../ui/hud';
 import { currentWindowSkin, getSprite, preloadSprites, skinnedSpriteNameFor, startupSkinnedSpriteName } from '../../ui/sprites';
@@ -2497,14 +2498,25 @@ export class OptionMenuState extends State {
 
   override begin(): StateResult {
     const game = getGame();
-    // Python OptionMenuState._populate_options: Objective, Options, then
-    // Suspend (permadeath) or Save, then End (not in roam); Guide at index 2
-    // when guide lore is unlocked; Turnwheel at index 1 when enabled; custom
-    // options inserted before Options.
-    // TODO(qa): Python lists 'Unit' first (unit_menu); not ported yet.
+    // Python OptionMenuState._populate_options: Unit, Objective, Options,
+    // then Suspend (permadeath) or Save, then End (not in roam); Guide at
+    // index 2 when guide lore is unlocked; Turnwheel at index 1 when enabled;
+    // custom options inserted before Options.
+    // Python OptionMenuState.begin: back from a screen it opened through
+    // transition_to, it fades in.
+    let fadeIn = false;
+    if (['objective_menu', 'settings_menu', 'base_guide', 'unit_menu'].includes(game.memory.get('next_state'))) {
+      game.memory.set('next_state', null);
+      game.state.change('transition_in');
+      fadeIn = true;
+    }
     // Python OptionMenuState.start: game.cursor.hide().
     game.cursor.visible = false;
+    // The Unit chart's windows, sprites and icons (Python has them preloaded).
+    void preloadUnitMenuAssets((game.getAllUnits() as UnitObject[])
+      .filter((unit) => unit.team === 'player' && !!unit.position));
     const options: MenuOption[] = [
+      { label: 'Unit', value: 'unit', enabled: true },
       { label: 'Objective', value: 'objective', enabled: !!game.currentLevel },
       { label: 'Options', value: 'options', enabled: true },
     ];
@@ -2541,6 +2553,8 @@ export class OptionMenuState extends State {
     placeAutoMenu(this.menu, game);
     this.confirm = null;
     this.confirmOwner = null;
+    // Python returns 'repeat': the fade starts black in this frame.
+    if (fadeIn) return 'repeat';
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -2662,10 +2676,17 @@ export class OptionMenuState extends State {
           break;
         }
         case 'objective': {
-          // Python transition_to pops only itself: the option menu stays
-          // beneath and is back on top when this screen closes.
+          // Python: memory['next_state'] = 'objective_menu'; transition_to,
+          // which pops only itself: the option menu stays beneath.
           this.menu = null;
-          game.state.change('objective_menu');
+          game.memory.set('next_state', 'objective_menu');
+          game.state.change('transition_to');
+          break;
+        }
+        case 'unit': {
+          // Python: memory['next_state'] = 'unit_menu'; transition_to.
+          game.memory.set('next_state', 'unit_menu');
+          game.state.change('transition_to');
           break;
         }
         case 'save': {
@@ -2690,10 +2711,10 @@ export class OptionMenuState extends State {
           break;
         }
         case 'options': {
-          // Python transition_to pops only itself: the option menu stays
-          // beneath and is back on top when this screen closes.
+          // Python: memory['next_state'] = 'settings_menu'; transition_to.
           this.menu = null;
-          game.state.change('settings_menu');
+          game.memory.set('next_state', 'settings_menu');
+          game.state.change('transition_to');
           break;
         }
       }

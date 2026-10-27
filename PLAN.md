@@ -199,7 +199,13 @@ The release gate is green: build, all four audits, the full serial suite,
   hover light ranges, move/menu/targeting ranges); camera centring, menu gem
   and translucency, item panel, unit sprite poses and base Records follow the
   fork oracle's screens.
-- [ ] Option menu 'Unit' (unit_menu chart) is not ported.
+- [x] Option menu 'Unit' opens the unit_menu chart (`unit-menu-state.ts` on
+  a ui_framework subset, `src/ui/ui-framework.ts`): name list with map
+  sprites, Character / Vital Statistics / Equipment / Weapon Level pages,
+  header sorting, scroll bar and arrows, fork window skin; Unit, Objective
+  and Options fade through transition_to / transition_in / transition_pop
+  as Python (`tests/unit-menu.spec.ts`; oracle shots pixel-identical apart
+  from map sprite animation phase).
 - [x] Event `give_exp` (non-silent) runs level_up.py's ExpState
   (`src/engine/states/exp-state.ts`): bar fill and sound, LevelUpMap logo,
   level screen, level-down, auto-promotion, new skills, triggers

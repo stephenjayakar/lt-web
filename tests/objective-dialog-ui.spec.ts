@@ -14,7 +14,8 @@ test.describe('objective and dialog-log UI', () => {
       game.currentLevel.objective.loss = 'Eirika falls';
       game.state.change('objective_menu');
     });
-    await step(page);
+    // Python ObjectiveMenuState.start fades in through transition_in.
+    await step(page, 12);
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name))
       .toBe('objective_menu');
     await page.locator('canvas').screenshot({ path: testInfo.outputPath('objective-menu.png') });
@@ -85,7 +86,7 @@ test.describe('objective and dialog-log UI', () => {
       game.state.change('objective_menu');
       return { stored, before, after };
     });
-    await step(page);
+    await step(page, 12);
     const menuOptions = await page.evaluate(() =>
       (window as any).__gameRef.state.getCurrentState()?.options);
     expect(result.stored.simple).toBe('Seals: {v:seals}');

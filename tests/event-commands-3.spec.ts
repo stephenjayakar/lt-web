@@ -1848,7 +1848,8 @@ test.describe('Event command batch 3l (set_custom_options)', () => {
         st.menu.selectedIndex = st.menu.options.findIndex((o: any) => o.value === value);
       }, value);
       await stepFrames(page, 1, 'SELECT');
-      await stepFrames(page, 10);
+      // transition_to (8 frames), then the screen fades in (8 more).
+      await stepFrames(page, 20);
       names.push(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name));
       await stepFrames(page, 1, 'BACK');
       await stepFrames(page, 30);

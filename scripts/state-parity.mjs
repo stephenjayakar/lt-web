@@ -64,7 +64,6 @@ const MERGED = {
   transition_pop: 'state-machine',
   transition_to: 'state-machine',
   transition_to_with_pop: 'state-machine',
-  unit_menu: 'menu',
 };
 
 const OPEN = new Set(['dialog_log', 'objective_menu']);

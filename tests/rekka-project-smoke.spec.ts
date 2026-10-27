@@ -1166,8 +1166,11 @@ test.describe('Rekka all-level compatibility', () => {
     await page.evaluate(() => (window as any).__harness.stepFrames(1, 'BACK'));
 
     await openPrepOption('Options');
+    // SettingsMenuState fades itself in (transition_in) and out (transition_pop).
+    await page.evaluate(() => (window as any).__harness.stepFrames(9, null));
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('settings_menu');
     await page.evaluate(() => (window as any).__harness.stepFrames(1, 'BACK'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(10, null));
 
     await openPrepOption('Save');
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('save_menu');

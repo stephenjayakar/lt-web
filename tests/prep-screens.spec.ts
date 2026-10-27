@@ -60,9 +60,9 @@ async function openPrep(page: Page, prepSource?: string[]): Promise<void> {
       unit.persistent = true;
     }
     g.cleanUpLevel();
+    // No frames without a level: harness.loadLevel builds the new stack.
     g.state.clear();
-    g.state.change('free');
-    (window as any).__harness.stepFrames(2);
+    g.state.flushTransitions();
     await (window as any).__harness.loadLevel('1');
     await g.loadAllMapSprites();
     if (prepSource) {

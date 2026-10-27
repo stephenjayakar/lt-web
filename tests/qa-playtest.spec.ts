@@ -544,7 +544,7 @@ test('option menu follows Python order and confirms End', async ({ page }) => {
   const labels = await topMenuLabels(page);
   // Permadeath mode: Suspend instead of Save; End last; no Minimap entry.
   expect(labels.slice(-3)).toEqual(['Options', 'Suspend', 'End']);
-  expect(labels[0]).toBe('Objective');
+  expect(labels.slice(0, 2)).toEqual(['Unit', 'Objective']);
   expect(labels).not.toContain('Minimap');
   await chooseMenuLabel(page, 'End');
   const confirm = await page.evaluate(() =>

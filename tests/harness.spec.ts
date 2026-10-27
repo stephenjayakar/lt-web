@@ -4402,15 +4402,18 @@ test.describe('Event command parity', () => {
         if (frame % 20 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
         const order = String(game.levelVars.get('_hook_order') ?? '');
         if (order !== last) {
-          const label = order.slice(last.length).replace(/^>/, '');
           const names = game.state.getStackNames();
-          seen.push({
-            label,
-            combat: names.includes('combat'),
-            phase: names.includes('combat') ? combatState.phase : null,
-            onMap: !!defender.position,
-            hp: defender.currentHp,
-          });
+          // Events that finish in one frame (each pops with 'repeat') arrive
+          // together; record each in order.
+          for (const label of order.slice(last.length).replace(/^>/, '').split('>')) {
+            seen.push({
+              label,
+              combat: names.includes('combat'),
+              phase: names.includes('combat') ? combatState.phase : null,
+              onMap: !!defender.position,
+              hp: defender.currentHp,
+            });
+          }
           last = order;
         }
         if (game.state.getCurrentState()?.name === 'free' && last.includes('combat_end')) break;
@@ -4434,7 +4437,9 @@ test.describe('Event command parity', () => {
     ]);
     expect(timeline[0]).toMatchObject({ combat: true, onMap: true, phase: 'combat', hp: 1 });
     expect(timeline[1]).toMatchObject({ combat: true, onMap: true, hp: 0 });
-    expect(timeline[1].phase).toMatch(/^exp_|post_exp_events/);
+    // combat_death and UnitDeath finish in the same frame, which ends with
+    // the dying fade under way.
+    expect(timeline[1].phase).toMatch(/^exp_|post_exp_events|death/);
     expect(timeline[2]).toMatchObject({ onMap: true });
     expect(timeline[3]).toMatchObject({ combat: false, onMap: false });
     expect(timeline[5]).toMatchObject({ combat: false, onMap: false });

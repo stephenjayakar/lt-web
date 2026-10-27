@@ -42,7 +42,12 @@ async function installTrap(page: Page, unitNid: string, condition: string, onlyO
     game.db.events.set('_TestTrapHit', {
       name: '_TestTrapHit', nid: '_TestTrapHit', trigger: '_TestTrapHit',
       level_nid: game.currentLevel?.nid ?? null, condition: 'True', only_once: false, priority: 0,
-      _source: ['game_var;_test_trap_hits;{e:v("_test_trap_hits", 0) + 1}'],
+      _source: [
+        'game_var;_test_trap_hits;{e:v("_test_trap_hits", 0) + 1}',
+        // The walker's flags as the trigger runs (a phase can end, and
+        // ResetAll clear them, in the frame the event finishes).
+        'game_var;_test_trap_flags;[unit.has_attacked, unit.finished]',
+      ],
     });
     game.gameVars.set('_test_trap_hits', 0);
     return { start: [...unit.position], dest: chosen.dest, trap, pathLength: chosen.path.length };
@@ -158,10 +163,11 @@ test.describe('interrupt_move regions', () => {
     const result = await page.evaluate(() => {
       const game = (window as any).__gameRef;
       const keeper = game.units.get('Keeper');
+      const flags = game.gameVars.get('_test_trap_flags') ?? [];
       return {
         position: [...keeper.position],
-        hasAttacked: keeper.hasAttacked,
-        finished: keeper.finished,
+        hasAttacked: !!flags[0],
+        finished: !!flags[1],
         hits: game.gameVars.get('_test_trap_hits'),
         regionPresent: game.currentLevel.regions.some((region: any) => region.nid === '_TestTrap'),
         actions: (window as any).__aiActions,
