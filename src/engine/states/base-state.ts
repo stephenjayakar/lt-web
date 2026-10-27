@@ -16,6 +16,7 @@ import { State, type StateResult } from '../state';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
+import { isForkEngine } from '../engine-flavor';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { ACHIEVEMENTS, RECORDS, type AchievementEntry } from '../records';
@@ -36,6 +37,7 @@ import {
   type ChoiceEntry,
 } from '../../ui/prep-ui';
 import { Dialog } from '../../ui/dialog';
+import { ScrollArrow } from '../../ui/menu-chrome';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts / prep-state.ts)
@@ -837,6 +839,9 @@ export class BaseLoreState extends State {
   private loreNid: string | null = null;
   private pages: Dialog[] = [];
   pageNum = 0;
+  /** LoreDisplay's page arrows (gui.ScrollArrow), drawn when a lore has several pages. */
+  private readonly leftArrow = new ScrollArrow('left', 84 + 4, 8);
+  private readonly rightArrow = new ScrollArrow('right', 84 + (240 - 84) - 11, 8, 0.5);
 
   constructor(guideMode: boolean = false) {
     super();
@@ -883,8 +888,12 @@ export class BaseLoreState extends State {
       this.entries = sorted;
     }
     this.menu = new PrepChoice(game, [], [4, 4], 'menu_bg_brown');
-    this.menu.shimmer = 3;
-    this.menu.gem = 'brown';
+    // EOtF's engine drops the brown styling here: the list takes the window
+    // skin with its small gem and no shimmer.
+    if (!isForkEngine()) {
+      this.menu.shimmer = 3;
+      this.menu.gem = 'brown';
+    }
     this.menu.setLimit(9);
     this.menu.hardLimit = true;
     this.menu.setOptions(entries);
@@ -924,12 +933,13 @@ export class BaseLoreState extends State {
       if (menu.moveUp(prepIsFirstPush(game, 'UP'))) sfx('Select 6');
       this.updateEntry();
     } else if (event === 'RIGHT') {
-      if (this.pageNum < this.pages.length - 1) { this.pageNum += 1; sfx('Status_Page_Change'); }
+      if (this.pageNum < this.pages.length - 1) { this.pageNum += 1; this.rightArrow.pulse(); sfx('Status_Page_Change'); }
     } else if (event === 'LEFT') {
-      if (this.pageNum > 0) { this.pageNum -= 1; sfx('Status_Page_Change'); }
+      if (this.pageNum > 0) { this.pageNum -= 1; this.leftArrow.pulse(); sfx('Status_Page_Change'); }
     } else if (event === 'SELECT') {
       if (this.pages.length > 1) {
         this.pageNum = (this.pageNum + 1) % this.pages.length;
+        this.rightArrow.pulse();
         sfx('Status_Page_Change');
       }
     } else if (event === 'BACK') {
@@ -974,6 +984,14 @@ export class BaseLoreState extends State {
     if (page) {
       page.update();
       page.draw(surf, true);
+    }
+    if (this.pages.length > 1) {
+      this.leftArrow.x = ox + 84 + 4;
+      this.leftArrow.y = oy + 8;
+      this.rightArrow.x = ox + 240 - 11;
+      this.rightArrow.y = oy + 8;
+      this.leftArrow.draw(surf);
+      this.rightArrow.draw(surf);
     }
     return surf;
   }

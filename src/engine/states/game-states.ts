@@ -196,7 +196,7 @@ import { DifficultyModeObject, rngOptionDisplay } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
-import { getSprite, preloadSprites } from '../../ui/sprites';
+import { currentWindowSkin, getSprite, preloadSprites, skinnedSpriteNameFor, startupSkinnedSpriteName } from '../../ui/sprites';
 import { roamVisualOffset } from '../../movement/roam-movement';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
@@ -1831,7 +1831,8 @@ export class TitleModeState extends State {
     const s = this.modeScene.begin();
     // Label: base surf 96x88 with menu_shimmer2, translucent .1, at (142, 36).
     const label = new Surface(96, 88);
-    label.blit(getMenuBackgroundSync(96, 88), 0, 0);
+    // A bare create_base_surf: EOtF keeps the startup skin (the shimmer is live).
+    label.blit(getMenuBackgroundSync(96, 88, startupSkinnedSpriteName('menu_bg_base')), 0, 0);
     const shimmer = getMenuSprite('menus/menu_shimmer2');
     if (shimmer) label.blitImage(shimmer, 0, 0, shimmer.width, shimmer.height, 95 - shimmer.width, 83 - shimmer.height);
     label.setAlpha(0.9);
@@ -10444,6 +10445,21 @@ const BUILTIN_SPEAK_STYLES: Record<string, SpeakStyleDef> = {
     numLines: 2, speed: 2 },
 };
 
+/** Built-in styles whose window EOtF's engine skins (`'menu_bg_base' + skin`). */
+const SKINNED_SPEAK_STYLES = new Set(['__default_text', 'narration', 'narration_top']);
+
+/**
+ * BUILTIN_SPEAK_STYLES[nid]. On the EOtF fork the text-box styles carry the
+ * window skin the game was started with (the engine's speak-style library is
+ * built at New Game and saved), not the live setting.
+ */
+function builtinSpeakStyle(game: any, nid: string): SpeakStyleDef | undefined {
+  const style = BUILTIN_SPEAK_STYLES[nid];
+  if (!style || !isForkEngine() || !SKINNED_SPEAK_STYLES.has(nid)) return style;
+  const bg = skinnedSpriteNameFor('menu_bg_base', game?.speakStyleSkin ?? currentWindowSkin());
+  return { ...style, background: bg, ...(style.nameTagBg === 'menu_bg_base' ? { nameTagBg: bg } : {}) };
+}
+
 /** Python SpeakStyle.update: later non-null fields win; flags union. */
 function mergeSpeakStyle(base: SpeakStyleDef, other: SpeakStyleDef): SpeakStyleDef {
   const out: SpeakStyleDef = { ...base };
@@ -12993,7 +13009,7 @@ export class EventState extends State {
     const lookup = (nid: string | null): SpeakStyleDef | undefined => {
       if (!nid) return undefined;
       const project = game.speakStyles instanceof Map ? game.speakStyles.get(nid) : undefined;
-      return project && !Array.isArray(project) ? project : BUILTIN_SPEAK_STYLES[nid];
+      return project && !Array.isArray(project) ? project : builtinSpeakStyle(game, nid);
     };
     let current: SpeakStyleDef = mergeSpeakStyle({}, BUILTIN_SPEAK_STYLES.__default);
     const styles: SpeakStyleDef[] = [];
@@ -14222,7 +14238,7 @@ export class EventState extends State {
             flags: styleFlags,
           };
           if (!(game.speakStyles instanceof Map)) game.speakStyles = new Map();
-          const existing: SpeakStyleDef | undefined = game.speakStyles.get(styleNid) ?? BUILTIN_SPEAK_STYLES[styleNid];
+          const existing: SpeakStyleDef | undefined = game.speakStyles.get(styleNid) ?? builtinSpeakStyle(game, styleNid);
           game.speakStyles.set(styleNid, existing ? mergeSpeakStyle(existing, def) : def);
         }
         this.advancePointer();
@@ -18192,7 +18208,11 @@ export class EventState extends State {
         for (const itemNid of shopItemNids) {
           const prefab = game.db?.items?.get(itemNid);
           if (prefab) {
-            shopItems.push(new ItemObjectClass(prefab));
+            // Python item_funcs.create_items(unit, ...): the shopper owns the
+            // stock items, so ones they cannot use are listed in grey.
+            const shopItem = new ItemObjectClass(prefab);
+            shopItem.owner = shopUnit;
+            shopItems.push(shopItem);
           } else {
             console.warn(`shop: item "${itemNid}" not found in db`);
           }
