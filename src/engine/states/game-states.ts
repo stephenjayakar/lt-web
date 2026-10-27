@@ -50,6 +50,7 @@ import {
   pythonIterationValues,
   pythonLiteral,
   pythonStr,
+  triggerFieldArgs,
   type ConditionContext,
   type EventCommand,
   type ExpressionOutcome,
@@ -12935,13 +12936,7 @@ export class EventState extends State {
         ...(trigger?.region ? [['region', trigger.region] as [string, any]] : []),
         ...(trigger?.position ? [['position', trigger.position] as [string, any]] : []),
         ...(trigger?.localArgs?.entries() ?? []),
-        ['stat_changes', trigger?.statChanges],
-        ['source', trigger?.source],
-        ['weapon_type', trigger?.weaponType],
-        ['old_wexp', trigger?.oldWexp],
-        ['rank', trigger?.rank],
-        ['is_animation_combat', trigger?.isAnimationCombat],
-        ['playback', trigger?.playback],
+        ...triggerFieldArgs(trigger),
       ]),
     };
   }

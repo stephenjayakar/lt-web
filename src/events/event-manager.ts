@@ -555,6 +555,26 @@ function counterVars(variables: Map<string, any> | undefined): Map<string, any> 
 }
 
 /**
+ * The typed trigger fields a Python trigger's to_args() carries (stat
+ * changes, playback, ...), as event local args. Only the fields this
+ * trigger sets: a trigger_specific_event passes its args in localArgs
+ * (event_after_combat's playback), and an unset field must not shadow it.
+ */
+export function triggerFieldArgs(trigger: Partial<EventTrigger> | null | undefined): [string, unknown][] {
+  if (!trigger) return [];
+  const fields: [string, unknown][] = [
+    ['stat_changes', trigger.statChanges],
+    ['source', trigger.source],
+    ['weapon_type', trigger.weaponType],
+    ['old_wexp', trigger.oldWexp],
+    ['rank', trigger.rank],
+    ['is_animation_combat', trigger.isAnimationCombat],
+    ['playback', trigger.playback],
+  ];
+  return fields.filter(([, value]) => value !== undefined);
+}
+
+/**
  * Python @property accessors on component classes, by component nid:
  * property name -> key of the component's value dict
  * (item_components/extra_components.py EffectiveDamage).
@@ -2350,13 +2370,7 @@ export class EventManager {
         localArgs: new Map<string, any>([
           ...(context.localArgs?.entries() ?? []),
           ...(trigger.localArgs?.entries() ?? []),
-          ['stat_changes', trigger.statChanges],
-          ['source', trigger.source],
-          ['weapon_type', trigger.weaponType],
-          ['old_wexp', trigger.oldWexp],
-          ['rank', trigger.rank],
-          ['is_animation_combat', trigger.isAnimationCombat],
-          ['playback', trigger.playback],
+          ...triggerFieldArgs(trigger),
         ]),
       };
 
