@@ -53,6 +53,12 @@ export interface JumpSpec {
   seed?: number;
   /** Keep EOtF's tutorial popups (default: skipped like a returning player). */
   tutorials?: boolean;
+  /**
+   * QA stat boost: change_stats +N to every stat (+2N HP) on each party unit,
+   * then a full heal. Off by default; lets the simple auto-play AI survive
+   * deep floors so later content can be reached and exercised.
+   */
+  boost?: number;
 }
 
 export interface JumpHost {
@@ -181,6 +187,11 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
       lines.push(`promote;${arg(unit.nid)};${arg(klass.turns_into[0])};silent`);
     }
     if (unit.promotedLevel) lines.push(`autolevel_to;${arg(unit.nid)};${unit.promotedLevel}`);
+    if (spec.boost && spec.boost > 0) {
+      const b = Math.floor(spec.boost);
+      lines.push(`change_stats;${arg(unit.nid)};HP,${2 * b},STR,${b},MAG,${b},SKL,${b},SPD,${b},LCK,${b},DEF,${b},RES,${b};immediate`);
+      lines.push(`heal;${arg(unit.nid)};999`);
+    }
     for (const item of unit.items ?? []) lines.push(`give_item;${arg(unit.nid)};${arg(item)};no_banner`);
   }
   if (spec.money) lines.push(`give_money;${Math.floor(spec.money)};Player;no_banner`);

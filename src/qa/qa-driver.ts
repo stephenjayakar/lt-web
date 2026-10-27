@@ -143,6 +143,8 @@ export class QaDriver {
   private floorStartReal = 0;
   private floorStartFrame = 0;
   private deadSeen = new Set<any>();
+  /** Player unit nid -> dead at the last observation (deaths are edges). */
+  private playerDead = new Map<string, boolean>();
   private lastSignature = '';
   private lastProgressFrame = 0;
   private lastProgressReal = 0;
@@ -419,6 +421,7 @@ export class QaDriver {
     this.currentFloor = null;
     this.currentLevel = null;
     this.stopReason = null;
+    this.playerDead.clear();
     this.observe();
   }
 
@@ -434,7 +437,11 @@ export class QaDriver {
     const floorVar = game.gameVars?.get?.('Floor');
     const floor = typeof floorVar === 'number' ? floorVar : null;
     if (this.mode !== 'play') return;
-    if (!this.currentFloor || this.currentFloor.floor !== floor) {
+    // Global_Level_End raises Floor while the finished battle is still the
+    // current level; the floor record changes once the next level is up.
+    const floorChanged = !this.currentFloor || this.currentFloor.floor !== floor;
+    const stillInBattle = this.currentLevel?.kind === 'battle' && this.currentLevel.nid === levelNid;
+    if (floorChanged && !stillInBattle) {
       this.closeLevel(this.currentLevel?.kind === 'battle' ? 'won' : 'left');
       this.closeFloor();
       this.openFloor(floor);
@@ -447,10 +454,17 @@ export class QaDriver {
     if (level) {
       level.turns = Math.max(level.turns, Number(game.turnCount ?? 0));
       for (const unit of game.getAllUnits() as any[]) {
-        if (!unit.isDead?.() || this.deadSeen.has(unit)) continue;
+        const dead = !!unit.isDead?.();
+        if (unit.team === 'player') {
+          // Units are rebuilt between levels, so track deaths by nid.
+          const before = this.playerDead.get(unit.nid);
+          if (dead && before === false) level.playerDeaths.push(`${unit.nid}@T${game.turnCount}`);
+          this.playerDead.set(unit.nid, dead);
+          continue;
+        }
+        if (!dead || this.deadSeen.has(unit)) continue;
         this.deadSeen.add(unit);
-        if (unit.team === 'player') level.playerDeaths.push(`${unit.nid}@T${game.turnCount}`);
-        else if (unit.team === 'enemy' || unit.team === 'enemy2') level.enemyDeaths += 1;
+        if (unit.team === 'enemy' || unit.team === 'enemy2') level.enemyDeaths += 1;
       }
     }
   }

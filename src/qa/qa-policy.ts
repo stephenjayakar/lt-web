@@ -68,7 +68,7 @@ export class PolicyRng {
 }
 
 const strip = (text: string) => text.replace(/<[^>]*>/g, '').trim();
-const YES_PROMPT = /begin|proceed|enter|visit|investigate|sortie|deploy|depart|accept|continue|fight|challenge/i;
+const YES_PROMPT = /begin|proceed|enter|visit|investigate|sortie|deploy|depart|accept|continue|fight|challenge|heal/i;
 const DANGER_PROMPT = /abandon|quit|give up|retire|delete|reset|forfeit|end (the|this) run|return to (the )?(hub|title)/i;
 const LEAVE_OPTION = /^(leave|exit|back|done|cancel|no|nothing|skip|never ?mind|close|none|decline)\b/i;
 const META_OPTION = /^(help|filter|filters|search|bonusunit)$/i;

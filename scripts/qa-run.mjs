@@ -40,6 +40,7 @@ Where to start (jump):
   --records k=v,k=v    persistent records (values parsed as JSON when possible)
   --vars k=v,k=v       game vars
   --tutorials          keep EOtF tutorial popups
+  --boost N            QA stat boost: +N to every stat (+2N HP) for the party
 
 What to play:
   --floors N           play N floors (default 1); --to-floor N; --one-level
@@ -53,6 +54,7 @@ What to play:
 
 Speed:
   --fast N             frames per real frame; 0 = unlimited (default 0); 1 = normal
+  --draw-every N       render every Nth frame only (default 16; 1 = every frame)
   --map-combat         map combat instead of battle animations (presentation only)
   --no-skip            do not skip event dialogue/cutscenes
   --verbose            keep engine console.log output
@@ -145,6 +147,7 @@ const jumpSpec = {
   records: parseMap(args.records),
   gameVars: parseMap(args.vars),
   tutorials: !!args.tutorials,
+  boost: args.boost !== undefined ? num(args.boost) : undefined,
 };
 
 const listOrMode = (value, modes) => {
@@ -173,6 +176,7 @@ const fast = {
   skipEvents: !args.noSkip,
   combat: args.mapCombat ? 'map' : 'animation',
   quietLog: !args.verbose,
+  drawEvery: num(args.drawEvery, 16),
 };
 
 // ---------------------------------------------------------------------------
@@ -309,7 +313,7 @@ async function runOne(browser, index) {
   const summary = { label, seed: runSeed, url: baseUrl, jumpSpec, playOptions, fast, timings, failure, pageErrors, report };
   fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(summary, null, 2));
   fs.writeFileSync(path.join(dir, 'report.md'), renderMarkdown(summary));
-  const result = report?.status?.result ?? (failure ? 'failed' : 'unknown');
+  const result = failure ? 'failed' : args.noPlay ? 'ok' : (report?.status?.result ?? 'unknown');
   console.log(`${tag} ${result}: ${report?.status?.reason ?? failure?.split('\n')[0] ?? ''} — boot ${fmtMs(timings.bootMs ?? 0)}, jump ${fmtMs(timings.jumpMs ?? 0)}, play ${fmtMs(timings.playMs ?? 0)}`);
   console.log(`${tag} report: ${path.join(dir, 'report.md')}`);
   return { dir, result, failure };

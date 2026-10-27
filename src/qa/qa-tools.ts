@@ -23,7 +23,9 @@ import type { GameButton } from '../engine/input';
 import { GameEvent } from '../events/event-manager';
 import { RECORDS } from '../engine/records';
 import { qaSettingOverrides, setSetting } from '../engine/states/settings-state';
-import { FRAMETIME } from '../engine/constants';
+import { FRAMETIME, updateAnimationCounters } from '../engine/constants';
+import type { Surface } from '../engine/surface';
+import { updateUnitSounds } from '../audio/unit-sound';
 import { advanceVirtualClock, installVirtualClock, realDate, realNow, virtualNow } from './qa-clock';
 import { QaLog, type QaContext, type QaLogEntry } from './qa-log';
 import { Policy, type PolicyOptions } from './qa-policy';
@@ -39,6 +41,19 @@ export interface FastOptions {
   combat?: 'animation' | 'map';
   /** Silence console.log/info (warnings and errors are still collected). */
   quietLog?: boolean;
+  /**
+   * Draw (render) only every Nth frame; the others run update logic only.
+   * 1 = draw every frame (default). Presentation timers that Python also
+   * advances while drawing (portraits, some animations) then take more
+   * frames, but rules, RNG and outcomes are unchanged.
+   */
+  drawEvery?: number;
+}
+
+export interface QaDisplay {
+  surface: () => Surface;
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
 }
 
 export interface PlayOptions {
@@ -87,12 +102,12 @@ export interface QaReport {
 
 class QaController {
   readonly game: any;
-  readonly harness: any;
+  readonly display: QaDisplay;
   readonly log: QaLog;
   readonly driver: QaDriver;
   ready = false;
 
-  private fast: Required<FastOptions> = { speed: 1, skipEvents: false, combat: 'animation', quietLog: false };
+  private fast: Required<FastOptions> = { speed: 1, skipEvents: false, combat: 'animation', quietLog: false, drawEvery: 1 };
   private credit = 0;
   private lastPump = 0;
   private frames = 0;
@@ -112,9 +127,9 @@ class QaController {
   private scheduled = false;
   private scriptCounter = 0;
 
-  constructor(game: any, harness: any) {
+  constructor(game: any, display: QaDisplay) {
     this.game = game;
-    this.harness = harness;
+    this.display = display;
     this.log = new QaLog(() => this.context());
     this.log.install();
     this.driver = new QaDriver(game, this.log, new Policy({}));
@@ -158,15 +173,13 @@ class QaController {
     try {
       while (stepped < allowed && realNow() - t0 < 30) {
         const input = this.driver.tick();
-        this.harness.stepFrames(1, input);
-        advanceVirtualClock(FRAMETIME);
+        this.stepFrame(input);
         stepped += 1;
         if (this.phase === 'playing' && this.checkPlayDone()) break;
       }
     } catch (err) {
       this.log.record('error', `QA frame loop: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
     }
-    this.frames += stepped;
     if (this.fast.speed > 0) this.credit -= stepped;
     const now = realNow();
     if (now - this.fpsWindow.real >= 1000) {
@@ -175,6 +188,41 @@ class QaController {
     }
     this.resolveWaiters();
     this.schedule(stepped < allowed || this.fast.speed <= 0 ? 0 : FRAMETIME / Math.max(1, this.fast.speed));
+  }
+
+  /**
+   * One engine frame, as the harness steps it (main.ts gameLoop minus the
+   * real-time pacing), drawing and blitting only every `drawEvery` frames.
+   */
+  private stepFrame(input: GameButton | null): void {
+    const game = this.game;
+    const draw = this.fast.drawEvery <= 1 || this.frames % this.fast.drawEvery === 0;
+    const surface = this.display.surface();
+    game.frameDeltaMs = FRAMETIME;
+    if (draw) surface.clear();
+    game.state.qaSkipDraw = !draw;
+    try {
+      let repeat = true;
+      let iterations = 0;
+      while (repeat && iterations < 10) {
+        const [, again] = game.state.update(iterations === 0 ? input : null, surface);
+        repeat = again;
+        iterations += 1;
+      }
+    } finally {
+      game.state.qaSkipDraw = false;
+    }
+    updateAnimationCounters();
+    game.movementSystem.update(FRAMETIME);
+    updateUnitSounds(game.units.values(), !!game.roamInfo?.roam, game.camera?.getCullRect?.() ?? null);
+    if (draw) {
+      const { canvas, ctx } = this.display;
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(surface.canvas, 0, 0);
+    }
+    advanceVirtualClock(FRAMETIME);
+    this.frames += 1;
   }
 
   private resolveWaiters(): void {
@@ -412,9 +460,8 @@ class QaController {
   /** Step `count` frames synchronously (for focused checks). */
   step(count: number, input: GameButton | null = null): void {
     for (let i = 0; i < count; i += 1) {
-      this.harness.stepFrames(1, i === 0 ? input : this.driver.tick());
-      advanceVirtualClock(FRAMETIME);
-      this.frames += 1;
+      const tick = this.driver.tick();
+      this.stepFrame(i === 0 && input ? input : tick);
     }
   }
 }
@@ -432,10 +479,11 @@ export interface QaApi {
   runScript(lines: string[], nid?: string): void;
   step(count: number, input?: GameButton | null): void;
   virtualNow(): number;
+  realNow(): number;
 }
 
-export function installQa(game: any, harness: any, params: URLSearchParams): QaApi {
-  const controller = new QaController(game, harness);
+export function installQa(game: any, params: URLSearchParams, display: QaDisplay): QaApi {
+  const controller = new QaController(game, display);
   const api: QaApi = {
     get ready() { return controller.ready; },
     game,
@@ -449,6 +497,7 @@ export function installQa(game: any, harness: any, params: URLSearchParams): QaA
     runScript: (lines, nid) => controller.runScript(lines, nid),
     step: (count, input) => controller.step(count, input ?? null),
     virtualNow,
+    realNow,
   };
   (window as any).__qa = api;
   const speed = Number(params.get('qa'));

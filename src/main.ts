@@ -957,7 +957,7 @@ async function main(): Promise<void> {
     }
     if (__LT_QA__ && qaMode) {
       const { installQa } = await import('./qa/qa-tools');
-      installQa(gameState, (window as any).__harness, params);
+      installQa(gameState, params, { surface: () => gameSurface, canvas: display.canvas, ctx: display.ctx });
       return;
     }
     // Load the requested level directly
