@@ -35,6 +35,13 @@ async function boot(page: Page, setup: string = ''): Promise<void> {
     g.board.removeUnit(enemy);
     g.board.setUnit(8, 4, enemy);
     (window as any).__enemyNid = enemy.nid;
+    if (extra === 'canto') {
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      // Plain Canto does not move after attacking; Canto_Plus does (as Python).
+      player.skills.push(new SkillObject(g.db.skills.get('Canto_Plus')));
+      player.stats.HP = 99;
+      player.currentHp = 99;
+    }
     if (extra === 'vulnerary') {
       const { ItemObject } = await import('/src/objects/item.ts');
       const item = new ItemObject(g.db.items.get('Vulnerary'));
@@ -170,6 +177,66 @@ test.describe('finished units draw gray (unit_sprite.update_state)', () => {
     await expectGray(page, 'Player');
     await expectColored(page, 'Hetja');
     await page.screenshot({ path: test.info().outputPath('after-attack.png') });
+  });
+
+  test('after Canto ends (attack, canto move, Wait)', async ({ page }) => {
+    await boot(page, 'canto');
+    // (8,3) is boxed in; move the Player and its enemy to open ground.
+    const start = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const player = g.units.get('Player');
+      const enemy = g.units.get((window as any).__enemyNid);
+      for (let y = 2; y < g.board.height - 2; y++) {
+        for (let x = 2; x < g.board.width - 2; x++) {
+          if (g.board.getUnit(x, y) || g.board.getUnit(x, y + 1)) continue;
+          g.board.removeUnit(player);
+          g.board.setUnit(x, y, player);
+          g.board.removeUnit(enemy);
+          g.board.setUnit(x, y + 1, enemy);
+          const moves = g.pathSystem.getValidMoves(player, g.board) as [number, number][];
+          if (moves.filter(([mx, my]) => !g.board.getUnit(mx, my)).length >= 4) return [x, y];
+        }
+      }
+      return null;
+    });
+    expect(start).not.toBeNull();
+    await openMenu(page, start![0], start![1]);
+    await choose(page, 'Attack');
+    // Resolve the combat; Canto then reopens the move state.
+    for (let i = 0; i < 200; i++) {
+      const top = await stateName(page);
+      if (top === 'move') break;
+      await step(page, 8, ['combat', 'targeting', 'weapon_choice'].includes(top) && i % 3 === 0 ? 'SELECT' : null);
+      await page.waitForTimeout(25);
+    }
+    expect(await stateName(page)).toBe('move');
+    const dest = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const unit = g.units.get('Player');
+      const moves = (g.state.getCurrentState().validMoves ?? []) as [number, number][];
+      if (!moves.length) return { none: true, left: unit.movementLeft, stack: g.state.getStackNames() } as any;
+      const target = moves.find(([x, y]) => (x !== unit.position[0] || y !== unit.position[1]) && !g.board.getUnit(x, y) && y < unit.position[1]) ??
+        moves.find(([x, y]) => (x !== unit.position[0] || y !== unit.position[1]) && !g.board.getUnit(x, y));
+      if (!target) return { none: true, moves, pos: unit.position, left: unit.movementLeft } as any;
+      g.cursor.setPos(target[0], target[1]);
+      return target;
+    });
+    expect((dest as any).none, JSON.stringify(dest)).toBeUndefined();
+    await step(page, 1, 'SELECT');
+    for (let i = 0; i < 60 && !['canto_wait', 'menu'].includes(await stateName(page)); i++) await step(page, 4);
+    await step(page, 3);
+    await choose(page, 'Wait');
+    await settleFree(page);
+    expect(await page.evaluate(() => (window as any).__gameRef.units.get('Player').position)).toEqual(dest);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const enemy = g.units.get((window as any).__enemyNid);
+      if (enemy?.position) {
+        g.board.removeUnit(enemy);
+        g.board.setUnit(1, 1, enemy);
+      }
+    });
+    await expectGray(page, 'Player');
   });
 
   test('after using an item', async ({ page }) => {
