@@ -16,12 +16,18 @@
     "units.*.skill_data.*.sourceType": "Web-only: the web stores a skill's source in skill.data; Python keeps it in the unit's skill source list.",
     "units.*.skill_data.*.sourceNid": "Web-only, see sourceType.",
     "units.*.skill_data.*.ability_item_uid": "Python stores the uid of a skill's ability item (engine-specific uid counter).",
-    "units.*.skill_data.*.abilityItemKey:ability": "Web-only registry key of a skill's ability item (see ability_item_uid)."
+    "units.*.skill_data.*.abilityItemKey:ability": "Web-only registry key of a skill's ability item (see ability_item_uid).",
+    "units.*.skill_data.*.itemSource": "Web-only: item-granted skills remember their item in skill.data (Python: the unit's skill source list).",
+    "units.*.skill_data.*.itemSourceNid": "Web-only, see itemSource.",
+    "units.*.skill_data.*.itemSourceType": "Web-only, see itemSource."
   },
   "zero_equals_missing": {
     "units.*.stats.*": "Python keeps one entry per DB stat; the web may add class-only stats (e.g. LEAD) at 0.",
     "units.*.wexp.*": "Both sides drop zero wexp; a type missing on one side equals 0.",
     "units.*.growth_points.*": "Both sides drop zero growth points."
+  },
+  "false_equals_missing": {
+    "units.*.skill_data.*.active": "Python's combat-art components initialise data['active'] = False; the web sets it only when the art is toggled."
   },
   "null_equals_empty": {
     "units.*.ai_group": "Python uses None for no AI group, the web an empty string."

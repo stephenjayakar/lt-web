@@ -48,6 +48,16 @@ const REST_STATES = new Set([
 
 class OracleError extends Error {}
 
+/**
+ * Like py_driver.py's frame clock: screens that time themselves with
+ * performance.now() (level-up and promotion screens, portrait fades, prep
+ * fades) see exactly 1000/60 ms per stepped frame, not wall-clock time.
+ */
+let virtualNow = performance.now();
+function installVirtualClock(): void {
+  Object.defineProperty(performance, 'now', { configurable: true, value: () => virtualNow });
+}
+
 const w = window as any;
 
 class WebEngine {
@@ -58,6 +68,7 @@ class WebEngine {
 
   step(button: string | null = null): void {
     this.frame++;
+    virtualNow += 1000 / 60;
     this.h.stepFrames(1, button);
   }
 
@@ -566,6 +577,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
 
 export async function runScenario(scn: Scenario): Promise<Json> {
   const out: any = { engine: 'web', scenario: scn.name ?? null, steps: [], error: null };
+  installVirtualClock();
   const e = new WebEngine();
   try {
     for (const [k, v] of Object.entries({ ...DEFAULT_SETTINGS, ...(scn.settings ?? {}) })) setSetting(k, v);
