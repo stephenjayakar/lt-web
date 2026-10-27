@@ -8853,11 +8853,14 @@ export class AIState extends MapState {
     return true;
   }
 
-  override begin(): StateResult {
+  /**
+   * Python AIState.start: the phase's bookkeeping is reset once per
+   * activation. begin() runs again whenever a pushed state (combat, wait,
+   * event) pops back to the AI, and Python's begin only fades the music in;
+   * has_run_ai and cur_unit survive until the phase ends (AIState.finish).
+   */
+  override start(): StateResult {
     const game = getGame();
-
-    // Phase music (Python: AIState.begin() -> phase.fade_in_phase_music()).
-    fadeInPhaseMusic(game);
 
     // Initiative mode: only process the single current initiative unit
     if (game.initiative) {
@@ -8887,8 +8890,14 @@ export class AIState extends MapState {
     this.waitingForEvent = false;
     this.pendingCombatTarget = null;
     this.pendingCombatWeapon = null;
+    this.pendingWaitUnit = null;
 
     game.cursor.visible = false;
+  }
+
+  override begin(): StateResult {
+    // Phase music (Python: AIState.begin() -> phase.fade_in_phase_music()).
+    fadeInPhaseMusic(getGame());
   }
 
   override update(): StateResult {
@@ -9375,7 +9384,11 @@ export class AIState extends MapState {
     if (attacker.getAllItems().includes(weapon) && attacker.canEquip(weapon)) {
       game.actionLog.doAction(new EquipItemAction(attacker, weapon));
     }
-    if (!weapon.isWeapon()) game.memory.set('combat_item', weapon);
+    // Python start_combat(unit, goal_target, goal_item): the chosen item is
+    // the combat item even when it cannot be equipped (a skill's no_equip
+    // ability weapon such as EOtF's Haymaker); falling back to the equipped
+    // weapon found none and the combat ended before its first strike.
+    game.memory.set('combat_item', weapon);
     // Python interaction.start_combat aims a multi_target item at
     // `[target] * num_targets`; EOtF's fork engage merges those positions
     // into one splash list with no main target: a single counter-less
