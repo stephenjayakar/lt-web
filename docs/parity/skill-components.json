@@ -1412,19 +1412,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15323
+          "line": 15325
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 17062
+          "line": 17064
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19561
+          "line": 19563
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19574
+          "line": 19576
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1707,27 +1707,27 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15074
+          "line": 15076
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15079
+          "line": 15081
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15091
+          "line": 15093
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15103
+          "line": 15105
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19742
+          "line": 19744
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19811
+          "line": 19813
         },
         {
           "source": "src/events/event-command-flags.ts",
@@ -2277,7 +2277,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16302
+          "line": 16304
         },
         {
           "source": "src/events/event-manager.ts",
@@ -5265,11 +5265,11 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16389
+          "line": 16391
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 17092
+          "line": 17094
         },
         {
           "source": "src/main.ts",

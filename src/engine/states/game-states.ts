@@ -14304,7 +14304,9 @@ export class EventState extends State {
         const entryType = auArgs.value('EntryType') || 'fade';
         const fadeDirection = this.fadeDirection(auArgs.value('AnimationType'));
         const existing = game.units.get(unitNid);
-        if (existing?.position || existing?.isDead()) {
+        // Python add_unit refuses a unit on the map or flagged dead; a 0-HP
+        // unit (EOtF's Search point, HP 0) that is not dead is placed.
+        if (existing?.position || existing?.dead) {
           this.advancePointer();
           return false;
         }
