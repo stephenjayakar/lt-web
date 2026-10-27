@@ -162,6 +162,21 @@ export class CombatPhaseSolver {
   /** EOtF: the phase's damage brushes so far (lifelink variants total them). */
   private phaseDamage: Array<{ attacker: UnitObject; raw: number; trueDamage: number; crit: boolean }> = [];
   /**
+   * EOtF: each unit's queued HP actions this phase, in order (ChangeHP from
+   * damage, ExtraChangeHP per extra-damage instance, after_take_strike
+   * heals). Survival hooks rewrite or drop them, retroactively too.
+   */
+  private readonly phaseHpLog = new Map<UnitObject, Array<{
+    strike: CombatStrike; kind: 'damage' | 'extra' | 'heal'; num: number; modified?: boolean;
+  }>>();
+  /** EOtF: the phase's earliest extra-damage amount, on any target (TrueMiracle reads it). */
+  private phaseFirstExtra: number | null = null;
+  /**
+   * EOtF: charged survival skills that fired this phase. Their charge is a
+   * queued action, so they keep protecting until the phase is applied.
+   */
+  private readonly phasePendingSurvival = new Set<SkillObject>();
+  /**
    * The last resolved strike's attack/defense procs. Python ends a strike's
    * sub-combat (removing its proc skills) only after the strike's damage and
    * after-strike hooks, so removal waits for applyStrikeDamage.
@@ -309,6 +324,10 @@ export class CombatPhaseSolver {
     this.phaseAllyHealing = 0;
     this.phaseStartHp.clear();
     this.phaseDamage = [];
+    this.phaseHpLog.clear();
+    this.phaseFirstExtra = null;
+    for (const skill of this.phasePendingSurvival) this.customSurvivalTriggered.add(skill);
+    this.phasePendingSurvival.clear();
     for (const unit of this.simHps.keys()) {
       const hp = this.simulatedHp(unit);
       if (hp !== undefined) this.phaseStartHp.set(unit, hp);
@@ -570,13 +589,30 @@ export class CombatPhaseSolver {
       this.applyPostStrikeSkillEffects(target, strike, before);
       return;
     }
-    const proc = rawDamage + rawExtra > 0
-      ? skillSystem.damagePreventionSkill(
-        target,
-        before - rawDamage - rawExtra <= 0,
-        this.customSurvivalTriggered,
-        this.game,
-      )
+    // Queue this strike's actions on the target: ChangeHP (any item with a
+    // damage hook, even for 0), then one ExtraChangeHP per instance.
+    const log = this.phaseHpLog.get(target) ?? [];
+    this.phaseHpLog.set(target, log);
+    if (itemDamage(strike.attacker, strike.item, this.game) !== null) {
+      log.push({ strike, kind: 'damage', num: -rawDamage });
+    }
+    if (rawExtra > 0) {
+      const instances = Math.max(1, strike.extraDamageInstances ?? 1);
+      const each = Math.trunc(rawExtra / instances);
+      for (let index = 0; index < instances; index++) {
+        log.push({ strike, kind: 'extra', num: -each });
+        this.phaseFirstExtra ??= each;
+      }
+    }
+    // TrueMiracle reads the phase's earliest extra-damage action, whatever
+    // its target, and checks every queued ChangeHP of this unit against the
+    // HP the phase began with.
+    const extra = this.phaseFirstExtra ?? 0;
+    const miracleQualifies = (num: number): boolean =>
+      -num >= before || (extra > 0 && -num + extra >= before);
+    const lethal = log.some((entry) => entry.kind === 'damage' && miracleQualifies(entry.num));
+    const proc = log.some((entry) => entry.num < 0)
+      ? skillSystem.damagePreventionSkill(target, lethal, this.customSurvivalTriggered, this.game)
       : null;
     if (proc) {
       strike.survivalProc = proc;
@@ -586,37 +622,82 @@ export class CombatPhaseSolver {
       ];
       const everyStrike = (proc.component === 'TrueMiracle' || proc.component === 'ignore_damage') &&
         !proc.skill.hasComponent('build_charge') && !skillSystem.hasDrainingCharge(proc.skill);
-      if (!everyStrike) this.customSurvivalTriggered.add(proc.skill);
+      if (!everyStrike) this.phasePendingSurvival.add(proc.skill);
+      if (proc.component === 'ignore_damage') {
+        // IgnoreDamage drops every queued HP loss of this unit in the phase.
+        for (let index = log.length - 1; index >= 0; index--) {
+          if (log[index].num < 0) {
+            log[index].strike.shownDamage ??= log[index].strike.damage;
+            if ((log[index].strike.extraDamage ?? 0) > 0) {
+              log[index].strike.shownExtraDamage ??= log[index].strike.extraDamage;
+            }
+            log[index].strike.damage = 0;
+            log[index].strike.extraDamage = 0;
+            log.splice(index, 1);
+          }
+        }
+      } else if (proc.component === 'TrueMiracle' || proc.component === 'True_Miracle_Event') {
+        for (const entry of log) {
+          if (entry.kind !== 'damage' || !miracleQualifies(entry.num)) continue;
+          entry.num = -before + (extra > 0 ? extra : 0) + 1;
+          entry.modified = true;
+        }
+      } else {
+        // Other survival hooks leave this strike's target at 1 HP.
+        const cap = Math.max(0, before - 1);
+        let remaining = cap;
+        for (const entry of log) {
+          if (entry.strike !== strike || entry.kind === 'heal') continue;
+          const amount = Math.min(-entry.num, remaining);
+          remaining -= amount;
+          entry.num = -amount;
+          entry.modified = true;
+        }
+      }
     }
     // after_strike (the striker's lifelink) runs before the target's
     // after_take_strike survival hooks rewrite the damage.
     this.applyForkPhaseLifelinks(strike, before);
     this.applyPostStrikeSkillEffects(target, strike, before);
+    if (strike.defenderSkillHpChange) {
+      log.push({ strike, kind: 'heal', num: strike.defenderSkillHpChange });
+    }
+    this.replayPhaseHp(target, hp, before, ignoreDying);
+  }
 
-    const clamp = (value: number): number => Math.max(0, Math.min(target.maxHp, value));
-    const running = hp.hp;
-    let afterHit: number;
-    if (proc?.component === 'ignore_damage') {
-      afterHit = running;
-    } else if (proc && (proc.component === 'TrueMiracle' || proc.component === 'True_Miracle_Event')) {
-      // ChangeHP becomes -(phase-start HP) + extra + 1; the extra damage
-      // action follows it.
-      afterHit = clamp(clamp(running - (before - 1) + (rawExtra > 0 ? rawExtra : 0)) - rawExtra);
-    } else if (proc) {
-      afterHit = clamp(running - Math.min(rawDamage + rawExtra, Math.max(0, before - 1)));
-    } else {
-      afterHit = clamp(clamp(running - rawDamage) - rawExtra);
+  /**
+   * EOtF: apply a unit's queued phase actions in order, each clamped to
+   * [0, max HP] as set_hp does. Strikes whose actions a survival hook
+   * rewrote carry the HP they applied in `damage` / `extraDamage` and keep
+   * their brush values in `shownDamage` / `shownExtraDamage`.
+   */
+  private replayPhaseHp(unit: UnitObject, hp: { hp: number }, start: number, ignoreDying: boolean): void {
+    const log = this.phaseHpLog.get(unit) ?? [];
+    const rewritten = new Set(log.filter((entry) => entry.modified).map((entry) => entry.strike));
+    const applied = new Map<CombatStrike, { damage: number; extra: number }>();
+    let current = start;
+    for (const entry of log) {
+      const next = Math.max(0, Math.min(unit.maxHp, current + entry.num));
+      if (rewritten.has(entry.strike) && entry.kind !== 'heal') {
+        const sum = applied.get(entry.strike) ?? { damage: 0, extra: 0 };
+        if (entry.kind === 'damage') sum.damage += current - next;
+        else sum.extra += current - next;
+        applied.set(entry.strike, sum);
+      }
+      current = next;
     }
-    if (proc) {
-      // Digits still show the damage brushes; `damage` is what applied.
-      const applied = Math.max(0, running - afterHit);
-      strike.shownDamage = rawDamage;
-      if (rawExtra > 0) strike.shownExtraDamage = rawExtra;
-      strike.extraDamage = Math.min(rawExtra, applied);
-      strike.damage = applied - strike.extraDamage;
+    for (const [strike, sum] of applied) {
+      strike.shownDamage ??= strike.damage;
+      if ((strike.extraDamage ?? 0) > 0) strike.shownExtraDamage ??= strike.extraDamage;
+      strike.damage = Math.max(0, sum.damage);
+      strike.extraDamage = Math.max(0, sum.extra);
     }
-    const final = clamp(afterHit + (strike.defenderSkillHpChange ?? 0));
-    hp.hp = ignoreDying && final <= 0 ? 1 : final;
+    const final = current;
+    const value = ignoreDying && final <= 0 ? 1 : final;
+    hp.hp = value;
+    for (const ref of this.simHps.get(unit) ?? []) {
+      if (ref !== hp) ref.hp = value;
+    }
   }
 
   /**
