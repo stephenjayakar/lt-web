@@ -38,7 +38,7 @@ test.describe('Embrace of the Fog combat order and counter skills', () => {
         desperation: 16,
         distant_counter: 19,
         resist_follow_up: 1,
-        vantage: 10,
+        vantage: 11, // EOtF 2.0.1 data (2.0.0: 10)
       },
       invalid: [],
     });

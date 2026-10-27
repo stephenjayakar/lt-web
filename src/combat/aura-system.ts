@@ -29,6 +29,7 @@ import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { SkillObject } from '../objects/skill';
 import { initializeSkillData, isCantoSkill } from './skill-system';
+import { isForkEngine } from '../engine/engine-flavor';
 
 /** Tag keys stored on a skill instance granted by an aura's propagation. */
 export const AURA_SOURCE_TYPE_KEY = 'auraSourceType';
@@ -236,8 +237,11 @@ export function refreshAuras(
     childSkill.data.set(AURA_OWNER_NID_KEY, d.ownerNid);
     childSkill.data.set(AURA_PARENT_SKILL_UID_KEY, d.parentUid);
     // EotF Defense Zone describes the aura bearer as its cover source. Its
-    // Python component reads initiator_nid, which aura propagation leaves
-    // empty; use the already-persisted aura owner as the intended source.
+    // Python component reads initiator_nid, which upstream aura propagation
+    // leaves empty; use the already-persisted aura owner as the intended
+    // source. EOtF's engine itself adds aura children with the aura owner as
+    // initiator, which conditions such as Sovereign Stone's read.
+    if (isForkEngine()) childSkill.initiatorNid = d.ownerNid;
     initializeSkillData(childSkill, d.targetUnit);
     d.targetUnit.skills.push(childSkill);
   }

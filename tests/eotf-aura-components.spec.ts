@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog aura components', () => {
-  test('count-locks all 786 authored aura, range, and target uses', async ({ page }) => {
+  test('count-locks all 789 authored aura, range, and target uses', async ({ page }) => {
     await bootEotf(page);
     const inventory = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -36,9 +36,9 @@ test.describe('Embrace of the Fog aura components', () => {
 
     expect(inventory).toEqual({
       counts: {
-        aura: 262,
-        aura_range: 262,
-        aura_target: 262,
+        aura: 263, // EOtF 2.0.1 data (2.0.0: 262)
+        aura_range: 263,
+        aura_target: 263,
       },
       invalid: [],
     });

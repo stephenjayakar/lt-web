@@ -20,6 +20,7 @@ import { RECORDS, isFavorited, setFavorited } from '../engine/records';
 import { itemIsMagic, pythonCombatCalcsModule } from '../combat/combat-calcs';
 import { inventoryCapacityOffsets, movementType, unitHasTag, unitTags } from '../combat/skill-system';
 import { inventoryFull } from '../combat/item-system';
+import { isForkEngine } from '../engine/engine-flavor';
 import {
   BUILTINS,
   MATH_MODULE,
@@ -1452,6 +1453,16 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     inventory_full(candidate: any, item: any) {
       return inventoryFull(unwrapUnit(candidate), unwrapItem(item), game.db);
     },
+    // EOtF's engine adds item_funcs.has_damage: whether the item itself has
+    // a damage, damage_any, eval_damage or eval_damage_any component (a 0
+    // value counts). Upstream lacks it, so the expression raises there.
+    ...(isForkEngine() ? {
+      has_damage(_unit: any, item: any) {
+        const components = unwrapItem(item)?.components;
+        return !!components?.has && ['damage', 'damage_any', 'eval_damage', 'eval_damage_any']
+          .some((nid) => components.has(nid));
+      },
+    } : {}),
   };
   const skillSystem = {
     has_skill(candidate: any, skillNid: string) {

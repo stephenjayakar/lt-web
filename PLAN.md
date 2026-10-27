@@ -17,8 +17,10 @@ Embrace of the Fog 2.0 is web-compatible when a fresh browser profile can:
 - pass the EOtF audit, campaign checkpoints, all-level gates, build, parity
   audit, full serial suite, and visual/audio/input checks.
 
-Target: public `LordTweed/Tweeds_Roguelite` commit `d9d2975` (2026-07-25),
-installed as `lt-maker/eotf.ltproj`.
+Target: public `LordTweed/Tweeds_Roguelite` commit `a500736e` (2026-10-25,
+project metadata 2.0.1, identical to the official release's `EotF.ltproj`),
+installed as `lt-maker/eotf.ltproj`. Upgraded from `d9d2975` (2.0.0) on
+2026-10-26.
 
 ## Status
 
@@ -43,9 +45,9 @@ Verified baseline:
   contain their choice highlights;
 - all eight missing catalog-backed resources are classified as intentional,
   unreferenced aliases, with zero unclassified missing resources;
-- strict mode count-locks 74 verified item and 270 verified skill component
+- strict mode count-locks 74 verified item and 271 verified skill component
   NIDs and rejects count drift; and
-- all 4,937 conditions, 249 eval substitutions, and 646 loop expressions execute
+- all 4,966 conditions, 252 eval substitutions, and 646 loop expressions execute
   in strict mode through the Python expression evaluator (`src/events/py-expr`:
   tokenizer, CPython-precedence parser, Python-semantics tree evaluator), whose
   parse trees match CPython's `ast` on all 7,912 distinct EOtF expressions and
@@ -220,6 +222,7 @@ The release gate is green: build, all four audits, the full serial suite,
   combat land on the hit (items without damage deal none); splash-only
   attackers carry their own HP between phases; shove impact events join
   the strike's on_hit events in component order.
+- [x] Fork combat from source (`tests/fork-combat-{splash,extras}.spec.ts`): no-target AOE repeats, duplicate multi-target strikes, lifelink/live_to_serve zero cases, extra-damage instances, Spotlight warps, aura initiator, has_damage.
 - [x] AnimationCombat's non-fading `screen_blend` flash draws at full strength.
 - [x] UI parity: help boxes type their text out through the `__default_help`
   dialog (`tests/help-typewriter.spec.ts`); the Controls settings page rebinds
@@ -247,3 +250,20 @@ The release gate is green: build, all four audits, the full serial suite,
   slide), warp (anim, flicker, petals, sounds) and swoosh for add_unit,
   create_unit, add_group, remove_unit/group, move_unit/group and spawn_group,
   non-blocking as in Python; kill_unit plays DyingState before going on.
+
+### P8.6 — Differential oracle findings
+
+`npm run oracle` (`tools/oracle/README.md`) replays scenarios on upstream
+lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
+
+- [ ] Unique units get their class `learned_skills` (Canto on Paladins).
+- [ ] `WaitAction` also sets has_moved/has_traded/has_attacked.
+- [ ] Every level unit gets the level's party (Python `level_setup`).
+- [ ] Generics raise wexp to their items' requirements.
+- [ ] Generic autolevels honour `enemy_leveling` and, for promoted classes,
+  `promoted_autolevels_fraction`.
+- [ ] Combat level-ups leave current HP alone (only bonus exp raises it).
+- [ ] Item uses and staves draw the combat RNG like Python's solver.
+- [ ] `gba_poison`; `cannot_use_items` unequips; a unit whose stun ends at
+  upkeep acts that phase.
+- [ ] EOtF fork: units on Fixed growths start with 50 growth points per stat.

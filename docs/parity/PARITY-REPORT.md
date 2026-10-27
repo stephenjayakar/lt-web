@@ -140,9 +140,11 @@ can reach the difference.
 
 ### EOtF engine-version notes
 
-EOtF d9d2975's `metadata.json` (`"version": "2.0.0"`, 2026-07-25) is the game's
-own release number, written by a private lt-maker fork in the pre-2024-09
-metadata format (upstream switched to `engine_version` in `8206fbc07`). The fork
+EOtF a500736e's `metadata.json` (`"version": "2.0.1"`, 2026-10-25; previously
+d9d2975, 2.0.0, 2026-07-25) is the game's own release number, written by a
+private lt-maker fork in the pre-2024-09 metadata format (upstream switched to
+`engine_version` in `8206fbc07`). The official 2.0.1 release ships that fork as
+engine `VERSION = "2.0.2"`. The fork
 branched from upstream between mid-June and early September 2024 and adds
 commands no upstream release has (`heal`, `change_global_level_cap`,
 `change_unit_level_cap`, `unload_unit`, `show_pokedex`, `return`, and

@@ -1,0 +1,32 @@
+{
+  "name": "default-event-commands",
+  "description": "Inline event scripts: game/level vars, money, items, HP, exp, team, regions, movement and stats.",
+  "project": "default.ltproj",
+  "level": "DEBUG",
+  "events": false,
+  "seed": 0,
+  "actions": [
+    {"do": "event", "script": [
+      "game_var;Foo;5",
+      "inc_game_var;Foo;2",
+      "level_var;Bar;'x'",
+      "give_money;500;no_banner",
+      "give_item;Eirika;Iron_Sword;no_banner",
+      "set_current_hp;Eirika;7",
+      "set_item_uses;Seth;Silver_Lance;3"
+    ]},
+    {"do": "event", "script": [
+      "change_team;Bone;player",
+      "add_region;Trap;3,3;1,1;Status;Poisoned",
+      "remove_region;Door1",
+      "move_unit;Vanessa;3,2",
+      "set_stats;Moulder;STR,3",
+      "change_ai;103;Attack"
+    ]},
+    {"do": "event", "script": [
+      "give_exp;Seth;50",
+      "give_wexp;Eirika;Sword;20;no_banner",
+      "remove_unit;101"
+    ]}
+  ]
+}

@@ -205,6 +205,11 @@ export function initializeSkillData(
         (typeof auraOwner === 'string' ? auraOwner : null),
     );
   }
+  // EOtF's engine: WitchWarpExpression.init seeds data['arbitrary'] with ''
+  // (Covetous Love's expression reads it before an event fills it in).
+  if (isForkEngine() && skill.hasComponent('witch_warp_expression') && !skill.data.has('arbitrary')) {
+    skill.data.set('arbitrary', '');
+  }
   if (!skill.hasComponent('stat_change_at_apply_expression') ||
       skill.data.has('stat_changes')) return;
 
@@ -1973,6 +1978,12 @@ export function witchWarpPositions(
     }
   }
   if (!source) return [];
+  // EOtF's engine: every witch warp form offers no tiles while the unit's
+  // Spotlight skill (a global skill) is active.
+  if (isForkEngine()) {
+    const spotlight = unit.skills.find((skill) => skill.nid === 'Spotlight');
+    if (spotlight && skillConditionActive(spotlight, unit, { game })) return [];
+  }
 
   const defaultMovement = db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
   const movementGroup = movementType(unit, defaultMovement, game);
@@ -2186,7 +2197,7 @@ function evaluatedCombatSkillTotal(
   unit: UnitObject,
   component: string,
   item: ItemObject | null,
-  target: UnitObject,
+  target: UnitObject | null,
   item2: ItemObject | null,
   mode: string,
   attackInfo: any,
@@ -2219,7 +2230,7 @@ function evaluatedCombatSkillTotal(
         ? evaluateInt(configured, {
           game,
           unit1: unit,
-          unit2: target,
+          unit2: target ?? undefined,
           item: item ?? undefined,
           position: unit.position ?? undefined,
           gameVars: game?.gameVars,
@@ -2254,7 +2265,7 @@ export function multiattacksBlocked(
 export function dynamicMultiattacks(
   unit: UnitObject,
   item: ItemObject | null,
-  target: UnitObject,
+  target: UnitObject | null,
   item2: ItemObject | null,
   mode: string,
   attackInfo: any,
@@ -2274,7 +2285,7 @@ export function dynamicMultiattacks(
 export function dynamicAttacks(
   unit: UnitObject,
   item: ItemObject | null,
-  target: UnitObject,
+  target: UnitObject | null,
   item2: ItemObject | null,
   mode: string,
   attackInfo: any,
@@ -2290,7 +2301,7 @@ export function dynamicAttacks(
 export function dynamicBlitzes(
   unit: UnitObject,
   item: ItemObject | null,
-  target: UnitObject,
+  target: UnitObject | null,
   item2: ItemObject | null,
   mode: string,
   attackInfo: any,

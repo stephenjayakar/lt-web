@@ -369,6 +369,11 @@ export class CombatSkillLifecycle {
     item: ItemObject,
     defenders: UnitObject[],
     defenseItems: Map<UnitObject, ItemObject | null>,
+    /**
+     * The target the attacker's combat_conditions see, when it differs from
+     * defenders[0] (null: a combat with no main target).
+     */
+    mainDefender?: UnitObject | null,
   ): void {
     for (const parentSkill of attacker.skills) {
       if (!parentSkill.hasComponent('combat_art') || parentSkill.data.get('active') !== true) {
@@ -386,11 +391,12 @@ export class CombatSkillLifecycle {
       }
     }
     const mainTarget = defenders[0];
+    const conditionTarget = mainDefender === undefined ? mainTarget : mainDefender;
     this.prepareCombatConditions(
       attacker,
       item,
-      mainTarget ?? null,
-      mainTarget ? defenseItems.get(mainTarget) ?? null : null,
+      conditionTarget ?? null,
+      conditionTarget ? defenseItems.get(conditionTarget) ?? null : null,
       'attack',
     );
     for (const defender of defenders) {

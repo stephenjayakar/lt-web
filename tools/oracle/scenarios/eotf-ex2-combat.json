@@ -1,0 +1,14 @@
+{
+  "name": "eotf-ex2-combat",
+  "description": "EOtF EX_2 without events: Yusha, placed next to the Dragon boss, attacks it once with the Iron Sword (fork engine as reference).",
+  "project": "eotf.ltproj",
+  "level": "EX_2",
+  "events": false,
+  "seed": 0,
+  "setup": [
+    {"unit": "Yusha", "position": [6, 3]}
+  ],
+  "actions": [
+    {"do": "attack", "unit": "Yusha", "target": "Dragon", "item": "Iron_Sword"}
+  ]
+}

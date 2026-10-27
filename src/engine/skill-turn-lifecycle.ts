@@ -281,6 +281,21 @@ export function applySkillTurnHooks(
           }
         } else if (
           phase === 'upkeep' &&
+          component === 'regeneration_no_anim' &&
+          conditional &&
+          unit.currentHp < unit.maxHp
+        ) {
+          // EOtF 2.0.1 project-local RegenerationNoAnim (Venom): Python's
+          // `regeneration` without playback, always routed through the fork's
+          // `_get_heal_amount`, which returns non-positive amounts unchanged.
+          const base = Math.trunc(unit.maxHp * Number(rawValue ?? 0));
+          const amount = base <= 0 ? base : modifiedHealAmount(base, unit, null, game);
+          if (amount !== 0) {
+            applyHpChange(game, unit, amount);
+            effects.push({ unit, skill, component, value: amount });
+          }
+        } else if (
+          phase === 'upkeep' &&
           component === 'eval_regeneration' &&
           conditional &&
           unit.currentHp < unit.maxHp
