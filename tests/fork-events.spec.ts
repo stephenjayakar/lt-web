@@ -428,4 +428,76 @@ test.describe('EOtF fork event commands (engine-checked)', () => {
     });
     expect(result).toEqual(['Reserves', 'Dragonstone_LT', 'Dragonstone_LT', null, 'Dragonstone_LT', null]);
   });
+  test('objective text resolves nested braces innermost-first', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const { evaluateText } = await import('/src/ui/hud.ts');
+      const g = (window as any).__gameRef;
+      g.levelVars.set('win_con', 3);
+      g.levelVars.set('all_turn_count', 5);
+      g.levelVars.set('nothing', null);
+      g.levelVars.set('obj_raw', 'Extinguish {v:win_con} / 4');
+      return [
+        "{e:'Extinguish {v:win_con} / 4,Defeat Boss' + ', <purple>5 turns</>'}",
+        "{e:'{v:obj_raw}' + ', x'}",
+        '{e:{e:1 + 1} * 3} and {e:1}',
+        'Seize {v:win_con} / 2,{v:nothing},{v:missing_var}',
+        '{e:undefined_name},{comma}{br}',
+        "{e:'{v:win_con}' + '{v:all_turn_count}'}",
+      ].map((text) => evaluateText(text, g));
+    });
+    expect(result).toEqual([
+      'Extinguish 3 / 4,Defeat Boss, <purple>5 turns</>',
+      "{e:'Extinguish {v:win_con} / 4' + ', x'}",
+      '6 and 1',
+      'Seize 3 / 2,None,??',
+      '??,{comma}{br}',
+      '35',
+    ]);
+  });
+
+  test('a raising expression is never read as None', async ({ page }) => {
+    await bootEotf(page);
+    const direct = await page.evaluate(async () => {
+      const { evaluateExpression, evaluateExpressionOutcome } = await import('/src/events/event-manager.ts');
+      const g = (window as any).__gameRef;
+      const ctx = { game: g, gameVars: g.gameVars, levelVars: g.levelVars, localArgs: new Map() };
+      const raised = (source: string) => {
+        try {
+          evaluateExpression(source, ctx as any);
+          return 'returned';
+        } catch (error) {
+          return String((error as any)?.message ?? error).split(':')[0];
+        }
+      };
+      return {
+        name: raised('undefined_name + 1'),
+        index: raised('[][1]'),
+        attribute: raised("u('Nobody').nid"),
+        type: raised("1 + 'a'"),
+        none: evaluateExpression('None', ctx as any),
+        outcome: evaluateExpressionOutcome('[][1]', ctx as any).ok,
+      };
+    });
+    await runEvent(page, 'QaRaiseSkips', [
+      'set_unit_field;Player;qa_none;None',
+      'set_unit_field;Player;qa_bad;[][1]',
+      "create_record;qa_bad_record;u('Nobody').nid",
+    ]);
+    const fields = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const player = g.units.get('Player');
+      return {
+        none: player.fields.has('qa_none') ? player.fields.get('qa_none') : 'missing',
+        bad: player.fields.has('qa_bad') ? player.fields.get('qa_bad') : 'missing',
+      };
+    });
+    expect({ direct, fields }).toEqual({
+      direct: {
+        name: 'NameError', index: 'IndexError', attribute: 'AttributeError', type: 'TypeError',
+        none: null, outcome: false,
+      },
+      fields: { none: null, bad: 'missing' },
+    });
+  });
 });
