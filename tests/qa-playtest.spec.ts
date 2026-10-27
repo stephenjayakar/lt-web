@@ -557,6 +557,13 @@ test('option menu follows Python order and confirms End', async ({ page }) => {
   await chooseMenuLabel(page, 'Yes');
   await stepFrames(page, 5);
   expect(await stackNames(page)).not.toContain('option_menu');
+  // Python End: the player team's AI phase runs first (every player unit
+  // thinks), then status_endstep and turn_change hand over to the enemy.
+  expect((await stackNames(page)).at(-1)).toBe('ai');
+  for (let i = 0; i < 60; i++) {
+    if (await page.evaluate(() => (window as any).__gameRef.phase.getCurrent()) !== 'player') break;
+    await stepFrames(page, 5);
+  }
   expect(await page.evaluate(() => (window as any).__gameRef.phase.getCurrent())).not.toBe('player');
 });
 

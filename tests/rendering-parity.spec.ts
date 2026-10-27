@@ -84,7 +84,11 @@ test.describe('Rendering parity: tile layers, autotiles, weather, camera', () =>
     expect(door1Before.visible).toBe(false);
     expect(door1Before.state).toBe(null);
 
-    // Chest1 starts visible.
+    // Python TileMapObject.from_prefab: only the base layer starts visible,
+    // so Chest1 starts hidden too. Open it (no transition) to fade it out below.
+    expect(state.layers.find((l: any) => l.nid === 'Chest1').visible).toBe(false);
+    await page.evaluate(() => (window as any).__harness.setLayer('Chest1', true, 'immediate'));
+    state = await getRenderState(page);
     const chest1Before = state.layers.find((l: any) => l.nid === 'Chest1');
     expect(chest1Before.visible).toBe(true);
     expect(chest1Before.state).toBe(null);
