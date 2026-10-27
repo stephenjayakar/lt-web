@@ -45,6 +45,8 @@ export interface Scenario {
   levels?: string[];
   /** Press Fight when a level settles in preparations. */
   through_prep?: boolean;
+  /** Sweep: actions run on every turn-based level after it starts. */
+  level_actions?: Action[];
   /** Captured run state (capture_run_state.py), inlined by web-driver.mjs. */
   run_state?: RunState;
 }
@@ -443,6 +445,42 @@ class Runner {
     }
   }
 
+  /**
+   * py_driver do_attack_or_wait: `unit` (default Player) attacks with its
+   * first weapon the nearest valid target (Manhattan distance, then x, then
+   * y) if its menu offers Attack, else waits in place.
+   */
+  async do_attack_or_wait(a: Action): Promise<void> {
+    const e = this.e;
+    const nid = a.unit ?? 'Player';
+    const u = e.game.units.get(nid);
+    if (!u || !u.position || u.finished || u.team !== 'player') return;
+    await this.inMenuFor(nid);
+    const { menu } = e.activeMenu();
+    const labels: string[] = menu.options.map((o: any) => String(o.label ?? o.entry?.text ?? ''));
+    if (labels.includes('Attack')) {
+      e.choose('Attack');
+      await e.settle();
+      if (e.top() === 'weapon_choice') {
+        e.press('SELECT');
+        await e.settle();
+      }
+      e.expect('targeting', 'combat_targeting');
+      const st: any = e.game.state.getCurrentState();
+      const [ux, uy] = u.position;
+      const positions: [number, number][] = (st.targets ?? []).map((t: any) => t?.position ?? t)
+        .filter((p: any) => Array.isArray(p));
+      positions.sort((p, q) =>
+        (Math.abs(p[0] - ux) + Math.abs(p[1] - uy)) - (Math.abs(q[0] - ux) + Math.abs(q[1] - uy)) ||
+        p[0] - q[0] || p[1] - q[1]);
+      if (!positions.length) throw new OracleError('Attack offered but no targets');
+      await this.targetAndFire(positions[0]);
+    } else {
+      e.choose('Wait');
+      await e.settle();
+    }
+  }
+
   /** Pick a named option in whatever menu the top state shows. */
   async do_choose(a: Action): Promise<void> {
     this.e.choose(a.option);
@@ -812,6 +850,27 @@ export async function runScenario(scn: Scenario): Promise<Json> {
           step.error ??= `snapshot failed: ${err?.message ?? err}`;
         }
         out.steps.push(step);
+        // The same actions on every level that settled into a turn-based
+        // phase (free roam levels have no turns to end), as py_driver does.
+        if (!step.error && e.top() !== 'free_roam') {
+          const runner = new Runner(e);
+          for (const a of scn.level_actions ?? []) {
+            const act: any = { action: { ...a, level: String(level) } };
+            try {
+              await runner.run(a);
+            } catch (err: any) {
+              console.error(err);
+              act.error = `${err?.name ?? 'Error'}: ${err?.message ?? err}`;
+            }
+            try {
+              act.snapshot = snapshot(e);
+            } catch (err: any) {
+              act.error ??= `snapshot failed: ${err?.message ?? err}`;
+            }
+            out.steps.push(act);
+            if (act.error) break;
+          }
+        }
       }
       const failed = out.steps.filter((st: any) => st.error).map((st: any) => st.action.level);
       if (failed.length) out.level_errors = failed;
