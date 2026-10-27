@@ -24,6 +24,7 @@ import { setSetting } from '../../../src/engine/states/settings-state';
 import { GameEvent } from '../../../src/events/event-manager';
 import { getCombatRandomState, getGrowthRandomState } from '../../../src/engine/static-random';
 import { loadSuspend, suspendGame } from '../../../src/engine/save';
+import { AIController } from '../../../src/ai/ai-controller';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 type Action = { do: string; [k: string]: any };
@@ -778,20 +779,22 @@ const aiTrace: any[] = [];
 
 function installAiTrace(g: any): void {
   aiTrace.length = 0;
-  const ai = g.aiController;
+  // Patch the class, as Python does: level loads and save loads build a new
+  // AIController, and the trace must follow it.
+  const ai = AIController.prototype as any;
   if (ai.__oracleTraced) return;
   ai.__oracleTraced = true;
   const here = (u: any) => (u?.position ? pos(u.position) : null);
   const same = (a: Json, b: Json) => JSON.stringify(a) === JSON.stringify(b);
-  const getAction = ai.getAction.bind(ai);
+  const getAction = ai.getAction;
   const boardHp = () => [...g.units.values()]
     .filter((u: any) => u.position && !u.dead)
     .map((u: any) => [u.nid, u.currentHp])
     .sort((a: any, b: any) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-  ai.getAction = (unit: any) => {
+  ai.getAction = function (this: AIController, unit: any) {
     const start = here(unit);
     const hp = boardHp();
-    const action = getAction(unit);
+    const action = getAction.call(this, unit);
     let move: Json = action.targetPosition ? pos(action.targetPosition) : null;
     if (same(move, start)) move = null;
     // Python: a SecondaryAI goal on the unit's own tile is not success (an
@@ -811,10 +814,10 @@ function installAiTrace(g: any): void {
     });
     return action;
   };
-  const canto = ai.getCantoRetreatAction.bind(ai);
-  ai.getCantoRetreatAction = (unit: any) => {
+  const canto = ai.getCantoRetreatAction;
+  ai.getCantoRetreatAction = function (this: AIController, unit: any) {
     const start = here(unit);
-    const action = canto(unit);
+    const action = canto.call(this, unit);
     let goal: Json = action?.targetPosition ? pos(action.targetPosition) : null;
     if (same(goal, start)) goal = null;
     aiTrace.push({ unit: unit.nid, canto: goal });
