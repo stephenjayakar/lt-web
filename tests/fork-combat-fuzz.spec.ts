@@ -560,7 +560,7 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
         game.removeUnit(missed.nid);
         const killed = kit.make('_FzKilled', 'enemy', { stats: { HP: 10 } });
         kit.place(killed, 1, 1);
-        kit.fight(vicious, killed, ['hit1', 'end']);
+        const killedFight = kit.fight(vicious, killed, ['hit1', 'end']);
         game.removeUnit(vicious.nid);
 
         // Fireheart (recoil 2) on a unit killed by the counter: Recoil has no
@@ -569,9 +569,12 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
         const wall = kit.make('_FzWall', 'player', { klass: 'Myrmidon', items: ['Iron_Sword'], stats: { HP: 40, STR: 40, SKL: 30 } });
         kit.place(hothead, 3, 1);
         kit.place(wall, 4, 1);
-        kit.fight(hothead, wall, ['miss1', 'hit2', 'end']);
+        const recoilFight = kit.fight(hothead, wall, ['miss1', 'hit2', 'end']);
         return {
-          killedDead: !!killed.dead, recoilHp: hothead.currentHp, recoilDead: !!hothead.dead,
+          // Python death order: the combat's should_die marks them dying (the
+          // Die action sets `dead` after the fade), so read the combat result.
+          killedDead: killedFight.results.defenderDead, recoilHp: hothead.currentHp,
+          recoilDead: recoilFight.results.attackerDead,
           slowStrikes: slow.strikes.length,
           cleaveStrikes: cleave.strikes.length, oneProcRoll: after === oneRoll,
           missedHp, killedHp: killed.currentHp,
