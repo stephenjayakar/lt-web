@@ -54,6 +54,22 @@ export class StateMachine {
     this.tempState.push({ kind: 'clear' });
   }
 
+  /**
+   * Python StateMachine.refresh: keep only the top state (immediate). Python
+   * simply discards the lower state objects; the web's states are
+   * singletons, so each dropped state is finished like a cleared one.
+   */
+  refresh(): void {
+    const dropped = this.stack.slice(0, -1).reverse();
+    this.stack = this.stack.slice(-1);
+    for (const state of dropped) {
+      if (this.stack.includes(state)) continue;
+      state.finish();
+      state.started = false;
+      state.processed = false;
+    }
+  }
+
   /** Return the state currently on top of the stack, or undefined. */
   getCurrentState(): State | undefined {
     return this.stack.length > 0 ? this.stack[this.stack.length - 1] : undefined;

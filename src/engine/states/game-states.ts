@@ -1492,6 +1492,9 @@ export class TitleState extends State {
 
   override start(): StateResult {
     const game = getGame();
+    // Python TitleStartState.start: game.state.refresh() keeps only the
+    // title screen (a game over or main_menu pushed it over the level).
+    game.state.refresh();
     this.bgImage = null;
     this.logoImage = null;
     this.pressStartImage = null;
@@ -10927,6 +10930,11 @@ export class EventState extends State {
   private choiceValues: string[] = [];
   /** Parent choices paused while their EventNid selection event runs. */
   /** Presentation of events paused by a nested trigger_script/choice event. */
+  /**
+   * Python EventState.game_over: lose_game / main_menu called for the
+   * transition away; this state stops updating under it (reset by begin).
+   */
+  private gameOver = false;
   /** Events this state has started running (resumable when paused). */
   private begunEvents = new WeakSet<GameEvent>();
   private parkedEventPresentation: WeakMap<GameEvent, {
@@ -11072,6 +11080,7 @@ export class EventState extends State {
 
   override begin(): StateResult {
     const game = getGame();
+    this.gameOver = false;
     const nextEvent = game.eventManager?.getCurrentEvent() ?? null;
     if (!nextEvent) {
       // Nothing to process — pop back immediately.
@@ -11420,6 +11429,7 @@ export class EventState extends State {
   // -----------------------------------------------------------------------
 
   override update(): StateResult {
+    if (this.gameOver) return;
     const game = getGame();
     this.updateNonBlockingTransition();
     this.updateEventCreditCards();
@@ -12123,21 +12133,27 @@ export class EventState extends State {
       return;
     }
 
+    // Python end_event: lose_game fades (transition_to) to the game over
+    // screen, pushed over the whole stack; this EventState stops updating
+    // under it. The title screen it leads to drops the rest (refresh).
+    // Python leaves _lose_game set.
     if (game.levelVars.get('_lose_game')) {
-      // Python leaves _lose_game set; the game over leads to the title.
       console.warn('GAME OVER — loss condition met via lose_game flag');
-      game.state.clear();
-      game.state.change('game_over');
+      this.gameOver = true;
+      game.memory.set('next_state', 'game_over');
+      game.state.change('transition_to');
       return;
     }
 
     // Python end_event: `main_menu` returns to the title screen once the
-    // event that ran it ends (EOtF's game-clear event ends this way).
+    // event that ran it ends (EOtF's game-clear event ends this way), the
+    // same way: transition_to over the stack, which title_start refreshes.
     if (game.levelVars.get('_main_menu')) {
       game.levelVars.set('_main_menu', false);
       this.currentEvent = null;
-      game.state.clear();
-      game.state.change('title');
+      this.gameOver = true;
+      game.memory.set('next_state', 'title');
+      game.state.change('transition_to');
       return;
     }
 
