@@ -448,7 +448,12 @@ export class ActionLog {
     if (idx === -1) return;
     const toProcess = this.actions.slice(idx).reverse();
     for (const act of toProcess) {
-      if (act.persistThroughMenuCancel) {
+      // EOtF's engine predates persist_through_menu_cancel: its hard_remove
+      // keeps only equips and bring-to-top, so items stored through Supply
+      // from the unit menu come back when the move is cancelled.
+      const persists = act.persistThroughMenuCancel &&
+        !(isForkEngine() && act instanceof StoreItemAction);
+      if (persists) {
         continue;
       }
       act.reverse();
@@ -2179,7 +2184,12 @@ export class RemoveRegionAction extends Action {
   }
 }
 
-/** Python action.AddTag: add a unit tag once, reversibly. */
+/**
+ * Python action.AddTag: add a unit tag, reversibly. Upstream keeps personal
+ * tags as a set, so adding a held tag does nothing. EOtF's engine keeps them
+ * as a list and appends every time, so a tag added twice survives one
+ * remove_tag (EOtF re-adds Blacklist and Deployed from several events).
+ */
 export class AddTagAction extends Action {
   private unit: UnitObject;
   private tag: string;
@@ -2192,7 +2202,7 @@ export class AddTagAction extends Action {
   }
 
   execute(): void {
-    this.didAdd = !this.unit.tags.includes(this.tag);
+    this.didAdd = isForkEngine() || !this.unit.tags.includes(this.tag);
     if (this.didAdd) this.unit.tags.push(this.tag);
   }
 
@@ -2203,7 +2213,7 @@ export class AddTagAction extends Action {
   }
 }
 
-/** Python action.RemoveTag: remove a unit tag, reversibly. */
+/** Python action.RemoveTag: remove one copy of a unit tag, reversibly. */
 export class RemoveTagAction extends Action {
   private unit: UnitObject;
   private tag: string;
@@ -3218,6 +3228,11 @@ export class DropAction extends Action {
   private oldHasDropped: boolean;
   private removedPenalty: IndexedSkill[] = [];
   private initialized = false;
+  /** Python Drop: only a droppee of the phase's team is waited. */
+  private waitDroppee: boolean;
+  private oldDroppeeState: {
+    hasMoved: boolean; hasTraded: boolean; hasAttacked: boolean; finished: boolean;
+  } | null = null;
 
   constructor(rescuer: UnitObject, target: UnitObject, board: GameBoard, dropPos: [number, number]) {
     super();
@@ -3227,6 +3242,7 @@ export class DropAction extends Action {
     this.dropPos = dropPos;
     this.oldTraveler = rescuer.traveler;
     this.oldHasDropped = rescuer.hasDropped;
+    this.waitDroppee = target.team === _getGame?.()?.phase?.getCurrent?.();
   }
 
   execute(): void {
@@ -3246,9 +3262,24 @@ export class DropAction extends Action {
     this.rescuer.traveler = null;
     this.rescuer.hasDropped = true;
     this.board.setUnit(this.dropPos[0], this.dropPos[1], this.target);
+    if (this.waitDroppee) {
+      // Python Drop waits a droppee of the current phase's team, so a unit
+      // carried and set down this turn cannot act again.
+      this.oldDroppeeState = {
+        hasMoved: this.target.hasMoved,
+        hasTraded: this.target.hasTraded,
+        hasAttacked: this.target.hasAttacked,
+        finished: this.target.finished,
+      };
+      this.target.hasMoved = true;
+      this.target.hasTraded = true;
+      this.target.hasAttacked = true;
+      this.target.finished = true;
+    }
   }
 
   reverse(): void {
+    if (this.oldDroppeeState) Object.assign(this.target, this.oldDroppeeState);
     this.board.removeUnit(this.target);
     restoreIndexedSkills(this.rescuer, this.removedPenalty);
     this.rescuer.rescuing = this.target;
@@ -3336,6 +3367,8 @@ export class DeathAction extends Action {
   private initiativeIndex = -1;
   private tetherActions: RemoveSkillAction[] = [];
   private initializedTether = false;
+  /** Python Die.do: the carried traveler is dropped (and maybe Reset). */
+  private dropActions: Action[] | null = null;
 
   constructor(unit: UnitObject, board: GameBoard, initiative: InitiativeTracker | null = null) {
     super();
@@ -3355,6 +3388,24 @@ export class DeathAction extends Action {
     }
     this.unit.dead = true;
     this.board.removeUnit(this.unit);
+    if (this.dropActions === null) {
+      // Python Die.do: a dying rescuer sets its traveler down on its own tile
+      // (Separate under pair-up), and a traveler outside its own phase is
+      // then Reset, which runs on_refresh in EOtF's engine.
+      this.dropActions = [];
+      const game = _getGame?.();
+      const traveler: UnitObject | undefined = this.unit.traveler
+        ? game?.units?.get?.(this.unit.traveler)
+        : undefined;
+      if (traveler && this.position) {
+        const pos: [number, number] = [this.position[0], this.position[1]];
+        this.dropActions.push(game?.db?.getConstant?.('pairup', false)
+          ? new SeparatePairUpAction(this.unit, traveler, this.board, game.db, pos, true)
+          : new DropAction(this.unit, traveler, this.board, pos));
+        if (game?.phase?.getCurrent?.() !== traveler.team) this.dropActions.push(new ResetAction(traveler));
+      }
+    }
+    for (const action of this.dropActions) action.execute();
     if (!this.initializedTether) {
       this.initializedTether = true;
       const game = _getGame?.();
@@ -3371,6 +3422,7 @@ export class DeathAction extends Action {
 
   reverse(): void {
     for (const action of [...this.tetherActions].reverse()) action.reverse();
+    for (const action of [...(this.dropActions ?? [])].reverse()) action.reverse();
     this.unit.dead = this.wasDead;
     if (this.position) this.board.setUnit(this.position[0], this.position[1], this.unit);
     if (this.initiative && this.initiativeLine && this.initiativeValues) {

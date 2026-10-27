@@ -37,11 +37,13 @@ import type {
   GenericUnitData,
 } from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
+import { getSkillAbilityOptions, type SkillAbilityOption } from '../../combat/skill-abilities';
 import { SkillObject } from '../../objects/skill';
 import {
   evaluateCondition,
   evaluateConditionOr,
   evaluateExpression,
+  evaluatePythonInContext,
   evaluateTextTag,
   GameEvent,
   pythonIterationValues,
@@ -50,6 +52,7 @@ import {
   type ConditionContext,
   type EventCommand,
 } from '../../events/event-manager';
+import { toHostValue } from '../../events/py-expr/values';
 import {
   activateCombatArt,
   deactivateCombatArts,
@@ -112,6 +115,7 @@ import {
   HasTradedAction,
   WaitAction,
   ResetAllAction,
+  ResetAction,
   ProcessStatusEffectsAction,
   GainMoneyAction,
   GiveBexpAction,
@@ -459,6 +463,27 @@ function isPrimitiveOrPrimitiveCollection(value: unknown): boolean {
     return Object.values(value as object).every(isPrimitiveOrPrimitiveCollection);
   }
   return false;
+}
+
+/**
+ * Choice and table rows as EOtF's engine builds them. With `expression` the
+ * value is evaluated: a list gives its entries, any other value one row, and
+ * an empty list or a failed evaluation one blank row. Without it, the
+ * (already brace-evaluated) text is split on commas, keeping brackets and
+ * empty entries. There is always at least one row.
+ */
+function forkChoiceRows(source: string, expression: boolean, context: () => any): string[] {
+  if (expression) {
+    const outcome = evaluatePythonInContext(source, context());
+    if (!outcome.ok) {
+      console.warn(`choice/table: failed to evaluate ${source}`, outcome.error);
+      return [''];
+    }
+    const value = toHostValue(outcome.value);
+    if (Array.isArray(value)) return value.length ? value.map((entry) => pythonStr(entry)) : [''];
+    return [pythonStr(outcome.value)];
+  }
+  return source.split(',').map((entry) => entry.trim().replaceAll('{comma}', ','));
 }
 
 /**
@@ -939,55 +964,7 @@ function applyCombatParticipantItemStartHooks(
   }
 }
 
-export interface SkillAbilityOption {
-  skill: SkillObject;
-  item: ItemObject;
-  component: 'ability' | 'ability_attack_charge' | 'ability_parent';
-}
-
-/** Python skill_system.get_extra_abilities, with stable registered item identity. */
-export function getSkillAbilityOptions(game: any, unit: UnitObject): SkillAbilityOption[] {
-  const result: SkillAbilityOption[] = [];
-  const components = [
-    'ability',
-    'ability_attack_charge',
-    'ability_parent',
-  ] as const;
-  const registerTree = (item: ItemObject, key: string): void => {
-    game.items.set(key, item);
-    item.subitems.forEach((child, index) =>
-      registerTree(child, `${key}_sub_${index}_${child.nid}`));
-  };
-  for (const skill of unit.skills) {
-    const total = Number(skill.data.get('total_charge'));
-    const charge = Number(skill.data.get('charge'));
-    if (skill.hasComponent('build_charge') && Number.isFinite(total) && charge < total) {
-      continue;
-    }
-    if (hasDrainingCharge(skill) && Number.isFinite(charge) && charge <= 0) continue;
-    if (!skillConditionActive(skill, unit, { game })) continue;
-    for (const component of components) {
-      const itemNid = skill.getComponent<string>(component);
-      if (!itemNid) continue;
-      const prefab = game.db.items.get(itemNid);
-      if (!prefab) continue;
-      const dataKey = `abilityItemKey:${component}`;
-      let registryKey = skill.data.get(dataKey);
-      let item = typeof registryKey === 'string'
-        ? game.items.get(registryKey) as ItemObject | undefined
-        : undefined;
-      if (!item || item.nid !== itemNid) {
-        registryKey = `ability_${unit.nid}_${skill.uid}_${component}_${itemNid}`;
-        item = createItemTree(prefab, (nid) => game.db.items.get(nid));
-        registerTree(item, registryKey);
-        skill.data.set(dataKey, registryKey);
-      }
-      item.owner = unit;
-      result.push({ skill, item, component });
-    }
-  }
-  return result;
-}
+export { getSkillAbilityOptions, type SkillAbilityOption };
 
 /** Get all adjacent allied units to a unit at a specific position. */
 function getAdjacentAllies(unit: UnitObject, x: number, y: number): UnitObject[] {
@@ -9377,14 +9354,11 @@ export class AIState extends MapState {
   ): void {
     const game = getGame();
 
-    // Equip the AI's chosen weapon via a reversible action so the turnwheel
-    // can undo it and status_on_equip hooks fire. Matches Python's
-    // action.EquipItem in ai_controller.py.
-    if (attacker.canEquip(weapon)) {
+    // Python AIController.attack: EquipItem the chosen item when it is one of
+    // the unit's own items (not a skill ability) and can be equipped. The AI
+    // never brings it to the top of the inventory.
+    if (attacker.getAllItems().includes(weapon) && attacker.canEquip(weapon)) {
       game.actionLog.doAction(new EquipItemAction(attacker, weapon));
-    }
-    if (attacker.items.includes(weapon)) {
-      game.actionLog.doAction(new BringToTopItemAction(attacker, weapon));
     }
     if (!weapon.isWeapon()) game.memory.set('combat_item', weapon);
     // Python interaction.start_combat aims a multi_target item at
@@ -10884,6 +10858,7 @@ export class EventState extends State {
         // Python Event.take_input: START or BACK -> skip(super_skip=START).
         this.skipMode = true;
         if (effective === 'START') this.superSkip = true;
+        this.clearBoxesOnForkSkip();
         this.dialog = null;
         this.endingCard = null;
         if (this.speakingPortrait) {
@@ -11072,6 +11047,7 @@ export class EventState extends State {
       game.audioManager?.playSfx?.('Select 4');
       this.skipMode = true;
       if (effective === 'START') this.superSkip = true;
+      this.clearBoxesOnForkSkip();
       // If we're in a wait, transition, or other blockable state, resolve it
       if (this.waiting) {
         this.waiting = false;
@@ -12367,8 +12343,24 @@ export class EventState extends State {
     }
   }
 
+  /**
+   * Skipping an event in EOtF's engine drops every extra box, the nidded
+   * tables and textboxes included (upstream keeps those).
+   */
+  private clearBoxesOnForkSkip(): void {
+    if (!isForkEngine()) return;
+    this.eventTables.clear();
+    this.eventTextboxes.clear();
+  }
+
   /** Resolve table rows on every draw so expression-backed displays stay live. */
   private getEventTableRows(table: EventTable): string[] {
+    if (isForkEngine()) {
+      const source = table.expression
+        ? this.substituteEventArgs([table.rawData || table.data], getGame())[0] ?? table.data
+        : table.data;
+      return forkChoiceRows(source, table.expression, () => this.buildConditionContext());
+    }
     let raw: any = table.data;
     if (table.expression) {
       try {
@@ -12749,15 +12741,15 @@ export class EventState extends State {
         done();
       };
     }
-    const previousHasMoved = unit.hasMoved;
-    const previousMovementLeft = unit.movementLeft;
     game.movementSystem.beginMove(
       unit,
       path,
       1000 / Math.max(1, speedMs),
       () => {
-        unit.hasMoved = previousHasMoved;
-        unit.movementLeft = previousMovementLeft;
+        // Python UnitPathMovementComponent.finish: an event move ends with
+        // action.Reset, so the walker is fully refreshed (a unit that had
+        // already acted can act again; EOtF's engine also runs on_refresh).
+        game.actionLog.doAction(new ResetAction(unit));
         onComplete();
       },
       // Python MovementSystem.update: a following event move puts the
@@ -13025,9 +13017,13 @@ export class EventState extends State {
     if (named) styles.push(named);
     styles.push(manual);
     const speakerStyle = lookup(speakerOrStyle);
+    // EOtF's engine names the speaker after merging the styles, so an
+    // explicit speaker beats a StyleNid's; upstream sets it first.
+    const speakerLast = isForkEngine();
     if (speakerStyle) styles.push(speakerStyle);
-    else current.speaker = speakerOrStyle;
+    else if (!speakerLast) current.speaker = speakerOrStyle;
     for (const style of styles) current = mergeSpeakStyle(current, style);
+    if (speakerLast && speakerOrStyle && !speakerStyle) current.speaker = speakerOrStyle;
     return current;
   }
 
@@ -13670,8 +13666,10 @@ export class EventState extends State {
           fontType: speakKw.get('fonttype') || null,
           background: speakKw.get('dialogbox') || null,
           numLines: numOrNull(speakKw.get('numlines')),
-          // Python speak(): cursor = True if draw_cursor is None
-          drawCursor: drawCursorArg ?? true,
+          // Python speak(): cursor = True if draw_cursor is None. EOtF's
+          // engine leaves it unset, so a style's DrawCursor (cinematic's
+          // False) survives a StyleNid.
+          drawCursor: drawCursorArg ?? (isForkEngine() ? null : true),
           messageTail: speakKw.get('messagetail') || null,
           transparency: numOrNull(speakKw.get('transparency')),
           nameTagBg: speakKw.get('nametagbg') || null,
@@ -13930,6 +13928,16 @@ export class EventState extends State {
         const fadeDirection = this.fadeDirection(auArgs.value('AnimationType'));
         const existing = game.units.get(unitNid);
         if (existing?.position || existing?.isDead()) {
+          this.advancePointer();
+          return false;
+        }
+        // Python add_unit: a unit carried by a rescuer standing on the map is
+        // not added (upstream separates an off-map rescuer first; EOtF's
+        // engine only checks rescuers on the map).
+        const carrier = existing?.rescuedBy ?? null;
+        if (carrier?.position && !carrier.isDead() &&
+            !(carrier as any).isDying && !unitHasTag(carrier, 'Tile', game)) {
+          console.warn(`add_unit: ${unitNid} is already traveling with ${carrier.nid}`);
           this.advancePointer();
           return false;
         }
@@ -14475,9 +14483,11 @@ export class EventState extends State {
           .filter(([x, y]) => !game.board?.getUnit(x, y))
           .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
         // Python get_units_in_party: persistent members in prep sort order.
+        // EOtF's engine keeps rescued travelers as candidates.
+        const keepTravelers = isForkEngine();
         let candidates = (game.getUnitsInParty() as UnitObject[]).filter((u: any) =>
           !u.position && !u.tags?.includes('Blacklist') &&
-          ![...game.units.values()].some((o: any) => o.traveler === u.nid),
+          (keepTravelers || ![...game.units.values()].some((o: any) => o.traveler === u.nid)),
         );
         const fatigueOn = game.db.getConstant('fatigue', false) && game.gameVars.get('_fatigue') === 1;
         if (fatigueOn) candidates = candidates.filter((u: any) => (u.currentFatigue ?? 0) < (u.getStatValue?.('HP') ?? 99));
@@ -14487,7 +14497,8 @@ export class EventState extends State {
           const spot = openSpots[idx];
           if (spot) {
             game.actionLog.doAction(new ArriveOnMapAction(game, unit, spot));
-            game.actionLog.doAction(new ResetAllAction([unit]));
+            // Python action.Reset: also runs on_refresh in EOtF's engine.
+            game.actionLog.doAction(new ResetAction(unit));
           }
         });
         this.advancePointer();
@@ -15038,7 +15049,16 @@ export class EventState extends State {
       case 'unload_unit': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit) game.actionLog.doAction(new UnregisterUnitAction(game, unit));
+        if (unit) {
+          // EOtF's engine takes an on-map unit off through LeaveMap before
+          // dropping it from the registry. (There the drop itself is not
+          // undoable; here it stays an Action so the turnwheel keeps a
+          // consistent unit list.)
+          if (unit.position) game.actionLog.doAction(new LeaveMapAction(game, unit));
+          game.actionLog.doAction(new UnregisterUnitAction(game, unit));
+        } else {
+          console.warn(`unload_unit: unit ${unitNid} doesn't exist`);
+        }
         this.advancePointer();
         return false;
       }
@@ -15713,7 +15733,20 @@ export class EventState extends State {
         const unitNid = args[0] ?? '';
         const amount = Math.trunc(Number(args[1] ?? 0));
         const unit = this.findUnit(unitNid);
-        if (unit && Number.isFinite(amount)) {
+        if (unit && Number.isFinite(amount) && isForkEngine()) {
+          // As EOtF's engine does: add HP scaled by the target's received-heal
+          // hooks (against itself when no healer is named), plus the healer's
+          // empower_heal and multiplier when Unit2 is given; a named healer
+          // that can't be found heals nothing.
+          const healerNid = (args[2] ?? '').trim();
+          const healer = healerNid ? this.findUnit(healerNid) ?? null : null;
+          if (healerNid && !healer) {
+            console.warn(`heal: couldn't find healer ${healerNid}`);
+          } else {
+            const healed = modifiedHealAmount(amount, unit, healer, game);
+            game.actionLog.doAction(new SetCurrentHpAction(unit, unit.currentHp + healed));
+          }
+        } else if (unit && Number.isFinite(amount)) {
           game.actionLog.doAction(new HealAction(unit, amount));
         }
         this.advancePointer();
@@ -16162,7 +16195,9 @@ export class EventState extends State {
       case 'reset': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit) game.actionLog.doAction(new RefreshUnitAction(unit));
+        // Python event reset: action.Reset (movement back to full; EOtF's
+        // engine also runs on_refresh outside phase change and prep).
+        if (unit) game.actionLog.doAction(new ResetAction(unit));
         this.advancePointer();
         return false;
       }
@@ -16310,8 +16345,11 @@ export class EventState extends State {
       case 'change_objective_simple':
       case 'change_objective': {
         // EvaluableString (can_preprocess = False): stored raw and evaluated
-        // at draw time, unlike ordinary arguments.
-        const newObj = rawArgs[0] ?? '';
+        // at draw time, unlike ordinary arguments. EOtF's engine has no such
+        // exemption: braces are evaluated when the command runs, and the draw
+        // re-evaluates only what survived that pass.
+        const objectiveArgs = isForkEngine() ? args : rawArgs;
+        const newObj = objectiveArgs[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.simple = newObj;
         }
@@ -16320,7 +16358,7 @@ export class EventState extends State {
       }
 
       case 'change_objective_win': {
-        const newWin = rawArgs[0] ?? '';
+        const newWin = (isForkEngine() ? args : rawArgs)[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.win = newWin;
         }
@@ -16329,7 +16367,7 @@ export class EventState extends State {
       }
 
       case 'change_objective_loss': {
-        const newLoss = rawArgs[0] ?? '';
+        const newLoss = (isForkEngine() ? args : rawArgs)[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.loss = newLoss;
         }
@@ -16830,7 +16868,11 @@ export class EventState extends State {
         // the flag. Try evaluating and keep the result when it yields a list;
         // otherwise fall back to treating it as a literal comma list.
         const expressionFlag = flags.has('expression');
-        const computeOptions = (source: string): string[] => {
+        const forkChoice = isForkEngine();
+        const computeOptions = (source: string): string[] => forkChoice
+          ? forkChoiceRows(source, expressionFlag, () => this.buildConditionContext())
+          : computeUpstreamOptions(source);
+        const computeUpstreamOptions = (source: string): string[] => {
           let options: string[] | null = null;
           if (expressionFlag || /[([]/.test(source)) {
             try {
@@ -16878,8 +16920,11 @@ export class EventState extends State {
             alignment,
             orientation,
             // Python bg defaults to menu_bg_base; the EOtF fork always uses
-            // the (window-skinned) menu_bg_base and ignores an authored BG.
-            bg: flags.has('no_bg') ? null : ((!isForkEngine() && keywords.get('bg')) || 'menu_bg_base'),
+            // the (window-skinned) menu_bg_base, ignoring an authored BG and
+            // the no_bg flag alike.
+            bg: forkChoice
+              ? 'menu_bg_base'
+              : flags.has('no_bg') ? null : (keywords.get('bg') || 'menu_bg_base'),
             textAlign: textAlignRaw === 'center' || textAlignRaw === 'right' ? textAlignRaw : 'left',
             noCursor: flags.has('no_cursor'),
             screenWidth: viewport.width,
@@ -17905,6 +17950,16 @@ export class EventState extends State {
             ));
           }
           iuAbilityItem = abilityItem;
+        } else if (isForkEngine()) {
+          // As EOtF's engine does: without an Ability, fight with the
+          // equipped weapon, else the first item carried (any item, usable
+          // or not); a unit with no items starts no combat.
+          iuAbilityItem = getEquippedWeapon(iuAttacker, game.db, game) ?? iuAttacker.items[0] ?? null;
+          if (!iuAbilityItem) {
+            console.warn(`interact_unit: ${iuAttacker.nid} has no item`);
+            this.advancePointer();
+            return false;
+          }
         }
 
         // Resolve who is struck at the target position, including area
@@ -18791,7 +18846,8 @@ export class EventState extends State {
           entryType: (parsed.kw.get('entrytype') || 'str').toLowerCase(),
           textAlignment: parsed.kw.get('textalign') || 'left',
           expression: parsed.flags.has('expression'),
-          noBackground: parsed.flags.has('no_bg'),
+          // EOtF's engine draws the skinned background even with no_bg.
+          noBackground: !isForkEngine() && parsed.flags.has('no_bg'),
         });
         this.advancePointer();
         return false;
@@ -18860,6 +18916,9 @@ export class EventState extends State {
         const unit = game.units.get(args[0]);
         if (unit) {
           game.actionLog.doAction(new ResurrectAction(unit));
+          // Python resurrect follows with action.Reset (on_refresh in EOtF's
+          // engine, where Null Refresh waits the unit).
+          game.actionLog.doAction(new ResetAction(unit));
         } else {
           console.warn(`Event resurrect: unit not found (${args[0] ?? ''})`);
         }

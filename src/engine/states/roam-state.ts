@@ -35,6 +35,8 @@ import type { FogRenderConfig } from '../../rendering/map-view';
 import { shouldDrawMapHp } from '../../rendering/map-view';
 import { evaluateCondition, type ConditionContext } from '../../events/event-manager';
 import { drawUnitMarkers, fadeInPhaseMusic } from './game-states';
+import { RemoveRegionAction } from '../action';
+import { checkRegionInterrupt } from '../../movement/region-interrupt';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference (same pattern as game-states.ts)
@@ -450,10 +452,7 @@ export class FreeRoamState extends MapState {
       if (triggered) {
         if (!fork) sfx('Select 2');
         if (region.only_once && game.currentLevel?.regions) {
-          const idx = game.currentLevel.regions.indexOf(region);
-          if (idx >= 0) {
-            game.currentLevel.regions.splice(idx, 1);
-          }
+          game.actionLog.doAction(new RemoveRegionAction(region.nid, game.currentLevel.regions));
         }
         this.rationalizeAllUnits();
         return;
@@ -563,47 +562,43 @@ export class FreeRoamState extends MapState {
     if (!fork) this.rationalizeAllUnits();
   }
 
+  /**
+   * Python FreeRoamState.check_region_interrupt: every interrupt_move region
+   * under the roamer whose condition holds (movement_funcs.
+   * check_region_interrupt) fires roaming_interrupt; a region that fired is
+   * removed (action.RemoveRegion) when only_once, and units rationalize.
+   */
   private checkRegionInterrupt(): void {
     const game = getGame();
     if (!game || !this.roamUnit?.position || !game.currentLevel?.regions) return;
-
-    for (const region of game.currentLevel.regions) {
-      if (!region.interrupt_move) continue;
-
-      const [rx, ry] = region.position;
-      const [rw, rh] = region.size;
-      const [ux, uy] = this.roamUnit.position;
-
-      if (ux >= rx && ux < rx + rw && uy >= ry && uy < ry + rh) {
-        if (game.eventManager) {
-          const triggered = game.eventManager.trigger(
-            {
-              type: 'roaming_interrupt',
-              levelNid: game.currentLevel?.nid,
-              regionNid: region.nid,
-              region,
-              unit1: this.roamUnit,
-              unitNid: this.roamUnit.nid,
-              position: this.roamUnit.position,
-            },
-            {
-              game,
-              unit1: this.roamUnit,
-              position: this.roamUnit.position,
-              region,
-              gameVars: game.gameVars,
-              levelVars: game.levelVars,
-            },
-          );
-          if (triggered) {
-            if (region.only_once) {
-              const idx = game.currentLevel.regions.indexOf(region);
-              if (idx >= 0) game.currentLevel.regions.splice(idx, 1);
-            }
-            this.rationalizeAllUnits();
-            return;
-          }
+    const roamUnit = this.roamUnit;
+    for (const region of checkRegionInterrupt(roamUnit, game)) {
+      if (!game.eventManager || !roamUnit.position) continue;
+      const position: [number, number] = [roamUnit.position[0], roamUnit.position[1]];
+      const triggered = game.eventManager.trigger(
+        {
+          type: 'roaming_interrupt',
+          levelNid: game.currentLevel?.nid,
+          regionNid: region.nid,
+          region,
+          unit1: roamUnit,
+          unitNid: roamUnit.nid,
+          position,
+        },
+        {
+          game,
+          unit1: roamUnit,
+          position,
+          region,
+          gameVars: game.gameVars,
+          levelVars: game.levelVars,
+        },
+      );
+      if (triggered) {
+        if (region.only_once) {
+          game.actionLog.doAction(new RemoveRegionAction(region.nid, game.currentLevel.regions));
         }
+        this.rationalizeAllUnits();
       }
     }
   }

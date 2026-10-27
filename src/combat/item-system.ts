@@ -45,6 +45,8 @@ import {
   isCantoSkill,
   movementType,
   modifiedHealAmount,
+  modifiedMaximumRange,
+  modifiedMinimumRange,
   multiattacksBlocked,
   noAttackAfterMove as skillNoAttackAfterMove,
   skillConditionActive,
@@ -1548,16 +1550,23 @@ export function advanceDestinations(
     : null;
 }
 
-/** Apply every component target restriction (ALL policy). */
+/**
+ * Apply every component target restriction (ALL policy). `defPos` is null
+ * when EOtF's engine passes an empty main target (blasts on an empty tile,
+ * spell blasts, line and all-unit AOEs): a component reading the unit there
+ * then sees none, as Python's board.get_unit(None) does.
+ */
 export function targetRestrict(
   unit: UnitObject,
   item: ItemObject,
-  defPos: TargetPosition,
+  defPos: TargetPosition | null,
   splash: TargetPosition[],
   context: TargetRestrictionContext,
 ): boolean {
+  const unitAt = (position: TargetPosition | null): UnitObject | null =>
+    position ? context.board.getUnit(position[0], position[1]) : null;
   const affectedUnits = [defPos, ...splash]
-    .map((position) => context.board.getUnit(position[0], position[1]))
+    .map((position) => unitAt(position))
     .filter((target): target is UnitObject => !!target);
 
   // Python `Damage.target_restrict` gates every damage-dealing item on there
@@ -1591,24 +1600,24 @@ export function targetRestrict(
   }
 
   if (item.hasComponent('repair')) {
-    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    const defender = unitAt(defPos);
     if (!defender || !defender.items.some(isRepairableItem)) return false;
   }
 
   if (item.hasComponent('promote')) {
-    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    const defender = unitAt(defPos);
     if (!defender) return false;
     const klass = context.db.classes.get(defender.klass);
     if (!klass || !klass.turns_into || klass.turns_into.length === 0) return false;
   }
 
   if (item.hasComponent('force_promote')) {
-    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    const defender = unitAt(defPos);
     if (!defender) return false;
   }
 
   if (item.hasComponent('class_change')) {
-    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    const defender = unitAt(defPos);
     const prefab = defender ? context.db.units.get(defender.nid) as any : null;
     if (!defender || defender.generic ||
         !Array.isArray(prefab?.alternate_classes) ||
@@ -1623,7 +1632,7 @@ export function targetRestrict(
   if (permanentStatComponent) {
     // Python ignores splash here and permits an empty tile outright: it reads
     // only the unit standing on def_pos, returning True when there is none.
-    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    const defender = unitAt(defPos);
     if (defender) {
       const changes = item.getNumericComponentMap(permanentStatComponent);
       const canApply = Object.entries(changes).some(([stat, amount]) =>
@@ -1634,7 +1643,7 @@ export function targetRestrict(
   }
 
   if (item.hasComponent('unlock_staff')) {
-    const validRegion = (context.game?.currentLevel?.regions ?? []).some((region: any) =>
+    const validRegion = !!defPos && (context.game?.currentLevel?.regions ?? []).some((region: any) =>
       region.region_type === 'event' &&
       String(region.condition ?? '').includes('can_unlock') &&
       defPos[0] >= region.position[0] && defPos[0] < region.position[0] + region.size[0] &&
@@ -1644,7 +1653,7 @@ export function targetRestrict(
   }
 
   if (isStealItem(item)) {
-    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    const defender = unitAt(defPos);
     if (!defender) return false;
     const stealAtk = context.evaluateEquation?.('STEAL_ATK', unit, item) ?? unit.getStatValue('SPD');
     const stealDef = context.evaluateEquation?.('STEAL_DEF', defender, item) ?? defender.getStatValue('SPD');
@@ -1655,7 +1664,7 @@ export function targetRestrict(
   }
 
   if (item.hasComponent('trace')) {
-    const defender = context.board.getUnit(defPos[0], defPos[1]);
+    const defender = unitAt(defPos);
     if (!defender ||
         !defender.items.some((candidate) => traceItemRestrict(unit, candidate, context.db))) {
       return false;
@@ -1663,14 +1672,14 @@ export function targetRestrict(
   }
 
   if (item.hasComponent('unload_unit')) {
-    if (context.board.getUnit(defPos[0], defPos[1])) return false;
+    if (!defPos || unitAt(defPos)) return false;
     const defaultClass = context.db.classes.values().next().value;
     const movementGroup = defaultClass?.movement_group ?? 'Infantry';
     if (context.board.getMovementCost(defPos[0], defPos[1], movementGroup, context.db) > 5) return false;
   }
 
   if (item.hasComponent('self_unload_unit')) {
-    if (context.board.getUnit(defPos[0], defPos[1])) return false;
+    if (!defPos || unitAt(defPos)) return false;
     const defaultMovement = context.db.classes.get(unit.klass)?.movement_group ?? 'Infantry';
     const movementGroup = movementType(unit, defaultMovement, context.game);
     const movementCost = context.board.getMovementCost(
@@ -1682,8 +1691,7 @@ export function targetRestrict(
     if (movementCost > Math.max(5, unit.getMovement())) return false;
   }
 
-  if (item.hasComponent('empty_tile_target_restrict') &&
-      context.board.getUnit(defPos[0], defPos[1])) {
+  if (item.hasComponent('empty_tile_target_restrict') && unitAt(defPos)) {
     return false;
   }
 
@@ -1693,6 +1701,7 @@ export function targetRestrict(
       context.db.classes.get(unit.klass)?.movement_group ?? 'Infantry',
       context.game,
     );
+    if (!defPos) return false;
     const movementCost = context.board.getMovementCost(defPos[0], defPos[1], movementGroup, context.db);
     if (movementCost > unit.getMovement()) return false;
   }
@@ -1733,7 +1742,21 @@ export function targetRestrict(
       item.hasComponent('charge') ||
       item.hasComponent('bullrush')) {
     const endpoints = rekkaMovementEndpoints(unit, item, context.board, context.db, context.game);
-    if (!endpoints.has(`${defPos[0]},${defPos[1]}`)) return false;
+    if (!defPos || !endpoints.has(`${defPos[0]},${defPos[1]}`)) return false;
+  }
+
+  if (isForkEngine() && item.hasComponent('eval_special_range') && unit.position) {
+    // EvalSpecialRange.target_restrict as EOtF's engine calls it: the main
+    // target's offset must be an allowed square; with no main target every
+    // splash offset must be. (Upstream passes the chosen tile, which the
+    // range filter already checked.)
+    const minRange = modifiedMinimumRange(unit, item, context.game);
+    const maxRange = modifiedMaximumRange(unit, item, context.game);
+    const allowed = minRange <= maxRange ? rangeRestrict(unit, item, maxRange) : new Set<string>();
+    const origin = unit.position;
+    const inside = (position: TargetPosition) =>
+      !allowed || allowed.has(`${position[0] - origin[0]},${position[1] - origin[1]}`);
+    if (defPos ? !inside(defPos) : !splash.every(inside)) return false;
   }
 
   const expression = item.getComponent<string>('eval_target_restrict_2');
@@ -1746,7 +1769,7 @@ export function targetRestrict(
       const outcome = evaluatePythonInContext(expression, {
         game: context.game,
         unit1: unit,
-        unit2: context.board.getUnit(targetPos[0], targetPos[1]),
+        unit2: unitAt(targetPos),
         position: unit.position ?? undefined,
         item,
         gameVars: context.game?.gameVars,
@@ -1782,6 +1805,8 @@ const RANGE_RESTRICT_GLOBALS = {
   },
 };
 
+const RANGE_RESTRICT_CACHE = new Map<string, Set<string>>();
+
 /** Relative positions allowed by eval_special_range, or null when unrestricted. */
 export function rangeRestrict(
   _unit: UnitObject,
@@ -1794,7 +1819,13 @@ export function rangeRestrict(
   // Python EvalSpecialRange.calculate_range_restrict:
   // eval('lambda x, y:' + condition) in target_components' module globals,
   // tested for every offset; an exception keeps the squares found so far.
+  // Like Python's lru_cache, the squares depend only on the condition and
+  // the maximum range.
+  const cacheKey = `${maxRange}|${expression}`;
+  const cached = RANGE_RESTRICT_CACHE.get(cacheKey);
+  if (cached) return cached;
   const allowed = new Set<string>();
+  RANGE_RESTRICT_CACHE.set(cacheKey, allowed);
   try {
     const predicate = evaluatePythonLambda(`lambda x, y:${expression}`, RANGE_RESTRICT_GLOBALS);
     for (let x = -maxRange; x <= maxRange; x++) {
