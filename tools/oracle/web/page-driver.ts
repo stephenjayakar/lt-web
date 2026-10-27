@@ -505,12 +505,19 @@ function installAiTrace(g: any): void {
   const here = (u: any) => (u?.position ? pos(u.position) : null);
   const same = (a: Json, b: Json) => JSON.stringify(a) === JSON.stringify(b);
   const getAction = ai.getAction.bind(ai);
+  const boardHp = () => [...g.units.values()]
+    .filter((u: any) => u.position && !u.dead)
+    .map((u: any) => [u.nid, u.currentHp])
+    .sort((a: any, b: any) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   ai.getAction = (unit: any) => {
     const start = here(unit);
+    const hp = boardHp();
     const action = getAction(unit);
     let move: Json = action.targetPosition ? pos(action.targetPosition) : null;
     if (same(move, start)) move = null;
-    const did = action.type !== 'wait' && !(action.type === 'move' && move === null);
+    // Python: a SecondaryAI goal on the unit's own tile is not success (an
+    // Interact there still triggers, but the unit did nothing).
+    const did = action.type !== 'wait' && !((action.type === 'move' || action.type === 'interact') && move === null);
     aiTrace.push({
       unit: unit.nid,
       from: start,
@@ -521,6 +528,7 @@ function installAiTrace(g: any): void {
       target: did && ['attack', 'steal', 'use_item'].includes(action.type) && action.targetUnit?.position
         ? pos(action.targetUnit.position) : null,
       item: did ? action.item?.nid ?? null : null,
+      hp,
     });
     return action;
   };

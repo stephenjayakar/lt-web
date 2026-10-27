@@ -173,15 +173,19 @@ function report() {
       stats.decisions += a.filter((x) => 'did' in x).length;
       const n = Math.max(a.length, b.length);
       for (let i = 0; i < n; i++) {
-        if (canon(a[i] ?? null) === canon(b[i] ?? null)) continue;
+        const strip = (x) => (x && 'hp' in x ? { ...x, hp: undefined } : x);
+        if (canon(strip(a[i]) ?? null) === canon(strip(b[i]) ?? null)) continue;
+        // A decision taken on a board whose HP already differs follows a
+        // combat-number difference (the combat agent's area), not the AI.
+        const hpDiff = a[i]?.hp && b[i]?.hp && canon(a[i].hp) !== canon(b[i].hp);
         const unitNid = a[i]?.unit ?? b[i]?.unit ?? a[i]?.by ?? b[i]?.by;
         const ai = py.steps[s].snapshot.units?.[unitNid]?.ai ?? '?';
         const kind = !a[i] || !b[i] ? 'length' : a[i].unit !== b[i].unit ? 'order'
           : 'canto' in a[i] ? 'canto' : 'group' in a[i] ? 'group'
             : ['did', 'move', 'target', 'item'].filter((k) => JSON.stringify(a[i][k]) !== JSON.stringify(b[i][k])).join('+') || 'from';
-        const key = `${ai} / ${kind}`;
+        const key = hpDiff ? `combat-downstream (${ai} / ${kind})` : `${ai} / ${kind}`;
         if (!buckets.has(key)) buckets.set(key, []);
-        buckets.get(key).push(`${scn.name} step ${s} #${i}: py=${canon(a[i] ?? null)} web=${canon(b[i] ?? null)}`);
+        buckets.get(key).push(`${scn.name} step ${s} #${i}: py=${canon(strip(a[i]) ?? null)} web=${canon(strip(b[i]) ?? null)}`);
         diverged = true;
         break;
       }

@@ -48,6 +48,8 @@ import { isForkEngine } from '../engine/engine-flavor';
 import { EquipItemAction } from '../engine/action';
 import { getSkillAbilityOptions } from '../combat/skill-abilities';
 import { pySetOrder } from '../engine/py-set-order';
+import { refreshAuras } from '../combat/aura-system';
+import { refreshPositionStatuses } from '../engine/position-status-system';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
 import { SkillObject } from '../objects/skill';
@@ -635,6 +637,9 @@ export class AIController {
           }
         }
       }
+      // Python get_targets: list(set(all_targets)). EOtF's engine keeps that
+      // CPython set order, which decides ties between equally good tiles.
+      if (isForkEngine()) return pySetOrder(positions);
       // Deduplicate
       const seen = new Set<string>();
       return positions.filter(([x, y]) => {
@@ -1358,11 +1363,40 @@ export class AIController {
     }
     const origin: [number, number] = [unit.position[0], unit.position[1]];
     this.board.moveUnit(unit, position[0], position[1]);
+    const restore = this.testArrive(unit);
     try {
       return callback();
     } finally {
+      restore();
       this.board.moveUnit(unit, origin[0], origin[1]);
     }
+  }
+
+  /**
+   * Python quick_move's PickUnitUp/PutUnitDown with test=True: at the tested
+   * tile the unit drops the aura children it had and pulls those that cover
+   * the tile, and takes that tile's terrain and region statuses; its own
+   * auras stay where they were. Returns the undo.
+   */
+  private testArrive(unit: UnitObject): () => void {
+    const game = this.gameRef;
+    if (!game?.getAllUnits) return () => {};
+    const units = game.getAllUnits() as UnitObject[];
+    const saved = units.map((u) => ({
+      u, skills: u.skills, copy: u.skills.slice(),
+      owners: u.skills.map((skill) => skill.ownerNid), canto: u.hasCanto,
+    }));
+    refreshAuras(units, this.board, this.db, unit);
+    refreshPositionStatuses(units, this.board, this.db, game);
+    return () => {
+      for (const entry of saved) {
+        entry.skills.length = 0;
+        entry.skills.push(...entry.copy);
+        entry.u.skills = entry.skills;
+        entry.copy.forEach((skill, index) => { skill.ownerNid = entry.owners[index]; });
+        entry.u.hasCanto = entry.canto;
+      }
+    };
   }
 
   // ====================================================================

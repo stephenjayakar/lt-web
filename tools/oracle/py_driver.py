@@ -795,9 +795,13 @@ def install_ai_trace(e: Engine) -> None:
 
     orig_think = C.think
 
+    def board_hp():
+        return sorted([u.nid, u.get_hp()] for u in e.game.units if u.position)
+
     def think(self):
         unit = self.unit
         start = here(unit)
+        hps = board_hp()
         done = orig_think(self)
         if done and unit:
             move = _pos(self.goal_position) if self.goal_position else None
@@ -810,6 +814,7 @@ def install_ai_trace(e: Engine) -> None:
                 'move': move,
                 'target': _pos(self.goal_target) if self.goal_target else None,
                 'item': self.goal_item.nid if self.goal_item else None,
+                'hp': hps,
             })
         return done
     C.think = think
