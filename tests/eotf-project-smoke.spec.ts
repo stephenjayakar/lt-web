@@ -1314,7 +1314,13 @@ test.describe('Embrace of the Fog project compatibility', () => {
   });
 
   test('all levels clean boot without runtime failures @milestone', async ({ page }) => {
-    test.setTimeout(12 * 60_000);
+    // One full page boot per level: ~4.5 s each on an idle machine, but 6-13 s
+    // under a loaded release gate (159 levels took 15-20 min). A fixed 12 min
+    // budget timed out mid-sweep with every level booting, so budget per level.
+    const bootCount = requestedLevelNids.size > 0
+      ? levels.filter((level) => requestedLevelNids.has(level.nid)).length
+      : levels.length;
+    test.setTimeout(Math.max(12 * 60_000, (bootCount + 1) * 15_000));
     // Clean boots skip the level's events, so most levels have no player
     // units; Python's FreeState would auto-end that empty phase and run the
     // enemy turn without its setup. Keep each boot in its first player phase.
