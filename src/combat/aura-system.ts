@@ -28,7 +28,7 @@ import type { UnitObject } from '../objects/unit';
 import type { GameBoard } from '../objects/game-board';
 import type { Database } from '../data/database';
 import { SkillObject } from '../objects/skill';
-import { initializeSkillData, isCantoSkill } from './skill-system';
+import { checkAlly, checkEnemy, initializeSkillData, isCantoSkill } from './skill-system';
 import { isForkEngine } from '../engine/engine-flavor';
 
 /** Tag keys stored on a skill instance granted by an aura's propagation. */
@@ -123,6 +123,10 @@ export function auraHighlightPositions(
 /** Python `apply_aura`'s target-filter check (ally/enemy/unit), minus LOS. */
 function auraTargets(owner: UnitObject, target: UnitObject, filter: string, db: Database): boolean {
   if (owner === target) return false;
+  // EOtF asks skill_system.check_enemy/check_ally, so the owner's
+  // ignore_alliances (Raging) leaves no allies to share an ally aura with.
+  if (isForkEngine() && filter === 'enemy') return checkEnemy(owner, target, db);
+  if (isForkEngine() && filter === 'ally') return checkAlly(owner, target, db);
   if (filter === 'enemy') return !owner.isAlly(target.team, db.teams.alliances);
   if (filter === 'ally') return owner.isAlly(target.team, db.teams.alliances);
   return true; // 'unit'

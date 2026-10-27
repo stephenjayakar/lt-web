@@ -457,4 +457,43 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
     expect(result!.flickerChild).toBe(true);
     expect(result!.burnt).toEqual(expect.arrayContaining(['Burning', 'Temp_Flying']));
   });
+
+  test('turn-fuzz cases: ally auras follow ignore_alliances, a self-targeted heal keeps its HP', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (kitSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const kit = await (new Function(`${kitSrc}; return makeKit;`)())(game);
+      if (!kit.origin) return null;
+      try {
+        // Raging_Plus (ignore_alliances) leaves its bearer no allies, so
+        // Leading_Charge_Plus's ally aura reaches nobody.
+        const rager = kit.make('_FzRager', 'enemy', { skills: ['Raging_Plus', 'Leading_Charge_Plus'] });
+        const mate = kit.make('_FzMate', 'enemy');
+        const leader = kit.make('_FzLeader', 'enemy', { skills: ['Leading_Charge_Plus'] });
+        const follower = kit.make('_FzFollower', 'enemy');
+        kit.place(rager, -2, 0);
+        kit.place(mate, -1, 0);
+        kit.place(leader, 5, 0);
+        kit.place(follower, 5, 1);
+        game.refreshAuras?.();
+        const mateChild = kit.skills(mate).includes('Leading_Charge_Child');
+        const followerChild = kit.skills(follower).includes('Leading_Charge_Child');
+        for (const u of [rager, mate, leader, follower]) game.removeUnit(u.nid);
+
+        // Bubble_Heal (eval_heal max HP // 10) used on oneself, as
+        // Bubble_Shield_Status's upkeep event does through interact_unit.
+        const bubbler = kit.make('_FzBubbler', 'enemy', { items: ['Bubble_Heal'], equip: false, stats: { HP: 28 }, hp: 14 });
+        kit.place(bubbler, 2, 0);
+        kit.fight(bubbler, bubbler);
+        return { mateChild, followerChild, bubbleHp: bubbler.currentHp };
+      } finally {
+        kit.cleanup();
+      }
+    }, KIT);
+    expect(result).not.toBeNull();
+    expect(result!.mateChild).toBe(false);
+    expect(result!.followerChild).toBe(true);
+    expect(result!.bubbleHp).toBe(16);
+  });
 });

@@ -670,7 +670,12 @@ export class MapCombat implements StrikeEventCombat {
           atkHp,
         );
         const selfChange = itemHeal + (strike.selfSkillHpChange ?? 0);
-        if (defenderHps.has(strike.attacker)) {
+        // EOtF: an initiator striking itself (interact_unit's self-heal
+        // abilities) has one HP; keep its own changes on it.
+        const selfStrike = isForkEngine() && strike.attacker === this.attacker;
+        if (selfStrike) {
+          atkHp = Math.max(0, Math.min(attackerMaxHp, atkHp + selfChange));
+        } else if (defenderHps.has(strike.attacker)) {
           defenderHps.set(
             strike.attacker,
             Math.max(0, Math.min(
@@ -805,6 +810,8 @@ export class MapCombat implements StrikeEventCombat {
     // Apply to units
     this.attacker.currentHp = atkHp;
     for (const [unit, hp] of defenderHps) {
+      // EOtF: the initiator's HP is atkHp even when it is also its target.
+      if (isForkEngine() && unit === this.attacker) continue;
       unit.currentHp = Math.max(0, Math.min(unit.maxHp, hp));
     }
     for (const [unit, gauge] of this.guardGaugeResults) unit.currentGuardGauge = gauge;
