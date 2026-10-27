@@ -9,7 +9,7 @@ import { evaluateCondition, evaluateInt } from '../events/event-manager';
 import type { ItemObject } from '../objects/item';
 import { SkillObject } from '../objects/skill';
 import type { UnitObject } from '../objects/unit';
-import { evaluateEquation } from './combat-calcs';
+import { evaluateEquation, resolveWeapon } from './combat-calcs';
 import { isForkEngine } from '../engine/engine-flavor';
 import type { CombatStrike } from './combat-solver';
 import {
@@ -454,7 +454,7 @@ export class CombatSkillLifecycle {
       'attack_proc', striker, item, target, forcedAttack?.map((mark) => mark.parentSkill),
       simulatedHp,
     );
-    const defenseItem = target.items.find((candidate) => candidate.isWeapon()) ?? null;
+    const defenseItem = resolveWeapon(target);
     const defense = this.activate('defense_proc', target, defenseItem, striker, undefined, simulatedHp);
     return { attack, defense };
   }

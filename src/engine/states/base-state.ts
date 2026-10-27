@@ -12,11 +12,11 @@
  * Port of lt-maker/app/engine/base.py
  */
 
+import { isForkEngine } from '../engine-flavor';
 import { State, type StateResult } from '../state';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
-import { isForkEngine } from '../engine-flavor';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { ACHIEVEMENTS, RECORDS, type AchievementEntry } from '../records';
@@ -1606,6 +1606,7 @@ export class BaseBexpAllocateState extends State {
       if (this.expToGain > 0) {
         const party = game.parties.get(game.currentParty);
         game.actionLog.doAction(new SpendBexpAction(party, this.stagedCost()));
+        // Python ExpState('bonus_exp') raises current stats (upstream only).
         game.actionLog.doAction(new GainExpAction(this.unit, this.expToGain,
           game.currentMode?.growths ?? 'random', true));
         game.state.back();

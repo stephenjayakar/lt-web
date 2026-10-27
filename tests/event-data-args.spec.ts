@@ -58,6 +58,26 @@ test.describe('Event data command parity', () => {
     expect(charge).toBe(3);
   });
 
+  test('trigger_specific_event local args (playback, source) reach if conditions', async ({ page }) => {
+    // EOtF's event_after_combat passes playback in its args dict
+    // (Global Ability_Fili_Flight); trigger fields the trigger does not set
+    // must not shadow them as None.
+    await boot(page);
+    await runEvent(page, 'QaPlaybackArgs', [
+      "if;len([x for x in playback if x.nid in ('mark_miss')]) == 1",
+      'game_var;_qa_playback_ok;1',
+      'end',
+      "if;source == 'Fili'",
+      'game_var;_qa_source_ok;1',
+      'end',
+    ], { playback: [{ nid: 'mark_hit' }, { nid: 'mark_miss' }], source: 'Fili' });
+    const vars = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return [g.gameVars.get('_qa_playback_ok'), g.gameVars.get('_qa_source_ok')];
+    });
+    expect(vars).toEqual([1, 1]);
+  });
+
   test('variables store evaluated locals and reject objects', async ({ page }) => {
     await boot(page);
     await runEvent(page, 'QaVars', [

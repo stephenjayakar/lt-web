@@ -17,7 +17,6 @@ const MERGED = {
   base_market_select: 'shop',
   canto_wait: 'menu',
   chapter_title: 'event',
-  combat_targeting: 'targeting',
   combat_trade: 'trade',
   defender: 'combat',
   defender_partner: 'combat',

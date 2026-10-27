@@ -205,8 +205,9 @@ async function runCombatLevelUp(page: Page, zeroGrowths: boolean): Promise<Lifec
     const game = (window as any).__gameRef;
     const harness = (window as any).__harness;
     const trace = (window as any).__levelTriggerTrace as TriggerTrace[];
-    // Python map combat timing (~1.3 s per strike) precedes the exp screen.
-    for (let frame = 0; frame < 600; frame++) {
+    // Python map combat timing (~1.3 s per strike) precedes the exp screen;
+    // the level screen itself runs on frame time.
+    for (let frame = 0; frame < 1500; frame++) {
       (window as any).__levelTriggerNow += 400;
       harness.stepFrames(1, null);
       if (game.state.getCurrentState()?.name === 'event' &&
@@ -250,8 +251,10 @@ async function runCombatLevelUp(page: Page, zeroGrowths: boolean): Promise<Lifec
   const afterWait = await page.evaluate(() => {
     const game = (window as any).__gameRef;
     const harness = (window as any).__harness;
+    // The combat level screen runs on frame time (Python ExpState's
+    // engine.get_time), so the 1400 ms level_up_wait is 84 frames.
     (window as any).__levelTriggerNow += 1400;
-    harness.stepFrames(1, null);
+    harness.stepFrames(85, null);
     const combat = game.state.getCurrentState() as any;
     return {
       topState: combat?.name ?? '',
@@ -264,7 +267,7 @@ async function runCombatLevelUp(page: Page, zeroGrowths: boolean): Promise<Lifec
     const game = (window as any).__gameRef;
     const harness = (window as any).__harness;
     (window as any).__levelTriggerNow += 600;
-    harness.stepFrames(1, null);
+    harness.stepFrames(36, null);
     for (let frame = 0; frame < 120; frame++) {
       harness.stepFrames(1, null);
       if (game.gameVars.get('_late_level_started') === 'yes') break;

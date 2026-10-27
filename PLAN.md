@@ -191,9 +191,12 @@ The release gate is green: build, all four audits, the full serial suite,
 - [x] EOtF engine UI: weather window, forecast digits 100-998, four window
   skins (startup/New Game baked parts), forced skin on Choice/Table, red
   sold-out stock, item help grid offsets, Gallery dex entries.
-- [ ] Map ability targeting (Trade/Rescue/Take/Give/Steal) uses list menus;
-  Python's TargetingState moves the cursor with a pennant and draws the
-  trade_window / rescue_window / give_window previews.
+- [x] Map ability targeting (Trade/Rescue/Take/Give/Drop/Talk/Support...)
+  is Python's TargetingState: SelectionHelper cursor (CPython set order),
+  pennant, trade/rescue/give previews; combat and spell targeting move by
+  direction too and steal shows the trade preview.
+- [ ] Targeting highlights: Python draws light spell/attack highlight sprites
+  over the whole range plus the cursor tile; the web fills target tiles.
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in
@@ -285,3 +288,20 @@ lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
   autoequip); a unit whose stun ends at upkeep acts that phase (live
   `movement_left`); event-moved units keep terrain statuses.
 - [x] EOtF fork: units on Fixed growths start with 50 growth points per stat.
+
+### P8.7 — QA sweep findings (Acts 3–4, bosses, EX, hub)
+
+`npm run qa:run` sweeps (`docs/qa-tools.md`) of Acts 3–4, every Act 3/4
+trial, boss and elite, the EX levels, Boss_Hidden and the hub tour.
+
+- [x] `item.effective_damage.tags` / `.multiplier` (EffectiveDamage
+  properties) in skill expressions.
+- [x] combat_end `playback` holds mark brushes (Item_DeathDance).
+- [x] Unset trigger fields no longer shadow trigger_specific local args
+  (event_after_combat playback: Ability_Fili_Flight).
+- [x] win_game ends the level when an event is queued mid-outro (elite
+  outros with interact_unit softlocked, e.g. Gemini).
+- [x] Frameless combat effects (Promotion1/2, spell parents) load no sheet.
+- [ ] Python NameErrors on unit nids substituted into expressions
+  (Item_Catcher_SEC `get_item(Player, ...)`, `check_dead`) are reported as
+  "Unimplemented expression" instead of Python-equivalent (log noise only).

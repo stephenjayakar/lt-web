@@ -51,6 +51,14 @@ function getGame(): any {
   return _game;
 }
 
+declare const __LT_QA__: boolean;
+
+/**
+ * Settings pinned by the QA tools' fast mode (src/qa/), consulted before the
+ * stored value. Null in player builds, where the check compiles away.
+ */
+export const qaSettingOverrides: Record<string, unknown> | null = __LT_QA__ ? {} : null;
+
 // ============================================================================
 // Setting definitions (Python settings.config)
 // ============================================================================
@@ -180,6 +188,8 @@ function loadSettingsCache(): Record<string, unknown> {
  * used to keep them in gameVars, where most were never read and all reset.
  */
 export function getSetting(name: string): any {
+  // QA fast mode (dev/LT_QA builds only) pins presentation settings.
+  if (__LT_QA__ && qaSettingOverrides && name in qaSettingOverrides) return qaSettingOverrides[name];
   // The EOtF fork has no menu entry for these, so a value chosen while
   // playing another project must not leak in (settings are shared).
   if (isForkEngine() && name in FORK_HIDDEN_SETTINGS) return FORK_HIDDEN_SETTINGS[name];

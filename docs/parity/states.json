@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 71,
-    "merged": 42,
+    "exact": 72,
+    "merged": 41,
     "open": 0,
-    "web": 91
+    "web": 92
   },
   "rows": [
     {
@@ -196,8 +196,8 @@
       "name": "combat_targeting",
       "className": "CombatTargetingState",
       "source": "lt-maker/app/engine/general_states.py",
-      "status": "merged",
-      "webState": "targeting",
+      "status": "exact",
+      "webState": "combat_targeting",
       "webSource": "src/engine/states/game-states.ts"
     },
     {

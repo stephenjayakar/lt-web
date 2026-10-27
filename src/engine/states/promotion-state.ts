@@ -217,7 +217,9 @@ class PromotionAnimOwner implements BattleAnimOwner {
     const target = frames;
     const game = getGame();
     const data = this.getEffectData(effectNid);
-    if (data) {
+    // BattleAnimation.__init__ loads the sheet only for an effect with
+    // frames; Promotion1/2 only spawn child effects and have no image.
+    if (data?.frames?.length) {
       void loadEffectSpritesheet(game.resources, effectNid).then((img) => {
         if (!img) return;
         const palettes = game.db.combatPalettes as Map<string, PaletteData> | undefined;

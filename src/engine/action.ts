@@ -339,7 +339,14 @@ interface ExtraGroup {
   actionIndex: number;
 }
 
-type ActionGroup = MoveGroup | PhaseGroup | ExtraGroup;
+/** EOtF's engine: a turnwheel lock change splits the timeline. */
+interface LockGroup {
+  type: 'lock';
+  actionIndex: number;
+  lock: boolean;
+}
+
+type ActionGroup = MoveGroup | PhaseGroup | ExtraGroup | LockGroup;
 
 /**
  * ActionLog - Ordered log of executed actions supporting sequential undo
@@ -592,6 +599,7 @@ export class ActionLog {
    * Static so it can be tested independently.
    */
   static getActionGroups(actions: Action[], firstFreeAction: number): ActionGroup[] {
+    if (isForkEngine()) return ActionLog.getForkActionGroups(actions, firstFreeAction);
     const groups: ActionGroup[] = [];
 
     function finalizeGroup(group: ActionGroup): void {
@@ -646,6 +654,56 @@ export class ActionLog {
       }
     }
 
+    return groups;
+  }
+
+  /**
+   * EOtF's engine predates the action-group markers: a unit's group starts at
+   * a plain Move or Teleport (not a Canto move) and ends at that unit's Wait
+   * or death; phase marks and turnwheel locks split the timeline, and trailing
+   * actions form an extra group.
+   */
+  static getForkActionGroups(actions: Action[], firstFreeAction: number): ActionGroup[] {
+    const groups: ActionGroup[] = [];
+    let current: MoveGroup | null = null;
+    const finalize = (group: MoveGroup) => {
+      if (group.end < 0) group.end = group.begin;
+      groups.push(group);
+    };
+    for (let i = Math.max(0, firstFreeAction); i < actions.length; i++) {
+      const action = actions[i];
+      const startsMove = (action instanceof MoveAction && !action.canto) ||
+        (action instanceof WarpUnitAction && action.turnwheelMove);
+      if (startsMove) {
+        if (current) finalize(current);
+        current = { type: 'move', unit: (action as MoveAction | WarpUnitAction).unit, begin: i, end: -1 };
+      } else if (action instanceof WaitAction || action instanceof DeathAction) {
+        if (current && action.unit === current.unit) {
+          current.end = i;
+          finalize(current);
+          current = null;
+        }
+      } else if (action instanceof MarkPhase) {
+        if (current) finalize(current);
+        current = null;
+        groups.push({ type: 'phase', phaseName: action.phaseName, actionIndex: i });
+      } else if (action instanceof LockTurnwheel) {
+        if (current) finalize(current);
+        current = null;
+        groups.push({ type: 'lock', actionIndex: i, lock: action.lock });
+      }
+    }
+    // Python leaves a move still open at the end of the log out of the list
+    // (only Waits, deaths, phases and locks finalize one).
+    if (groups.length > 0) {
+      const last = groups[groups.length - 1];
+      const lastActionIndex = actions.length - 1;
+      const lastIndex = last.type === 'move' ? last.end
+        : last.type === 'extra' ? last.actionIndex : last.actionIndex;
+      if (lastIndex < lastActionIndex) {
+        groups.push({ type: 'extra', lastMoveIndex: lastIndex + 1, actionIndex: lastActionIndex });
+      }
+    }
     return groups;
   }
 
@@ -715,6 +773,12 @@ export class ActionLog {
         this.runActionBackward();
       }
       return this.backward(cursorSetPos); // Skip through extras
+    } else if (currentMove.type === 'lock') {
+      while (this.actionIndex >= currentMove.actionIndex) {
+        this.runActionBackward();
+      }
+      this.locked = this.getLastLock();
+      return this.backward(cursorSetPos);
     }
 
     return null;
@@ -779,6 +843,12 @@ export class ActionLog {
         this.runActionForward();
       }
       return [];
+    } else if (currentMove.type === 'lock') {
+      while (this.actionIndex < currentMove.actionIndex) {
+        this.runActionForward();
+      }
+      this.locked = currentMove.lock;
+      return this.forward(cursorSetPos);
     }
 
     return null;
@@ -907,7 +977,9 @@ export class ActionLog {
   /** Scan backward through the log to find the current lock state. */
   private getLastLock(): boolean {
     let idx = this.actionIndex;
-    while (idx > 0) {
+    // EOtF's engine stops at the first free action; upstream scans to the start.
+    const floor = isForkEngine() ? this._firstFreeAction : 0;
+    while (idx > floor) {
       idx -= 1;
       const action = this.actions[idx];
       if (action instanceof LockTurnwheel) {
@@ -948,7 +1020,9 @@ function capitalize(s: string): string {
  * MoveAction - Move a unit from one position to another on the board.
  */
 export class MoveAction extends Action {
-  private unit: UnitObject;
+  readonly unit: UnitObject;
+  /** A Canto move (Python CantoMove): never starts a turnwheel group. */
+  canto = false;
   private oldPos: [number, number];
   private newPos: [number, number];
   private board: GameBoard;
@@ -1011,7 +1085,13 @@ export class SetMovementLeftAction extends Action {
 
 /** Script/item-directed warp that preserves the moved unit's turn flags. */
 export class WarpUnitAction extends Action {
-  private unit: UnitObject;
+  readonly unit: UnitObject;
+  /**
+   * Python moves this as action.Move or action.Teleport (an AI or event
+   * walk, an immediate or skipped event move), not as a Warp or a forced
+   * shove: EOtF's turnwheel starts a unit's group on it.
+   */
+  turnwheelMove = false;
   private oldPos: [number, number];
   private newPos: [number, number];
   private board: GameBoard;
@@ -2324,7 +2404,7 @@ export class RecordCombatRandomStateAction extends Action {
  * WaitAction - Mark a unit as finished for the turn.
  */
 export class WaitAction extends Action {
-  private unit: UnitObject;
+  readonly unit: UnitObject;
   private previous: {
     finished: boolean;
     hasAttacked: boolean;
@@ -3403,7 +3483,7 @@ export class TransferTravelerAction extends Action {
 
 /** DeathAction - Handle unit death and preserve placement for rewind. */
 export class DeathAction extends Action {
-  private unit: UnitObject;
+  readonly unit: UnitObject;
   private board: GameBoard;
   private initiative: InitiativeTracker | null;
   private position: [number, number] | null = null;
