@@ -414,6 +414,15 @@ interface TableOption {
   ignore: boolean;
 }
 
+/**
+ * The window a menus.Choice/Table actually draws. EOtF's engine resets every
+ * such menu onto the window skin whatever background its caller asked for,
+ * so clear (null) and brown menus become skin windows there.
+ */
+export function forcedMenuBackground(background: string | null): string | null {
+  return isForkEngine() ? 'menu_bg_base' : background;
+}
+
 export class Table {
   rows: number;
   columns: number;
@@ -661,7 +670,7 @@ export class Table {
 
   private drawBg(surf: Surface, ox: number, oy: number): void {
     const [x, y] = this.topleft;
-    const bg = baseSurf(this.getMenuWidth(), this.getMenuHeight(), this.background);
+    const bg = baseSurf(this.getMenuWidth(), this.getMenuHeight(), forcedMenuBackground(this.background) ?? 'menu_bg_base');
     blitTranslucent(surf, bg, ox + x, oy + y, 0.1);
     if (this.gem) {
       blitSprite(surf, getSprite(this.gem === true ? 'menu_gem_small' : 'menu_gem_brown'), ox + x - 2, oy + y - 4, 0.9);
@@ -1015,8 +1024,9 @@ export class Choice {
     const [x, y] = this.getTopleft();
     const width = this.getMenuWidth();
     const height = this.getMenuHeight();
-    if (this.background) {
-      blitTranslucent(surf, baseSurf(width, height, this.background), ox + x, oy + y, 0.1);
+    const background = forcedMenuBackground(this.background);
+    if (background) {
+      blitTranslucent(surf, baseSurf(width, height, background), ox + x, oy + y, 0.1);
       if (this.gem) blitSprite(surf, getSprite(this.gem === 'brown' ? 'menu_gem_brown' : 'menu_gem_small'), ox + x - 2, oy + y - 4, 0.9);
       if (this.shimmer) {
         const sprite = getSprite(`menu_shimmer${this.shimmer}`);
@@ -1081,7 +1091,8 @@ export class Choice {
       drawTextRight(surf, valueString, x + width - 6, y, valueColor);
       if (this.stock) {
         const stock = this.stock[idx] ?? -1;
-        drawTextRight(surf, stock >= 0 ? String(stock) : '--', x + 128, y, main);
+        // EOtF's engine prints a sold-out (0) stock in red.
+        drawTextRight(surf, stock >= 0 ? String(stock) : '--', x + 128, y, stock === 0 && isForkEngine() ? 'red' : main);
       }
       return;
     }
@@ -1100,8 +1111,9 @@ export class Choice {
 
   private horizDraw(surf: Surface, ox: number, oy: number): void {
     const [x, y] = this.getTopleft();
-    if (this.background) {
-      blitTranslucent(surf, baseSurf(this.getMenuWidth(), 24, this.background), ox + x, oy + y, 0.5);
+    const background = forcedMenuBackground(this.background);
+    if (background) {
+      blitTranslucent(surf, baseSurf(this.getMenuWidth(), 24, background), ox + x, oy + y, 0.5);
     }
     for (const [idx, left, top, w] of this.getRects(ox, oy)) {
       const option = this.options[idx];

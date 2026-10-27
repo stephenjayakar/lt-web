@@ -1286,7 +1286,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       return getAllUnits(onlyOnField);
     },
     get_tile_units() {
-      return getAllUnits(true);
+      // EOtF's engine: the on-map, living units that DO carry the Tile tag
+      // (own, class or skill tags), the complement of get_all_units().
+      return (Array.from(game.units?.values?.() ?? []) as any[])
+        .filter((unit) =>
+          !!unit.position && !isDeadOrDying(unit) && unitHasTag(unit, 'Tile', game))
+        .map(wrapUnit);
     },
     get_money() { return game.getMoney?.() ?? 0; },
     get_data(nid: string) {
@@ -2008,15 +2013,31 @@ export function evaluateCondition(
   return false;
 }
 
+/** A host-value evaluation outcome; failures have already been logged. */
+export type ExpressionOutcome = { ok: true; value: any } | { ok: false; error: unknown };
+
 /**
- * Evaluate an expression and return its value as a plain JS value, or
- * `undefined` when the expression raised (logged). Python None is `null`.
+ * Evaluate an expression to a plain JS value (Python None is `null`),
+ * reporting whether it raised. A raise is logged the way Python's
+ * except-clauses log it; the caller decides what its except-clause does
+ * (skip the write, fall back, use '' ...).
+ */
+export function evaluateExpressionOutcome(expression: string, context: ConditionContext): ExpressionOutcome {
+  const outcome = evaluatePythonInContext(expression, context);
+  if (outcome.ok) return { ok: true, value: toHostValue(outcome.value) ?? null };
+  reportEvaluationFailure(expression.trim(), outcome.error, 'event expression', true);
+  return outcome;
+}
+
+/**
+ * Evaluate an expression to a plain JS value (Python None is `null`). Like
+ * Python's eval it raises when the expression raises (after logging), so a
+ * failure can never pass for a None result; catch it where Python catches.
  */
 export function evaluateExpression(expression: string, context: ConditionContext): any {
-  const outcome = evaluatePythonInContext(expression, context);
-  if (outcome.ok) return toHostValue(outcome.value) ?? null;
-  reportEvaluationFailure(expression.trim(), outcome.error, 'event expression', true);
-  return undefined;
+  const outcome = evaluateExpressionOutcome(expression, context);
+  if (outcome.ok) return outcome.value;
+  throw outcome.error;
 }
 
 /**

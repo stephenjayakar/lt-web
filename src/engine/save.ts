@@ -392,6 +392,8 @@ export interface SaveDict {
   memory: [string, any][];
   /** Optional for compatibility with saves written before dialog-log persistence. */
   dialogLogEntries?: Array<{ speaker: string; text: string }>;
+  /** EOtF window skin of the built-in text speak styles (absent in older saves). */
+  speakStyleSkin?: unknown;
   /** NIDs of only_once events already triggered. Optional for legacy saves (defaults to empty). */
   initiative?: InitiativeSaveData | null;
   overworld?: OverworldSaveData | null;
@@ -957,6 +959,7 @@ export function buildSaveDict(game: any): SaveDict {
       }
     }),
     dialogLogEntries: [...(game.dialogLogEntries ?? [])],
+    speakStyleSkin: game.speakStyleSkin ?? null,
     initiative,
     overworld,
     eventQueue,
@@ -1601,6 +1604,7 @@ export async function restoreGameState(game: any, s: SaveDict): Promise<void> {
   // 14. Restore memory
   game.memory = new Map(s.memory);
   game.dialogLogEntries = (s.dialogLogEntries ?? []).map((entry) => ({ ...entry }));
+  game.speakStyleSkin = s.speakStyleSkin ?? null;
 
   // 15. Restore level (if present)
   if (s.level) {

@@ -21,7 +21,7 @@ import { Banner } from '../../ui/banner';
 import { WINHEIGHT, WINWIDTH } from '../constants';
 import { getSyncStore, type SyncKV } from '../../storage/storage';
 import { isForkEngine } from '../engine-flavor';
-import { setWindowDisplayProvider } from '../../ui/sprites';
+import { setWindowDisplayProvider, skinnedSpriteName } from '../../ui/sprites';
 import {
   MenuBackground,
   MenuCursor,
@@ -80,6 +80,11 @@ interface SettingDef {
 /** Bools are stored as Python's 0/1 (older web saves used 'OFF'/'ON'). */
 const BOOL_VALUES = [0, 1];
 const VOLUMES = [0, 0.01, 0.02, 0.03, 0.0625, 0.125, 0.25, 0.5, 1];
+/**
+ * EOtF's engine branched before upstream's non-linear volume curve and keeps
+ * eleven linear steps, 0.0 to 1.0 by tenths.
+ */
+const FORK_VOLUMES = Array.from({ length: 11 }, (_, i) => i / 10);
 
 /**
  * Python settings.config in order. `screen_size` is omitted: the browser
@@ -102,8 +107,8 @@ const CONFIG_SETTINGS: SettingDef[] = [
   { name: 'talk_boop', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 16 },
   { name: 'show_bounds', kind: 'bool', values: BOOL_VALUES, defaultValue: 0, icon: 7 },
   { name: 'grid_opacity', kind: 'slider', values: [0, 25, 51, 76, 102, 127, 153, 178, 204, 229, 255], defaultValue: 0, icon: 7 },
-  // EOtF fork only: the menu window skin (menu_bg_base1..3 etc.).
-  { name: 'window_display', kind: 'slider', values: [1, 2, 3], defaultValue: 1, icon: 17 },
+  // EOtF fork only: the menu window skin (menu_bg_base1..4 etc.).
+  { name: 'window_display', kind: 'slider', values: [1, 2, 3, 4], defaultValue: 1, icon: 17 },
   { name: 'autoend_turn', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 14 },
   { name: 'confirm_end', kind: 'bool', values: BOOL_VALUES, defaultValue: 1, icon: 14 },
   { name: 'display_hints', kind: 'bool', values: BOOL_VALUES, defaultValue: 0, icon: 3 },
@@ -118,10 +123,15 @@ const FORK_HIDDEN_SETTINGS: Record<string, string | number> = {
 
 /**
  * The settings listed in the menu: the EOtF fork drops animation, battle_bg
- * and display_hints and adds window_display; upstream has no window_display.
+ * and display_hints, adds window_display, and keeps linear volume steps;
+ * upstream has no window_display.
  */
 function menuSettings(): SettingDef[] {
-  if (isForkEngine()) return CONFIG_SETTINGS.filter((d) => !(d.name in FORK_HIDDEN_SETTINGS));
+  if (isForkEngine()) {
+    return CONFIG_SETTINGS
+      .filter((d) => !(d.name in FORK_HIDDEN_SETTINGS))
+      .map((d) => (d.values === VOLUMES ? { ...d, values: FORK_VOLUMES } : d));
+  }
   return CONFIG_SETTINGS.filter((d) => d.name !== 'window_display');
 }
 
@@ -380,6 +390,11 @@ export class SettingsMenuState extends State {
   private sliderCounters: number[] = this.settings.map(() => 0);
   /** ChoiceOption side arrows (right arrow counter offset 0.5). */
   private choiceArrows: Map<string, [ScrollArrow, ScrollArrow]> = new Map();
+  /**
+   * Controls list window. EOtF's engine builds it with the skin current
+   * when Settings opens and, unlike the Config list, never refreshes it.
+   */
+  private controlsBg = 'menu_bg_base';
 
   // -----------------------------------------------------------------------
   // Lifecycle
@@ -392,6 +407,7 @@ export class SettingsMenuState extends State {
     this.sliderCounters = this.settings.map(() => 0);
     this.configMenu = new SimpleList(this.settings.length);
     this.controlsMenu = new SimpleList(CONTROL_ENTRIES.length + 1);
+    this.controlsBg = skinnedSpriteName('menu_bg_base');
     this.alert = null;
     this.topCursor = new MenuCursor();
     this.bg = new MenuBackground('settings_background', game.resources);
@@ -613,9 +629,9 @@ export class SettingsMenuState extends State {
   }
 
   /** Controls.draw / Config.draw background, scroll bar, and rows. */
-  private drawMenuFrame(surf: Surface, menu: SimpleList): [number, number] {
+  private drawMenuFrame(surf: Surface, menu: SimpleList, bgName = 'menu_bg_base'): [number, number] {
     const [tx, ty] = menu.topleft();
-    const bg = baseSurf(OPTION_WIDTH - (OPTION_WIDTH % 8), menu.menuHeight, 'menu_bg_base');
+    const bg = baseSurf(OPTION_WIDTH - (OPTION_WIDTH % 8), menu.menuHeight, bgName);
     const alpha = bg.getAlpha();
     bg.setAlpha(0.9); // image_mods.make_translucent(bg, .1)
     surf.blit(bg, tx, ty);
@@ -707,7 +723,7 @@ export class SettingsMenuState extends State {
   /** Controls.draw + ControlOption.draw */
   private drawControls(surf: Surface): void {
     const menu = this.controlsMenu;
-    const [tx, ty] = this.drawMenuFrame(surf, menu);
+    const [tx, ty] = this.drawMenuFrame(surf, menu, this.controlsBg);
     const buttons = getSprite('buttons');
     const end = Math.min(menu.count, menu.scroll + MENU_LIMIT);
     for (let i = menu.scroll; i < end; i++) {

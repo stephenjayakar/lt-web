@@ -333,3 +333,106 @@ test('the unit panel lets map sprites show through like Python (the Act 2 "glyph
   const changed = withShip.screen.filter((value, i) => value !== withoutShip.screen[i]).length;
   expect(changed).toBeGreaterThan(20);
 });
+
+test('EOtF weather window sits above the terrain box with palette-snapped icons', async ({ page }, testInfo) => {
+  await bootLevel(page);
+  await page.evaluate(async () => {
+    const sprites = await import('/src/ui/sprites.ts');
+    await sprites.preloadSprites(['Weather_Window', 'Weather_Window1', 'Sun_Icon', 'Rain_Icon', 'Sand_Icon', 'Snow_Icon']);
+  });
+  // Unset (Python Counter default 0): no window.
+  await cursorTo(page, 5, 3);
+  expect((await layout(page)).weather).toBeUndefined();
+
+  await page.evaluate(() => {
+    const game = (window as any).__gameRef;
+    game.levelVars.set('current_weather', 'Rain');
+    game.levelVars.set('next_weather', 'Snow');
+  });
+  // Same side as the tile box, 48 px off the bottom: (190, 88) or (5, 88).
+  await cursorTo(page, 5, 3);
+  let boxes = await layout(page);
+  expect(boxes.weather).toEqual([240 - 45 - 5, 160 - 24 - 48, 45, 24]);
+  await page.locator('canvas').screenshot({ path: testInfo.outputPath('hud-weather-right.png') });
+  await cursorTo(page, 12, 8, 2);
+  boxes = await layout(page);
+  expect(boxes.weather[0]).toBeGreaterThan(240 - 45 - 5);
+  await cursorTo(page, 12, 8, 10);
+  boxes = await layout(page);
+  expect(boxes.weather).toEqual([5, 88, 45, 24]);
+  expect(boxes.tile).toEqual([5, 113, 45, 44]);
+  await page.locator('canvas').screenshot({ path: testInfo.outputPath('hud-weather-left.png') });
+
+  const pixels = await page.evaluate(() => {
+    const surf = (window as any).__gameRef.hud.createWeatherInfo((window as any).__gameRef);
+    return [surf.getPixel(5, 8), surf.getPixel(7, 8), surf.getPixel(9, 8)].map((p: number[]) => p.slice(0, 3));
+  });
+  // The fork engine's own render of Rain -> Snow on skin 1: the icons' colours
+  // snap to the 8-bit window's palette (Rain_Icon has 184,200,216 and
+  // 240,240,248 and 192,136,192 at these pixels).
+  expect(pixels).toEqual([[147, 196, 204], [255, 255, 255], [176, 136, 224]]);
+});
+
+test('EOtF forecast prints 100-998 as digits and keeps blue_100 for 999+', async ({ page }) => {
+  await bootLevel(page);
+  const result = await page.evaluate(async () => {
+    const game = (window as any).__gameRef;
+    const harness = (window as any).__harness;
+    const sprites = await import('/src/ui/sprites.ts');
+    await sprites.preloadSprites(['attack_info_red', 'attack_info_crit_red', 'blue_100', 'arrow_advantage']);
+    const { setForkEngine } = await import('/src/engine/engine-flavor.ts');
+    const { getEquippedWeapon } = await import('/src/combat/combat-calcs.ts');
+    harness.setUnitIdentity('104', { team: 'player' });
+    harness.warpUnit('104', 6, 6);
+    harness.warpUnit('103_grounded', 7, 6);
+    for (const nid of ['104', '103_grounded']) {
+      game.getUnit(nid).klass = 'Lord';
+      game.getUnit(nid).wexp.Sword = 999;
+    }
+    harness.giveItem('104', 'Iron_Sword');
+    harness.equipItem('104', 'Iron_Sword');
+    const attacker = game.getUnit('104');
+    const defender = game.getUnit('103_grounded');
+    const weapon = getEquippedWeapon(attacker, game.db, game);
+    const { Surface } = await import('/src/engine/surface.ts');
+    const { FONT } = await import('/src/rendering/bmp-font.ts');
+    const blue100 = sprites.getSprite('blue_100');
+    const render = (fork: boolean) => {
+      const glyphs: number[] = [];
+      const texts: string[] = [];
+      const blit = Surface.prototype.blit;
+      const blitRight = FONT['text-blue'].blitRight;
+      Surface.prototype.blit = function (src: any, x?: number, y?: number) {
+        if (src === blue100) glyphs.push(x!);
+        return blit.call(this, src, x, y);
+      };
+      FONT['text-blue'].blitRight = function (surf: any, text: string, x: number, y: number, color?: string) {
+        texts.push(`${text}@${x}`);
+        return blitRight.call(this, surf, text, x, y, color);
+      };
+      setForkEngine(fork);
+      try {
+        game.hud.createAttackInfo(game, attacker, weapon, defender, null, null);
+      } finally {
+        setForkEngine(true);
+        Surface.prototype.blit = blit;
+        FONT['text-blue'].blitRight = blitRight;
+      }
+      return { glyphs, texts };
+    };
+    attacker.stats.SKL = 200;
+    attacker.stats.STR = 300;
+    const hundreds = render(true);
+    const upstream = render(false);
+    attacker.stats.STR = 3000;
+    const huge = render(true);
+    return { hundreds, upstream, huge };
+  });
+  // Python blit_num: 100-998 right-aligned 2 px further right than the column
+  // (the attacker column ends at x 88), 999+ the blue_100 glyph at x - 15.
+  expect(result.hundreds.glyphs).toEqual([]);
+  expect(result.hundreds.texts).toEqual(expect.arrayContaining(['100@90']));
+  expect(result.hundreds.texts.some((t: string) => /^\d{3}@90$/.test(t) && !t.startsWith('100'))).toBe(true);
+  expect(result.upstream.glyphs.length).toBeGreaterThanOrEqual(2);
+  expect(result.huge.glyphs).toEqual([88 - 15]);
+});

@@ -49,6 +49,8 @@ import {
   noAttackAfterMove as skillNoAttackAfterMove,
 } from '../combat/skill-system';
 import { isForkEngine } from '../engine/engine-flavor';
+import { EquipItemAction } from '../engine/action';
+import { getSkillAbilityOptions } from '../combat/skill-abilities';
 import { evaluateCondition } from '../events/event-manager';
 import type { ConditionContext } from '../events/event-manager';
 import { SkillObject } from '../objects/skill';
@@ -233,6 +235,7 @@ export class AIController {
 
       // Try primary AI (attack)
       const primaryAction = this.primaryAI(unit, validMoves, enemies, offenseBias);
+      this.applyPrimaryEquipState(unit, action);
       if (primaryAction) return primaryAction;
 
       // Python falls back to SecondaryAI over every get_targets() position;
@@ -252,6 +255,7 @@ export class AIController {
 
       // Try primary AI: use a healing item/staff on an ally (or self)
       const primaryAction = this.supportPrimaryAI(unit, validMoves, inRange, selfDamaged);
+      this.applyPrimaryEquipState(unit, action);
       if (primaryAction) return primaryAction;
 
       // Python SecondaryAI over every allied target (help term 100).
@@ -264,6 +268,7 @@ export class AIController {
       const targets = this.getTargets(unit, behaviour);
       const enemies = this.filterByViewRange(unit, targets, behaviour.view_range);
       const primaryAction = this.stealPrimaryAI(unit, validMoves, enemies);
+      this.applyPrimaryEquipState(unit, action);
       if (primaryAction) return primaryAction;
       // Python SecondaryAI scores every Steal target 0 (fork) / None
       // (upstream), so a thief with nothing to steal in reach never advances.
@@ -556,6 +561,12 @@ export class AIController {
     };
     for (const item of unit.items) visit(item);
     return result;
+  }
+
+  /** Python skill_system.get_extra_abilities items, in skill order. */
+  private abilityItems(unit: UnitObject): ItemObject[] {
+    if (!this.gameRef?.items) return [];
+    return getSkillAbilityOptions(this.gameRef, unit).map((option) => option.item);
   }
 
   private getTargets(unit: UnitObject, behaviour: AiBehavior): UnitObject[] {
@@ -902,13 +913,19 @@ export class AIController {
     // Python PrimaryAI treats extra abilities (combat arts) as additional
     // items and evaluates them through the same target/priority loop.
     const variants: { weapon: ItemObject; combatArt?: CombatArtOption }[] = [];
-    for (const item of this.allItems(unit)) {
+    // Python PrimaryAI tests the inventory and then the unit's extra
+    // abilities (skill-granted items such as Self Destruct or Rush Pulse).
+    for (const item of [...this.allItems(unit), ...this.abilityItems(unit)]) {
       if (!item.isWeapon() && !item.isSpell()) continue;
       if (item.hasComponent('sequence_item')) continue;
       if (itemAvailable(unit, item, this.db, this.gameRef)) variants.push({ weapon: item });
     }
-    for (const option of getCombatArtOptions(this.gameRef, unit, false)) {
-      for (const weapon of option.weapons) variants.push({ weapon, combatArt: option });
+    // EOtF's engine never tries combat arts in the AI (neither does upstream
+    // lt-maker); other projects keep the web's combat-art scoring.
+    if (!isForkEngine()) {
+      for (const option of getCombatArtOptions(this.gameRef, unit, false)) {
+        for (const weapon of option.weapons) variants.push({ weapon, combatArt: option });
+      }
     }
     if (variants.length === 0) return null;
 
@@ -917,7 +934,7 @@ export class AIController {
     let bestAction: AIAction | null = null;
 
     for (const variant of variants) {
-      this.withCombatArt(unit, variant.combatArt, () => {
+      this.withCombatArt(unit, variant.combatArt, () => this.withEquipped(unit, variant.weapon, () => {
         const item = variant.weapon;
         const noMoveAttack = itemNoAttackAfterMove(unit, item) ||
           skillNoAttackAfterMove(unit, { game: this.gameRef, item });
@@ -974,7 +991,7 @@ export class AIController {
             }
           }
         }
-      });
+      }));
     }
 
     return bestAction;
@@ -1333,6 +1350,51 @@ export class AIController {
       if (index >= 0) unit.skills.splice(index, 1);
       if (oldActive === undefined) option.skill.data.delete('active');
       else option.skill.data.set('active', oldActive);
+    }
+  }
+
+  /**
+   * Python PrimaryAI equips every candidate item it can while testing it
+   * (Attack and Support test each available item; Steal only its ability)
+   * and, when done, re-equips unit.items[0] if it can. So after thinking each
+   * slot holds items[0] when that is equippable, otherwise the last
+   * equippable item tested -- not necessarily the weapon held before. The net
+   * result is applied as at most one EquipItem per slot.
+   */
+  private applyPrimaryEquipState(unit: UnitObject, action: string): void {
+    const tested = action === 'Steal'
+      ? []
+      : this.allItems(unit).filter((item) => itemAvailable(unit, item, this.db, this.gameRef));
+    let weapon = unit.equippedWeapon;
+    let accessory = unit.equippedAccessory;
+    const equip = (item: ItemObject | undefined) => {
+      if (!item || !unit.canEquip(item)) return;
+      if (item.isAccessory()) accessory = item;
+      else weapon = item;
+    };
+    for (const item of tested) equip(item);
+    equip(unit.items[0]);
+    for (const item of [weapon, accessory]) {
+      if (!item || item === unit.equippedWeapon || item === unit.equippedAccessory) continue;
+      const equipAction = new EquipItemAction(unit, item);
+      if (this.gameRef?.actionLog) this.gameRef.actionLog.doAction(equipAction);
+      else equipAction.execute();
+    }
+  }
+
+  /**
+   * Python PrimaryAI.item_setup equips the item under test when it can, so
+   * hooks and conditions that read the equipped weapon see it while scoring.
+   */
+  private withEquipped<T>(unit: UnitObject, item: ItemObject, callback: () => T): T {
+    if (item.isAccessory() || item === unit.equippedWeapon || !unit.canEquip(item)) return callback();
+    const previous = unit.equippedWeapon;
+    unit.equip(item);
+    try {
+      return callback();
+    } finally {
+      if (previous) unit.equip(previous);
+      else unit.unequip(item);
     }
   }
 

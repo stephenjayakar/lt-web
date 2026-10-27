@@ -24,6 +24,7 @@ import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
 import { baseSurf, blitSub, blitText, blitTextRight, getSprite, preloadSprites, textWidth, type SpriteImage } from '../../ui/menu-chrome';
 import { drawStyledText } from '../../ui/styled-text';
+import { startupSkinnedSpriteName } from '../../ui/sprites';
 
 // ---------------------------------------------------------------------------
 // Lazy game reference — same pattern as game-states.ts
@@ -116,10 +117,13 @@ class TurnwheelDisplay {
   }
 }
 
-/** base_surf.create_base_surf(48, 24) made translucent by .1. */
+/**
+ * base_surf.create_base_surf(48, 24) made translucent by .1. The bare call
+ * keeps EOtF's startup window skin.
+ */
 function translucentBox(): Surface {
   const box = new Surface(48, 24);
-  const bg = baseSurf(48, 24);
+  const bg = baseSurf(48, 24, startupSkinnedSpriteName('menu_bg_base'));
   const alpha = bg.getAlpha();
   bg.setAlpha(0.9);
   box.blit(bg, 0, 0);

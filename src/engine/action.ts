@@ -19,6 +19,7 @@ import { skillCondition } from '../combat/item-system';
 import { applyExpGain, autoLevelUnit } from './leveling';
 import { triggerInterruptRegions } from '../movement/region-interrupt';
 import { isForkEngine } from './engine-flavor';
+import { setCombatRandomState, type RandomGameState } from './static-random';
 import type { InitiativeTracker } from './initiative';
 import type { RegionData } from '../data/types';
 import type { GameState } from './game-state';
@@ -448,7 +449,12 @@ export class ActionLog {
     if (idx === -1) return;
     const toProcess = this.actions.slice(idx).reverse();
     for (const act of toProcess) {
-      if (act.persistThroughMenuCancel) {
+      // EOtF's engine predates persist_through_menu_cancel: its hard_remove
+      // keeps only equips and bring-to-top, so items stored through Supply
+      // from the unit menu come back when the move is cancelled.
+      const persists = act.persistThroughMenuCancel &&
+        !(isForkEngine() && act instanceof StoreItemAction);
+      if (persists) {
         continue;
       }
       act.reverse();
@@ -2179,7 +2185,12 @@ export class RemoveRegionAction extends Action {
   }
 }
 
-/** Python action.AddTag: add a unit tag once, reversibly. */
+/**
+ * Python action.AddTag: add a unit tag, reversibly. Upstream keeps personal
+ * tags as a set, so adding a held tag does nothing. EOtF's engine keeps them
+ * as a list and appends every time, so a tag added twice survives one
+ * remove_tag (EOtF re-adds Blacklist and Deployed from several events).
+ */
 export class AddTagAction extends Action {
   private unit: UnitObject;
   private tag: string;
@@ -2192,7 +2203,7 @@ export class AddTagAction extends Action {
   }
 
   execute(): void {
-    this.didAdd = !this.unit.tags.includes(this.tag);
+    this.didAdd = isForkEngine() || !this.unit.tags.includes(this.tag);
     if (this.didAdd) this.unit.tags.push(this.tag);
   }
 
@@ -2203,7 +2214,7 @@ export class AddTagAction extends Action {
   }
 }
 
-/** Python action.RemoveTag: remove a unit tag, reversibly. */
+/** Python action.RemoveTag: remove one copy of a unit tag, reversibly. */
 export class RemoveTagAction extends Action {
   private unit: UnitObject;
   private tag: string;
@@ -2283,11 +2294,43 @@ export class ProcessStatusEffectsAction extends Action {
 }
 
 /**
+ * Python action.RecordRandomState: the combat stream moved from `before` to
+ * `after` outside the solver (gba_poison, item-use strikes). The first do is
+ * a no-op in Python; execute here sets the after-state, which is already the
+ * live state the first time, so redo and the first run agree.
+ */
+export class RecordCombatRandomStateAction extends Action {
+  private game: RandomGameState;
+  private before: number;
+  private after: number;
+
+  constructor(game: RandomGameState, before: number, after: number) {
+    super();
+    this.game = game;
+    this.before = before;
+    this.after = after;
+  }
+
+  execute(): void {
+    setCombatRandomState(this.game, this.after);
+  }
+
+  reverse(): void {
+    setCombatRandomState(this.game, this.before);
+  }
+}
+
+/**
  * WaitAction - Mark a unit as finished for the turn.
  */
 export class WaitAction extends Action {
   private unit: UnitObject;
-  private previous: boolean = false;
+  private previous: {
+    finished: boolean;
+    hasAttacked: boolean;
+    hasTraded: boolean;
+    hasMoved: boolean;
+  } | null = null;
   private regionRemovals: RemoveRegionAction[] | null = null;
 
   constructor(unit: UnitObject) {
@@ -2307,14 +2350,24 @@ export class WaitAction extends Action {
           .map((region) => new RemoveRegionAction(region.nid, regions))
         : [];
     }
-    this.previous = this.unit.finished;
+    // Python Wait.do sets has_moved, has_traded and has_attacked along with
+    // finished; reverse restores the whole get_action_state() tuple.
+    this.previous = {
+      finished: this.unit.finished,
+      hasAttacked: this.unit.hasAttacked,
+      hasTraded: this.unit.hasTraded,
+      hasMoved: this.unit.hasMoved,
+    };
+    this.unit.hasMoved = true;
+    this.unit.hasTraded = true;
+    this.unit.hasAttacked = true;
     this.unit.finished = true;
     for (const removal of this.regionRemovals) removal.execute();
   }
 
   reverse(): void {
     for (const removal of [...(this.regionRemovals ?? [])].reverse()) removal.reverse();
-    this.unit.finished = this.previous;
+    if (this.previous) Object.assign(this.unit, this.previous);
   }
 }
 
@@ -2471,12 +2524,15 @@ export class GainExpAction extends Action {
   private startGrowthPoints: Record<string, number> = {};
   private startHp: number = 0;
   private applied: number = 0;
+  /** Python's `bonus_exp` ExpState: its level-ups also raise current HP. */
+  private bonusExp: boolean;
 
-  constructor(unit: UnitObject, amount: number, growthMode: string = 'random') {
+  constructor(unit: UnitObject, amount: number, growthMode: string = 'random', bonusExp: boolean = false) {
     super();
     this.unit = unit;
     this.amount = amount;
     this.growthMode = growthMode;
+    this.bonusExp = bonusExp;
   }
 
   execute(): void {
@@ -2487,7 +2543,7 @@ export class GainExpAction extends Action {
     this.startHp = this.unit.currentHp;
     // Python routes exp through ExpState, which clamps the gain at the level
     // cap (get_level_cap) and grants nothing when can_give_exp fails.
-    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.());
+    const result = applyExpGain(this.unit, this.amount, this.growthMode, _getGame?.(), this.bonusExp);
     this.applied = result.applied;
     this.levelUps = result.levelUps;
   }
@@ -3218,6 +3274,11 @@ export class DropAction extends Action {
   private oldHasDropped: boolean;
   private removedPenalty: IndexedSkill[] = [];
   private initialized = false;
+  /** Python Drop: only a droppee of the phase's team is waited. */
+  private waitDroppee: boolean;
+  private oldDroppeeState: {
+    hasMoved: boolean; hasTraded: boolean; hasAttacked: boolean; finished: boolean;
+  } | null = null;
 
   constructor(rescuer: UnitObject, target: UnitObject, board: GameBoard, dropPos: [number, number]) {
     super();
@@ -3227,6 +3288,7 @@ export class DropAction extends Action {
     this.dropPos = dropPos;
     this.oldTraveler = rescuer.traveler;
     this.oldHasDropped = rescuer.hasDropped;
+    this.waitDroppee = target.team === _getGame?.()?.phase?.getCurrent?.();
   }
 
   execute(): void {
@@ -3246,9 +3308,24 @@ export class DropAction extends Action {
     this.rescuer.traveler = null;
     this.rescuer.hasDropped = true;
     this.board.setUnit(this.dropPos[0], this.dropPos[1], this.target);
+    if (this.waitDroppee) {
+      // Python Drop waits a droppee of the current phase's team, so a unit
+      // carried and set down this turn cannot act again.
+      this.oldDroppeeState = {
+        hasMoved: this.target.hasMoved,
+        hasTraded: this.target.hasTraded,
+        hasAttacked: this.target.hasAttacked,
+        finished: this.target.finished,
+      };
+      this.target.hasMoved = true;
+      this.target.hasTraded = true;
+      this.target.hasAttacked = true;
+      this.target.finished = true;
+    }
   }
 
   reverse(): void {
+    if (this.oldDroppeeState) Object.assign(this.target, this.oldDroppeeState);
     this.board.removeUnit(this.target);
     restoreIndexedSkills(this.rescuer, this.removedPenalty);
     this.rescuer.rescuing = this.target;
@@ -3336,6 +3413,8 @@ export class DeathAction extends Action {
   private initiativeIndex = -1;
   private tetherActions: RemoveSkillAction[] = [];
   private initializedTether = false;
+  /** Python Die.do: the carried traveler is dropped (and maybe Reset). */
+  private dropActions: Action[] | null = null;
 
   constructor(unit: UnitObject, board: GameBoard, initiative: InitiativeTracker | null = null) {
     super();
@@ -3355,6 +3434,24 @@ export class DeathAction extends Action {
     }
     this.unit.dead = true;
     this.board.removeUnit(this.unit);
+    if (this.dropActions === null) {
+      // Python Die.do: a dying rescuer sets its traveler down on its own tile
+      // (Separate under pair-up), and a traveler outside its own phase is
+      // then Reset, which runs on_refresh in EOtF's engine.
+      this.dropActions = [];
+      const game = _getGame?.();
+      const traveler: UnitObject | undefined = this.unit.traveler
+        ? game?.units?.get?.(this.unit.traveler)
+        : undefined;
+      if (traveler && this.position) {
+        const pos: [number, number] = [this.position[0], this.position[1]];
+        this.dropActions.push(game?.db?.getConstant?.('pairup', false)
+          ? new SeparatePairUpAction(this.unit, traveler, this.board, game.db, pos, true)
+          : new DropAction(this.unit, traveler, this.board, pos));
+        if (game?.phase?.getCurrent?.() !== traveler.team) this.dropActions.push(new ResetAction(traveler));
+      }
+    }
+    for (const action of this.dropActions) action.execute();
     if (!this.initializedTether) {
       this.initializedTether = true;
       const game = _getGame?.();
@@ -3371,6 +3468,7 @@ export class DeathAction extends Action {
 
   reverse(): void {
     for (const action of [...this.tetherActions].reverse()) action.reverse();
+    for (const action of [...(this.dropActions ?? [])].reverse()) action.reverse();
     this.unit.dead = this.wasDead;
     if (this.position) this.board.setUnit(this.position[0], this.position[1], this.unit);
     if (this.initiative && this.initiativeLine && this.initiativeValues) {
@@ -4080,6 +4178,38 @@ export class AutoLevelAction extends Action {
   }
 }
 
+/** A unit's equipped slots and item order, for exact rewind of recalc_unit. */
+interface EquipState {
+  weapon: ItemObject | null;
+  accessory: ItemObject | null;
+  items: ItemObject[];
+}
+
+function captureEquipState(unit: UnitObject): EquipState {
+  return { weapon: unit.equippedWeapon, accessory: unit.equippedAccessory, items: [...unit.items] };
+}
+
+/**
+ * Python AddSkill/RemoveSkill are wrapped in @recalculate_unit, whose
+ * recalc_unit calls unit.autoequip(): a status that makes the weapon
+ * unavailable (cannot_use_items on Stunned/Sleep) unequips it, and losing it
+ * equips the first usable weapon again. Python's reverse autoequips too; the
+ * web restores the exact prior slots and order so the turnwheel replays.
+ */
+function restoreEquipState(unit: UnitObject, state: EquipState): void {
+  if (unit.equippedWeapon !== state.weapon) {
+    if (state.weapon) unit.equip(state.weapon);
+    else if (unit.equippedWeapon) unit.unequip(unit.equippedWeapon);
+  }
+  if (unit.equippedAccessory !== state.accessory) {
+    if (state.accessory) unit.equip(state.accessory);
+    else if (unit.equippedAccessory) unit.unequip(unit.equippedAccessory);
+  }
+  if (state.items.length === unit.items.length && state.items.every((item) => unit.items.includes(item))) {
+    unit.items.splice(0, unit.items.length, ...state.items);
+  }
+}
+
 /** Add an already-created skill object, avoiding duplicates, reversibly. */
 export class AddSkillAction extends Action {
   private unit: UnitObject;
@@ -4093,6 +4223,8 @@ export class AddSkillAction extends Action {
   private statusReactionActions: Action[] = [];
   private initializedStatusReactions = false;
 
+  private equipBefore: EquipState | null = null;
+
   constructor(unit: UnitObject, skill: SkillObject) {
     super();
     this.unit = unit;
@@ -4101,6 +4233,12 @@ export class AddSkillAction extends Action {
   }
 
   execute(): void {
+    this.equipBefore = captureEquipState(this.unit);
+    this.addSkill();
+    this.unit.autoequip();
+  }
+
+  private addSkill(): void {
     const sameNid = this.unit.skills.filter((skill) => skill.nid === this.skill.nid);
     const hasStackComponent = this.skill.hasComponent('stack') || this.skill.hasComponent('stax');
     const configuredStack = Number(
@@ -4273,6 +4411,11 @@ export class AddSkillAction extends Action {
   }
 
   reverse(): void {
+    this.removeAddedSkill();
+    if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
+  }
+
+  private removeAddedSkill(): void {
     if (this.added) {
       for (const action of [...this.statusReactionActions].reverse()) action.reverse();
       const index = this.unit.skills.indexOf(this.skill);
@@ -4330,6 +4473,14 @@ export class RemoveSkillAction extends Action {
     });
   }
   execute(): void {
+    this.equipBefore = captureEquipState(this.unit);
+    this.removeSkill();
+    this.unit.autoequip();
+  }
+
+  private equipBefore: EquipState | null = null;
+
+  private removeSkill(): void {
     this.index = this.unit.skills.indexOf(this.skill);
     if (this.index >= 0) this.unit.skills.splice(this.index, 1);
     if (this.index >= 0) this.skill.ownerNid = null;
@@ -4354,6 +4505,7 @@ export class RemoveSkillAction extends Action {
     for (const action of [...this.multiSkillActions].reverse()) action.reverse();
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
     this.refreshVariantSprite();
+    if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
   }
 
   private refreshVariantSprite(): void {
