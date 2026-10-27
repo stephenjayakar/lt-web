@@ -164,6 +164,38 @@ function literal(value: unknown): string {
   return JSON.stringify(value).replace(/;/g, '');
 }
 
+/**
+ * A promoted or reclassed unit whose new class wields none of its starting
+ * weapon types (Viran's knives as a Wyvern Lord) gets an E-rank weapon of
+ * the class's first usable type and the wexp to use it, so the default QA
+ * party is not left unarmed.
+ */
+function starterWeapon(game: any, unitNid: string, prefab: any, classNid: string): string[] {
+  const klass = game.db.classes.get(classNid);
+  const gains: Record<string, unknown> = klass?.wexp_gain ?? {};
+  const usable = Object.entries(gains)
+    .filter(([type, gain]) => type !== 'Default' && Array.isArray(gain) && !!gain[0])
+    .map(([type]) => type);
+  if (usable.length === 0) return [];
+  const typeOf = (itemNid: string): string | null => {
+    const components: [string, unknown][] = game.db.items.get(itemNid)?.components ?? [];
+    const found = components.find(([name]) => name === 'weapon_type');
+    return found ? String(found[1]) : null;
+  };
+  const owned = ((prefab?.starting_items ?? []) as unknown[])
+    .map((entry) => typeOf(Array.isArray(entry) ? String(entry[0]) : String(entry)));
+  if (owned.some((type) => type && usable.includes(type))) return [];
+  const order = ['Sword', 'Lance', 'Axe', 'Bow', 'Knife', 'Anima', 'Light', 'Dark', 'Stone', 'Staff'];
+  const type = [...usable].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99))[0];
+  const weapon = [...game.db.items.values()].find((item: any) => {
+    const components: [string, unknown][] = item.components ?? [];
+    return components.some(([name, value]) => name === 'weapon_type' && value === type) &&
+      components.some(([name, value]) => name === 'weapon_rank' && value === 'E');
+  });
+  if (!weapon) return [];
+  return [`give_wexp;${arg(unitNid)};${arg(type)};1`, `give_item;${arg(unitNid)};${arg(weapon.nid)};no_banner`];
+}
+
 export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResult> {
   const { game } = host;
   const gameSpeed = spec.gameSpeed ?? 1;
@@ -186,8 +218,12 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   const levelTags: string[] = spec.level ? (game.db.levels.get(spec.level)?.tags ?? []) : [];
   const trialFloor = act <= 3 ? act * perAct - 1 : 3 * perAct + 3;
   const bossFloor = act <= 3 ? act * perAct : 3 * perAct + 5;
+  // Elites come from the Act map's room4 (Intro picks elite_fight from the
+  // run's elite pool on any floor); default to the middle of the Act.
+  const eliteFloor = (act - 1) * perAct + Math.ceil(perAct / 2);
   const floor = spec.floor ?? (levelTags.includes('Trial_Map') ? trialFloor
-    : levelTags.includes('Boss_Map') ? bossFloor : (act - 1) * perAct + 1);
+    : levelTags.includes('Boss_Map') ? bossFloor
+      : levelTags.includes('Elite_Map') ? eliteFloor : (act - 1) * perAct + 1);
   const density = spec.density ?? 0;
   const party = (spec.party && spec.party.length > 0 ? spec.party : DEFAULT_PARTY).map(normaliseUnit);
   const promoted = spec.promoted ?? floor > perAct;
@@ -271,6 +307,9 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
     } else if (wantPromote && klass?.turns_into?.length) {
       lines.push(`promote;${arg(unit.nid)};${arg(klass.turns_into[0])};silent`);
     }
+    const newClass = unit.klass && unit.klass !== prefab?.klass ? unit.klass
+      : wantPromote && klass?.turns_into?.length ? klass.turns_into[0] : null;
+    if (newClass) lines.push(...starterWeapon(game, unit.nid, prefab, newClass));
     if (unit.promotedLevel) lines.push(`autolevel_to;${arg(unit.nid)};${unit.promotedLevel}`);
     if (spec.boost && spec.boost > 0) {
       const b = Math.floor(spec.boost);
@@ -326,8 +365,17 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
     // Trials, bosses and elites: the Act's own Talk_Room commands. Other maps
     // (picked at random by Talk_Room): its standard-combat commands.
     const block = spec.reward ? null : talkRoomBlock(game, actNid, spec.level);
-    const reward = spec.reward ?? 'Weapons+';
-    const script = block ?? [
+    const elite = levelTags.includes('Elite_Map');
+    const reward = spec.reward ?? (elite ? 'EXP' : 'Weapons+');
+    // Elites: Talk_Room's room4 block, with elite_fight = this level.
+    const script = block ?? (elite ? [
+      'game_var;in_combat;1',
+      `set_next_chapter;${arg(spec.level)}`,
+      `game_var;fought_elites;(v('fought_elites') or []) + [${literal(spec.level)}]`,
+      `game_var;next_reward;${literal(reward)}`,
+      'skip_save;t',
+      'win_game',
+    ] : null) ?? [
       'game_var;in_combat;1',
       `game_var;seen_maps;v('seen_maps') + [${literal(spec.level)}]`,
       `game_var;next_reward;${literal(reward)}`,

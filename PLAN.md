@@ -195,8 +195,14 @@ The release gate is green: build, all four audits, the full serial suite,
   is Python's TargetingState: SelectionHelper cursor (CPython set order),
   pennant, trade/rescue/give previews; combat and spell targeting move by
   direction too and steal shows the trade preview.
-- [ ] Targeting highlights: Python draws light spell/attack highlight sprites
-  over the whole range plus the cursor tile; the web fills target tiles.
+- [x] Map highlights are Python's HighlightController sprites (grow-in,
+  hover light ranges, move/menu/targeting ranges); camera centring, menu gem
+  and translucency, item panel, unit sprite poses and base Records follow the
+  fork oracle's screens.
+- [ ] Option menu 'Unit' (unit_menu chart) is not ported.
+- [ ] Event `give_exp` (non-silent) skips Python's EXP bar and level screen.
+- [ ] Enemy phase and map combat run on different frame timings than the
+  fork (oracle screenshots at equal frames diverge).
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in
@@ -299,19 +305,34 @@ lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
   (the web accepts it); `load_unit` units miss class skills (Flying) and
   class stat caps (Wall40 HP 30); AI ability use (Temptation → Charm/Seduced)
   and some AI moves differ (Citizens with Defend/Pursue).
+- [ ] AI `Move_to` an occupied `Enemy_Seize` region picks a different stop
+  tile than the fork: level 24 with events off, Player/Gorbat/Pilus/Viran
+  (L14) on the formation tiles, three `end_turn`s; citizen 108 ends at (6,4)
+  on the web and (7,5) in the fork (A* or travel tie-break).
 
-### P8.7 — QA sweep findings (Acts 3–4, bosses, EX, hub)
+### P8.7 — QA sweep findings (Acts 1–2)
+
+`npm run qa:run` sweeps of Acts 1–2.
+
+- [x] AIState kept has_run_ai only until the next pushed state popped (its
+  begin() reset the phase), and AI combats dropped a no_equip skill weapon
+  (Haymaker): one unit attacked forever; the AI canto step never ran.
+- [x] `resurrect` on a dying unit is DeathManager.miracle (TakenPrisoner).
+
+### P8.8 — QA sweep findings (Acts 3–4, bosses, EX, hub)
 
 `npm run qa:run` sweeps (`docs/qa-tools.md`) of Acts 3–4, every Act 3/4
 trial, boss and elite, the EX levels, Boss_Hidden and the hub tour.
 
 - [x] `item.effective_damage.tags` / `.multiplier` (EffectiveDamage
-  properties) in skill expressions.
-- [x] combat_end `playback` holds mark brushes (Item_DeathDance).
+  properties, with their `__init__` defaults) in skill expressions (also
+  Acts 1–2).
+- [x] combat_end `playback` holds mark brushes (Item_DeathDance; Renpet and
+  Critical Reinforcement in Acts 1–2).
 - [x] Unset trigger fields no longer shadow trigger_specific local args
   (event_after_combat playback: Ability_Fili_Flight).
 - [x] win_game ends the level when an event is queued mid-outro (elite
-  outros with interact_unit softlocked, e.g. Gemini).
+  outros with interact_unit softlocked, e.g. Gemini and Nikume).
 - [x] Frameless combat effects (Promotion1/2, spell parents) load no sheet.
 - [ ] Python NameErrors on unit nids substituted into expressions
   (Item_Catcher_SEC `get_item(Player, ...)`, `check_dead`) are reported as

@@ -522,6 +522,12 @@ export class LevelUpScreen {
     }
   }
 
+  /** Supply the unit's portrait once it has loaded (drawn bottom-right). */
+  setPortrait(img: HTMLImageElement | null): void {
+    this.portraitImg = img;
+    this.portraitSurf = null;
+  }
+
   /** The 96x80 portrait with the LT colorkey removed. */
   private getPortrait(): Surface | null {
     if (this.portraitSurf || !this.portraitImg) return this.portraitSurf;

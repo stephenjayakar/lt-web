@@ -868,7 +868,8 @@ class Runner:
                 if trig is None:
                     raise OracleError('unknown trigger class %s' % a['trigger'])
                 e.game.events.trigger(trig(**a.get('args', {})))
-            e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
+            if a.get('settle', True):
+                e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
         finally:
             e._suppress_events = was
 
@@ -948,6 +949,21 @@ class Runner:
 
     def do_settle(self, a) -> None:
         self.e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
+
+    def do_exec(self, a) -> None:
+        """Run a Python statement against the engine (visual set-ups the
+        scenario schema has no action for); `game`, `DB` and `e` are bound."""
+        exec(a['py'], {'game': self.e.game, 'DB': self.e.DB, 'e': self.e})
+
+    def do_shot(self, a) -> None:
+        """Draw one more frame and save the 240x160 screen as
+        $LT_ORACLE_OUT/shots/<scenario>/py-<name>.png."""
+        import pygame
+        for _ in range(int(a.get('frames', 1))):
+            self.e.step(None)
+        out = Path(os.environ.get('LT_ORACLE_OUT', ORACLE_HOME / 'out')) / 'shots' / str(self.s.get('name', 'scenario'))
+        out.mkdir(parents=True, exist_ok=True)
+        pygame.image.save(self.e.surf, str(out / ('py-%s.png' % a['name'])))
 
     def run_action(self, a) -> None:
         fn = getattr(self, 'do_' + a['do'], None)

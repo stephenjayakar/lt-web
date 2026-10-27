@@ -128,6 +128,8 @@ export interface DriverOptions {
   /** QA: every enemy/enemy2 unit gets the 'None' AI (stands still), to walk a boss's event script. */
   passiveEnemies?: boolean;
   hover?: boolean;
+  /** Losses to forgive: a battle's Global_Loss becomes win_game instead. */
+  forgive: number;
 }
 
 /**
@@ -154,7 +156,9 @@ const BROWSE_INPUTS: GameButton[] = ['DOWN', 'DOWN', 'RIGHT', 'DOWN', 'LEFT', 'U
 export class QaDriver {
   mode: DriverMode = 'off';
   policy: Policy;
-  options: DriverOptions = { skipEvents: true, maxTurns: 40, forceWin: false, autoplay: true };
+  options: DriverOptions = { skipEvents: true, maxTurns: 40, forceWin: false, autoplay: true, forgive: 0 };
+  /** Losses forgiven so far in this play. */
+  forgiven = 0;
   /** Hub tour settings (null: the hub is left to jump()). */
   hubTour: HubTourOptions | null = null;
   /** Set once every hub tour target has been visited. */
@@ -680,6 +684,7 @@ export class QaDriver {
   /** Start tracking (called when play starts). */
   beginTracking(): void {
     this.floors = [];
+    this.forgiven = 0;
     this.currentFloor = null;
     this.currentLevel = null;
     this.stopReason = null;
@@ -796,6 +801,26 @@ export class QaDriver {
     level.realMs = Math.round(realNow() - this.levelStartReal);
     level.frames = this.frame - this.levelStartFrame;
     this.currentLevel = null;
+  }
+
+  /**
+   * --forgive: called when the game queues Global_Loss. In a battle level with
+   * budget left, the loss is recorded and the player units that died in this
+   * level are returned; the caller resurrects them and runs win_game, so a
+   * weak policy still reaches the content after it (a story unit such as
+   * Loreia_T is needed again on the next floor). Null: do not forgive.
+   */
+  forgiveLoss(): string[] | null {
+    if (this.mode !== 'play' || this.forgiven >= this.options.forgive) return null;
+    if (!this.currentLevel || this.currentLevel.kind !== 'battle') return null;
+    this.observe();
+    const level = this.currentLevel;
+    if (!level) return null;
+    this.forgiven += 1;
+    level.result = 'lost (forgiven)';
+    const fallen = [...new Set(level.playerDeaths.map((entry) => entry.split('@')[0]))];
+    this.note(`loss forgiven (${this.forgiven}/${this.options.forgive}): win_game${fallen.length ? `, resurrect ${fallen.join(',')}` : ''}`);
+    return fallen;
   }
 
   /** Mark the open battle as lost (game over). */

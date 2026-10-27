@@ -200,4 +200,76 @@ test.describe('Python TargetingState for map abilities', () => {
     expect(result.finished).toBe(false);
     expect(result.top).toBe('menu');
   });
+
+  test('Steal: trade preview while targeting, the picker at the Choice spot, BACK to the menu', async ({ page }) => {
+    await bootHub(page);
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const h = (window as any).__harness;
+      h.setUnitIdentity('Lib', { team: 'enemy' });
+      // GBA steal takes non-weapons only: give Lib a Vulnerary to steal.
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const lib = g.units.get('Lib');
+      const vulnerary = new ItemObject(g.db.items.get('Vulnerary'));
+      vulnerary.owner = lib;
+      lib.items.push(vulnerary);
+      const keeper = g.units.get('Keeper');
+      h.giveItem('Keeper', 'Steal');
+      const steal = keeper.items.find((i: any) => i.nid === 'Steal');
+      g.state.change('menu');
+      h.stepFrames(2, null);
+      g.memory.set('item_use_item', steal);
+      g.state.change('item_targeting');
+      h.stepFrames(3, null);
+      const targeting = g.state.getCurrentState()?.name;
+      const cursor = g.cursor.getPosition();
+      h.stepFrames(1, 'SELECT');
+      h.stepFrames(2, null);
+      const st = g.state.getCurrentState();
+      const picker = st.targetItemMenu?.choice;
+      const pickerInfo = picker ? {
+        topleft: picker.getTopleft(), width: picker.getMenuWidth(),
+        items: picker.options.map((o: any) => o.entry.item?.nid),
+        cursorVisible: g.cursor.visible,
+      } : null;
+      h.stepFrames(1, 'BACK');
+      h.stepFrames(3, null);
+      return { targeting, cursor, pickerInfo, after: g.state.getCurrentState()?.name };
+    });
+    expect(result.targeting).toBe('item_targeting');
+    expect(result.cursor).toEqual([5, 9]);
+    // Python ItemTargetingState: menus.Choice(target, eligible items) at the
+    // automatic spot (cursor right of the middle column -> (14, 8)).
+    expect(result.pickerInfo).toEqual({ topleft: [240 - 104 - 14, 8], width: 104, items: ['Vulnerary'], cursorVisible: false });
+    // BACK pops the picker and the targeting state, back to the action menu.
+    expect(result.after).toBe('menu');
+  });
+
+  test('map highlights: hover shows the light ranges as sprites that grow in', async ({ page }) => {
+    await bootHub(page);
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const h = (window as any).__harness;
+      const sprites = await import('/src/ui/sprites.ts');
+      await sprites.preloadSprites(['highlight_lightblue', 'highlight_lightred', 'highlight_blue', 'highlight_red']);
+      g.cursor.setPos(0, 0);
+      h.stepFrames(3, null);
+      g.cursor.setPos(4, 9);
+      h.stepFrames(1, null);
+      const first = g.highlight.spriteLayers().map((l: any) => [l.type, l.sprite, l.cutoff]);
+      h.stepFrames(10, null);
+      const settled = g.highlight.spriteLayers().map((l: any) => [l.type, l.cutoff]);
+      g.cursor.setPos(0, 0);
+      h.stepFrames(2, null);
+      const cleared = g.highlight.spriteLayers().length;
+      return { first, settled, cleared };
+    });
+    // Keeper (Great_Knight) hovered: light move range and, for its weapons,
+    // the light attack range; a new layer starts 7 px in and grows by a pixel
+    // per drawn frame.
+    expect(result.first.some((l: any[]) => l[0] === 'possible_move' && l[1] === 'highlight_lightblue')).toBe(true);
+    expect(result.first.some((l: any[]) => l[2] > 0)).toBe(true);
+    expect(result.settled.every((l: any[]) => l[1] === 0)).toBe(true);
+    expect(result.cleared).toBe(0);
+  });
 });

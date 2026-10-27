@@ -14,7 +14,8 @@
 
 import { isForkEngine } from '../engine-flavor';
 import { State, type StateResult } from '../state';
-import type { Surface } from '../surface';
+import { Surface } from '../surface';
+import { FONT } from '../../rendering/bmp-font';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
 
@@ -28,6 +29,8 @@ import {
   Table as PrepTable,
   baseSurf as prepBaseSurf,
   createBaseBackground,
+  drawText as prepDrawText,
+  drawTextRight as prepDrawTextRight,
   getPortraitSheet as prepPortraitSheet,
   getSprite as prepGetSprite,
   isFirstPush as prepIsFirstPush,
@@ -564,7 +567,8 @@ export class BaseCodexState extends State {
       options.push({ label: 'Guide', value: 'guide', enabled: true, description: 'Browse strategy guide entries.' });
     }
     if (options.length === 0) {
-      options.push({ label: 'No Entries', value: 'empty', enabled: false, description: 'Nothing has been unlocked yet.' });
+      // Python menus.Choice with no options shows its grey NullOption 'Nothing'.
+      options.push({ label: 'Nothing', value: 'empty', enabled: false, description: '' });
     }
     const [menuX, menuY] = childMenuTopleft(game.memory.get('option_menu'));
     this.menu = new ChoiceMenu(options, menuX, menuY);
@@ -998,32 +1002,86 @@ export class BaseLoreState extends State {
 }
 
 // ============================================================================
-// BaseRecordsState — Chapter turncount + MVP unit-statistic browser
-// Port of lt-maker/app/engine/base.py BaseRecordsState (record_book.py display).
-// Simplification: Python renders two paged Table displays (Records/MVP) with
-// per-chapter and per-unit drill-down sub-screens; the web collapses this to
-// a single scrollable list per tab (LEFT/RIGHT switches Chapters <-> MVP)
-// with the same underlying Recordkeeper statistics.
+// BaseRecordsState — Python base.BaseRecordsState with record_book's displays
+// (RecordsDisplay, MVPDisplay, ChapterStats, UnitStats): each a menus.Choice
+// of 224-wide rows under a banner, LEFT/RIGHT swapping Records and MVP (or the
+// neighbouring chapter/unit), SELECT drilling down, all sliding 16 px/frame.
 // ============================================================================
 
-const RECORDS_HEADER_H = 22;
-const RECORDS_LIST_Y = 27;
-const RECORDS_ROW_H = 14;
-const RECORDS_VISIBLE_ROWS = 6;
+type RecordsMode = 'records' | 'mvp' | 'chapter' | 'unit';
 
-interface ChapterRow {
-  levelNid: string;
-  levelName: string;
-  turncount: number;
+interface RecordsDisplay {
+  choice: PrepChoice;
+  /** Built at draw time: window sprites load asynchronously. */
+  banner: () => Surface;
+  header: string;
 }
 
-interface MvpRow {
-  unitNid: string;
-  unitName: string;
-  kills: number;
-  damage: number;
-  heal: number;
-  score: number;
+/** Python record_book option rows: names in text (narrow when too wide), numbers blue. */
+function recordName(text: string, limit: number): 'narrow' | 'text' {
+  return prepTextWidth(text) > limit ? 'narrow' : 'text';
+}
+
+function makeRecordsDisplay(game: any, rows: ChoiceEntry[], banner: () => Surface, headerKey: string): RecordsDisplay {
+  const entries = [...rows];
+  // set_hard_limit(True): pad to six rows with 224-wide EmptyOptions.
+  while (entries.length < 6) entries.push({ kind: 'custom', width: 224, ignore: true });
+  const choice = new PrepChoice(game, entries, ['center', 28]);
+  choice.gem = false;
+  choice.shimmer = 2;
+  choice.yOffset = 16;
+  choice.setLimit(6);
+  const header = game.db.translate ? game.db.translate(headerKey) : headerKey;
+  return { choice, banner, header };
+}
+
+/** RecordsDisplay.create_top_banner: white bar with total turns and overall MVP. */
+function recordsBanner(game: any, totalTurns: number, mvp: string | null): Surface {
+  const translate = (key: string): string => (game.db.translate ? game.db.translate(key) : key);
+  const bg = prepBaseSurf(224, 24, 'menu_bg_white');
+  const out = new Surface(224, 24);
+  const alpha = bg.getAlpha();
+  bg.setAlpha(0.75);
+  out.blit(bg, 0, 0);
+  bg.setAlpha(alpha);
+  prepDrawText(out, translate('Total Turns'), 4, 4, 'yellow');
+  prepDrawTextRight(out, String(totalTurns), 92, 4, 'blue');
+  prepDrawText(out, translate('Overall MVP'), 100, 4, 'yellow');
+  const unit = mvp ? game.db.units.get(mvp) : null;
+  prepDrawTextRight(out, unit ? unit.name : '--', 216, 4);
+  return out;
+}
+
+/** ChapterStats/UnitStats.create_top_banner: purple_background with the name in chapter-grey. */
+function purpleBanner(name: string, y: number): Surface {
+  const sprite = prepGetSprite('purple_background');
+  const out = new Surface(sprite?.width ?? 224, sprite?.height ?? 24);
+  if (sprite) out.blitImage(sprite, 0, 0, sprite.width, sprite.height, 0, 0);
+  const font = FONT['chapter-grey'];
+  if (font) font.blit(out, name, Math.floor(out.width / 2) - Math.floor(font.width(name) / 2), y);
+  return out;
+}
+
+function levelName(game: any, nid: string): string {
+  return game.db.levels.get(nid)?.name ?? '???';
+}
+
+function unitName(game: any, nid: string): string {
+  return game.db.units.get(nid)?.name ?? '???';
+}
+
+/** LevelRecordOption: rank, unit name, kills, damage, healing. */
+function unitStatRow(game: any, rank: number, nid: string, kills: number, damage: number, heal: number): ChoiceEntry {
+  return {
+    kind: 'custom', width: 224,
+    draw: (surf, x, y) => {
+      prepDrawText(surf, String(rank), x + 4, y, 'yellow');
+      prepDrawText(surf, unitName(game, nid), x + 34, y);
+      prepDrawTextRight(surf, String(kills), x + 114, y, 'blue');
+      prepDrawTextRight(surf, String(damage), x + 164, y, 'blue');
+      prepDrawTextRight(surf, String(heal), x + 210, y, 'blue');
+    },
+  };
 }
 
 export class BaseRecordsState extends State {
@@ -1031,193 +1089,228 @@ export class BaseRecordsState extends State {
   override readonly showMap = false;
   override readonly inLevel = false;
 
-  private bgImage: HTMLImageElement | null = null;
-  private tab: 'chapters' | 'mvp' = 'chapters';
-  private chapters: ChapterRow[] = [];
-  private mvps: MvpRow[] = [];
-  private selectedIndex: number = 0;
-  private scrollOffset: number = 0;
-  private backgroundLoadToken: number = 0;
+  private bg: any = null;
+  private mode: RecordsMode = 'records';
+  private recordMenu: RecordsDisplay | null = null;
+  private mvpMenu: RecordsDisplay | null = null;
+  private chapterMenus: RecordsDisplay[] = [];
+  private unitMenus: RecordsDisplay[] = [];
+  private currentMenu: RecordsDisplay | null = null;
+  private prevMenu: RecordsDisplay | null = null;
+  private currentOffset: [number, number] = [0, 0];
+  private prevOffset: [number, number] = [0, 0];
+  /** Record levels shown (all but the current one) and the MVP unit order. */
+  private levels: string[] = [];
+  private units: string[] = [];
+  /** The Records rows (level, name, turn count), for tooling and tests. */
+  chapters: { levelNid: string; levelName: string; turncount: number }[] = [];
+  /** The MVP rows in score order, for tooling and tests. */
+  mvps: { unitNid: string; unitName: string; kills: number; damage: number; heal: number; score: number }[] = [];
+
+  /** 'chapters' on the Records side (records/chapter), else 'mvp'. */
+  get tab(): 'chapters' | 'mvp' {
+    return this.mode === 'records' || this.mode === 'chapter' ? 'chapters' : 'mvp';
+  }
 
   override start(): StateResult {
-    this.bgImage = null;
-    this.tab = 'chapters';
-    this.selectedIndex = 0;
-    this.scrollOffset = 0;
-    this.reloadEntries();
-    this.loadBackground();
-  }
-
-  override begin(): StateResult {
-    this.reloadEntries();
-  }
-
-  override finish(): void {
-    this.backgroundLoadToken++;
-    this.bgImage = null;
-  }
-
-  private reloadEntries(): void {
     const game = getGame();
+    const base = game.memory.get('base_bg');
+    this.bg = base?.draw ? base : createBaseBackground(game);
     const rk = game.records;
-    const allLevels: string[] = rk?.getLevels?.(game.db.levels) ?? [];
-    // Match Python's record_book.py behavior: records screens omit the current
-    // chapter (last played) in chapter-history lists by slicing it out.
-    const levels: string[] = allLevels.slice(0, -1);
-    const turncounts: number[] = rk?.getTurncounts?.(levels) ?? [];
-    this.chapters = levels.map((levelNid: string, i: number) => ({
-      levelNid,
-      levelName: game.db.levels.get(levelNid)?.name ?? levelNid,
-      turncount: turncounts[i] ?? 0,
+    this.levels = (rk?.getLevels?.(game.db.levels) ?? []).slice(0, -1);
+    const turncounts: number[] = rk?.getTurncounts?.(this.levels) ?? [];
+    const playerUnits = (): string[] => [...game.units.values()]
+      .filter((u: any) => u.team === 'player' && u.persistent)
+      .map((u: any) => u.nid as string);
+    // Python get_mvp scores the persistent player units.
+    const mvps: (string | null)[] = this.levels.map((nid) => rk?.getMvp?.(nid, playerUnits()) ?? null);
+    const byScore = (levelNid?: string) => (a: string, b: string) =>
+      (rk?.determineScore?.(b, levelNid) ?? 0) - (rk?.determineScore?.(a, levelNid) ?? 0);
+
+    // RecordsDisplay: level, turn count, MVP.
+    const recordRows: ChoiceEntry[] = this.levels.map((nid, i) => ({
+      kind: 'custom', width: 224,
+      draw: (surf: Surface, x: number, y: number) => {
+        const name = levelName(game, nid);
+        prepDrawText(surf, name, x + 4, y, null, recordName(name, 96));
+        prepDrawTextRight(surf, String(turncounts[i] ?? 0), x + 120, y, 'blue');
+        const mvp = mvps[i] ? unitName(game, mvps[i]!) : '???';
+        prepDrawTextRight(surf, mvp, x + 196, y, null, recordName(mvp, 72));
+      },
     }));
+    this.chapters = this.levels.map((nid, i) => ({ levelNid: nid, levelName: levelName(game, nid), turncount: turncounts[i] ?? 0 }));
+    const totalTurns = turncounts.reduce((sum, t) => sum + t, 0);
+    const overallMvp: string | null = rk?.getMvp?.(undefined, playerUnits()) ?? null;
+    this.recordMenu = makeRecordsDisplay(game, recordRows, () => recordsBanner(game, totalTurns, overallMvp), 'record_header');
 
-    const unitNids = new Set<string>();
-    for (const unit of game.units.values()) unitNids.add(unit.nid);
-    const playerUnitNids = Array.from(unitNids).filter((unitNid) => {
-      const unit = game.units.get(unitNid);
-      return unit?.team === 'player' && !!unit?.persistent;
+    // ChapterStats: per level, the units that took part, best score first.
+    this.chapterMenus = this.levels.map((levelNid) => {
+      let units = playerUnits().sort(byScore(levelNid)).map((nid) => [
+        nid, rk?.getKills?.(nid, levelNid) ?? 0, rk?.getDamage?.(nid, levelNid) ?? 0, rk?.getHeal?.(nid, levelNid) ?? 0,
+      ] as [string, number, number, number]).filter(([, k, d, h]) => k > 0 || d > 0 || h > 0);
+      if (!units.length) {
+        const first = [...game.units.values()].find((u: any) => u.team === 'player' && u.persistent);
+        units = first ? [[first.nid, 0, 0, 0]] : [];
+      }
+      const rows = units.map(([nid, k, d, h], i) => unitStatRow(game, i + 1, nid, k, d, h));
+      return makeRecordsDisplay(game, rows, () => purpleBanner(levelName(game, levelNid), 4), 'unit_record_header');
     });
-    this.mvps = playerUnitNids.map((unitNid) => ({
-      unitNid,
-      unitName: game.units.get(unitNid)?.name ?? unitNid,
-      kills: rk?.getKills?.(unitNid) ?? 0,
-      damage: rk?.getDamage?.(unitNid) ?? 0,
-      heal: rk?.getHeal?.(unitNid) ?? 0,
-      score: rk?.determineScore?.(unitNid) ?? 0,
-    })).sort((a, b) => b.score - a.score);
 
-    this.selectedIndex = 0;
-    this.scrollOffset = 0;
+    // MVPDisplay: every player unit by overall score.
+    this.units = playerUnits().sort(byScore());
+    this.mvps = this.units.map((nid) => ({
+      unitNid: nid,
+      unitName: game.units.get(nid)?.name ?? nid,
+      kills: rk?.getKills?.(nid) ?? 0,
+      damage: rk?.getDamage?.(nid) ?? 0,
+      heal: rk?.getHeal?.(nid) ?? 0,
+      score: rk?.determineScore?.(nid) ?? 0,
+    }));
+    const mvpRows = this.units.map((nid, i) =>
+      unitStatRow(game, i + 1, nid, rk?.getKills?.(nid) ?? 0, rk?.getDamage?.(nid) ?? 0, rk?.getHeal?.(nid) ?? 0));
+    this.mvpMenu = makeRecordsDisplay(game, mvpRows, () => recordsBanner(game, totalTurns, overallMvp), 'unit_record_header');
+
+    // UnitStats: per unit, kills/damage/healing on each level.
+    this.unitMenus = this.units.map((unitNid) => {
+      const rows: ChoiceEntry[] = this.levels.map((levelNid) => ({
+        kind: 'custom', width: 224,
+        draw: (surf: Surface, x: number, y: number) => {
+          prepDrawText(surf, levelName(game, levelNid), x + 4, y);
+          prepDrawTextRight(surf, String(rk?.getKills?.(unitNid, levelNid) ?? 0), x + 114, y, 'blue');
+          prepDrawTextRight(surf, String(rk?.getDamage?.(unitNid, levelNid) ?? 0), x + 164, y, 'blue');
+          prepDrawTextRight(surf, String(rk?.getHeal?.(unitNid, levelNid) ?? 0), x + 210, y, 'blue');
+        },
+      }));
+      return makeRecordsDisplay(game, rows, () => purpleBanner(unitName(game, unitNid), 5), 'mvp_record_header');
+    });
+
+    this.mode = 'records';
+    this.currentMenu = this.recordMenu;
+    this.prevMenu = null;
+    this.currentOffset = [0, 0];
+    this.prevOffset = [0, 0];
   }
 
-  private currentRows(): ChapterRow[] | MvpRow[] {
-    return this.tab === 'chapters' ? this.chapters : this.mvps;
+  /** The record menus' current row (skipping padding rows). */
+  private currentIndex(menu: RecordsDisplay | null): number {
+    return menu?.choice.currentIndex ?? 0;
   }
 
-  private loadBackground(): void {
+  private slide(menu: RecordsDisplay | null, dx: number, dy: number): void {
+    this.prevMenu = this.currentMenu;
+    this.currentMenu = menu;
+    this.currentOffset = [dx * viewport.width, dy * viewport.height];
+    this.prevOffset = [-dx, -dy];
+  }
+
+  private moveHorizontal(direction: 1 | -1): void {
     const game = getGame();
-    const bgName = String(game.gameVars.get('_base_bg_name') || 'default_background');
-    const token = ++this.backgroundLoadToken;
-    void game.resources.tryLoadImage(`resources/panoramas/${bgName}.png`)
-      .then((img: HTMLImageElement | null) => {
-        if (token === this.backgroundLoadToken) this.bgImage = img;
-      });
-  }
-
-  private getVisibleRowCount(): number {
-    const footerTop = viewport.height - 18;
-    const available = footerTop - RECORDS_LIST_Y;
-    return Math.max(1, Math.min(RECORDS_VISIBLE_ROWS, Math.floor(available / RECORDS_ROW_H)));
-  }
-
-  private keepSelectionVisible(): void {
-    const visibleRows = this.getVisibleRowCount();
-    if (this.selectedIndex < this.scrollOffset) {
-      this.scrollOffset = this.selectedIndex;
-    } else if (this.selectedIndex >= this.scrollOffset + visibleRows) {
-      this.scrollOffset = this.selectedIndex - visibleRows + 1;
+    game.audioManager?.playSfx?.('Status_Page_Change');
+    let next = this.currentMenu;
+    if (this.mode === 'records') {
+      this.mode = 'mvp';
+      next = this.mvpMenu;
+    } else if (this.mode === 'mvp') {
+      this.mode = 'records';
+      next = this.recordMenu;
+    } else if (this.mode === 'chapter' && this.recordMenu) {
+      if (direction > 0) this.recordMenu.choice.moveDown(true);
+      else this.recordMenu.choice.moveUp(true);
+      next = this.chapterMenus[this.currentIndex(this.recordMenu)] ?? next;
+    } else if (this.mode === 'unit' && this.mvpMenu) {
+      if (direction > 0) this.mvpMenu.choice.moveDown(true);
+      else this.mvpMenu.choice.moveUp(true);
+      next = this.unitMenus[this.currentIndex(this.mvpMenu)] ?? next;
     }
-  }
-
-  private moveSelection(delta: number): void {
-    const rows = this.currentRows();
-    if (rows.length === 0) return;
-    this.selectedIndex = (this.selectedIndex + delta + rows.length) % rows.length;
-    this.keepSelectionVisible();
-  }
-
-  private switchTab(): void {
-    this.tab = this.tab === 'chapters' ? 'mvp' : 'chapters';
-    this.selectedIndex = 0;
-    this.scrollOffset = 0;
+    this.slide(next, direction, 0);
   }
 
   override takeInput(event: InputEvent): StateResult {
     const game = getGame();
-    if (game.input?.mouseClick === 'BACK' || event === 'BACK') {
-      game.audioManager?.playSfx?.('Select 4');
-      game.state.back();
-      return;
-    }
-
+    const sfx = (name: string): void => game.audioManager?.playSfx?.(name);
+    const menu = this.currentMenu;
+    if (!menu) return;
+    const [ox, oy] = screenOrigin();
     if (game.input?.mouseMoved || game.input?.mouseClick === 'SELECT') {
       const [mx, my] = game.input.getGameMousePos();
-      const row = Math.floor((my - RECORDS_LIST_Y) / RECORDS_ROW_H);
-      const index = this.scrollOffset + row;
-      const rows = this.currentRows();
-      if (mx >= 7 && mx <= viewport.width - 7 && row >= 0 && row < this.getVisibleRowCount() && index < rows.length) {
-        if (index !== this.selectedIndex) game.audioManager?.playSfx?.('Select 6');
-        this.selectedIndex = index;
-      }
+      menu.choice.handleMouse(mx, my, ox, oy);
     }
-
-    if (event === 'UP') {
-      this.moveSelection(-1);
-      game.audioManager?.playSfx?.('Select 6');
-    } else if (event === 'DOWN') {
-      this.moveSelection(1);
-      game.audioManager?.playSfx?.('Select 6');
-    } else if (event === 'LEFT' || event === 'RIGHT') {
-      this.switchTab();
-      game.audioManager?.playSfx?.('Status_Page_Change');
+    if (game.input?.mouseClick === 'BACK') event = 'BACK';
+    if (event === 'DOWN') {
+      if (menu.choice.moveDown(prepIsFirstPush(game, 'DOWN'))) sfx('Select 6');
+    } else if (event === 'UP') {
+      if (menu.choice.moveUp(prepIsFirstPush(game, 'UP'))) sfx('Select 6');
+    } else if (event === 'LEFT') {
+      this.moveHorizontal(-1);
+    } else if (event === 'RIGHT') {
+      this.moveHorizontal(1);
+    } else if (event === 'BACK') {
+      sfx('Select 4');
+      if (this.mode === 'records' || this.mode === 'mvp') {
+        game.state.back();
+      } else if (this.mode === 'unit') {
+        this.mode = 'mvp';
+        this.slide(this.mvpMenu, 0, -1);
+      } else {
+        this.mode = 'records';
+        this.slide(this.recordMenu, 0, -1);
+      }
+    } else if (event === 'SELECT') {
+      if (this.mode === 'records') {
+        const next = this.chapterMenus[this.currentIndex(menu)];
+        if (!next) return;
+        sfx('Select 1');
+        this.mode = 'chapter';
+        this.slide(next, 0, 1);
+      } else if (this.mode === 'mvp') {
+        const next = this.unitMenus[this.currentIndex(menu)];
+        if (!next) return;
+        sfx('Select 1');
+        this.mode = 'unit';
+        this.slide(next, 0, 1);
+      } else {
+        sfx('Select 1');
+      }
     }
   }
 
-  override draw(surf: Surface): Surface {
-    const vw = viewport.width;
-    const vh = viewport.height;
-    if (this.bgImage) {
-      const scale = surf.scale;
-      surf.ctx.imageSmoothingEnabled = false;
-      surf.ctx.drawImage(
-        this.bgImage,
-        0, 0, this.bgImage.naturalWidth || vw, this.bgImage.naturalHeight || vh,
-        0, 0, Math.round(vw * scale), Math.round(vh * scale),
-      );
-      surf.fillRect(0, 0, vw, vh, 'rgba(5,9,24,0.64)');
-    } else {
-      surf.fill(9, 13, 30);
-    }
-
-    surf.fillRect(0, 0, vw, RECORDS_HEADER_H, 'rgba(10,15,42,0.94)');
-    surf.fillRect(0, RECORDS_HEADER_H - 2, vw, 2, 'rgba(218,177,75,0.85)');
-    surf.drawText('RECORDS', 7, 5, 'rgba(245,222,148,1)', '10px monospace');
-    const tabLabel = this.tab === 'chapters' ? '< Chapters >' : '< MVP >';
-    surf.drawText(tabLabel, vw - tabLabel.length * 6 - 8, 6, 'rgba(176,205,255,1)', '7px monospace');
-
-    const rows = this.currentRows();
-    if (rows.length === 0) {
-      surf.fillRect(22, 54, vw - 44, 34, 'rgba(12,18,48,0.88)');
-      surf.drawRect(22, 54, vw - 44, 34, 'rgba(112,130,190,0.55)');
-      surf.drawText('No data recorded yet.', 30, 68, 'rgba(181,191,220,1)', '8px monospace');
-    } else {
-      const visibleRows = this.getVisibleRowCount();
-      const end = Math.min(rows.length, this.scrollOffset + visibleRows);
-      for (let index = this.scrollOffset; index < end; index++) {
-        const y = RECORDS_LIST_Y + (index - this.scrollOffset) * RECORDS_ROW_H;
-        const selected = index === this.selectedIndex;
-        surf.fillRect(7, y, vw - 14, RECORDS_ROW_H - 2,
-          selected ? 'rgba(55,73,131,0.94)' : 'rgba(12,18,48,0.82)');
-        if (this.tab === 'chapters') {
-          const row = rows[index] as ChapterRow;
-          surf.drawText(row.levelName.slice(0, 28), 12, y + 3, 'rgba(255,238,181,1)', '7px monospace');
-          const tc = `${row.turncount} turns`;
-          surf.drawText(tc, vw - tc.length * 5 - 10, y + 3, 'rgba(218,224,241,1)', '7px monospace');
-        } else {
-          const row = rows[index] as MvpRow;
-          surf.drawText(row.unitName.slice(0, 20), 12, y + 3, 'rgba(255,238,181,1)', '7px monospace');
-          const stats = `K${row.kills} D${row.damage} H${row.heal}`;
-          surf.drawText(stats, vw - stats.length * 5 - 10, y + 3, 'rgba(218,224,241,1)', '7px monospace');
+  override update(): StateResult {
+    this.currentMenu?.choice.update();
+    // Python update: the current menu slides home and the previous one away
+    // at 16 px per frame.
+    for (const axis of [0, 1] as const) {
+      const limit = axis === 0 ? viewport.width : viewport.height;
+      if (this.currentOffset[axis] > 0) this.currentOffset[axis] -= 16;
+      else if (this.currentOffset[axis] < 0) this.currentOffset[axis] += 16;
+      if (this.prevMenu) {
+        if (this.prevOffset[axis] > 0) this.prevOffset[axis] += 16;
+        else if (this.prevOffset[axis] < 0) this.prevOffset[axis] -= 16;
+        if (this.prevOffset[axis] > limit || this.prevOffset[axis] < -limit) {
+          this.prevOffset[axis] = 0;
+          this.prevMenu = null;
         }
       }
     }
+  }
 
-    surf.fillRect(0, vh - 18, vw, 18, 'rgba(8,12,34,0.96)');
-    surf.drawText('LEFT/RIGHT: Tab', 7, vh - 14, 'rgba(137,153,198,1)', '6px monospace');
-    surf.drawText('B: Back', vw - 48, vh - 14, 'rgba(245,222,148,1)', '6px monospace');
+  private drawDisplay(surf: Surface, menu: RecordsDisplay, dx: number, dy: number): void {
+    const [ox, oy] = screenOrigin();
+    const x = ox + dx;
+    const y = oy + dy;
+    const banner = menu.banner();
+    surf.blit(banner, x + Math.floor(240 / 2) - Math.floor(banner.width / 2), y + 4);
+    menu.choice.draw(surf, x, y);
+    prepDrawText(surf, menu.header, x + 12, y + 32, 'yellow');
+  }
+
+  override draw(surf: Surface): Surface {
+    this.bg?.draw?.(surf);
+    if (this.currentMenu) this.drawDisplay(surf, this.currentMenu, this.currentOffset[0], this.currentOffset[1]);
+    if (this.prevMenu) this.drawDisplay(surf, this.prevMenu, this.prevOffset[0], this.prevOffset[1]);
     return surf;
   }
 }
+
 
 // ============================================================================
 // BaseSoundRoomState — Music player over the project's music resources
