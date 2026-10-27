@@ -11,6 +11,7 @@ import {
   unitHasTag,
 } from '../combat/skill-system';
 import { getLine } from './line-of-sight';
+import { isForkEngine } from './engine-flavor';
 import {
   validTargets,
   available,
@@ -64,10 +65,14 @@ export class TargetSystem {
     // top of it -- Python `item_funcs.get_range` adds them after the hook.
     const maxRange = modifiedMaximumRange(unit, item, this.game);
     const relativeRestriction = rangeRestrict(unit, item, maxRange);
+    const fork = isForkEngine();
+    // EOtF's engine treats a maximum range of 99 or more as the whole map:
+    // no minimum-range shell and no eval_special_range filter on the tile.
+    const wholeMap = fork && maxRange >= 99 && minRange <= maxRange;
     const targets = this.getComponentTargets(unit, item).filter((position) => {
       const distance = Math.abs(position[0] - origin[0]) + Math.abs(position[1] - origin[1]);
-      if (distance < minRange || distance > maxRange) return false;
-      if (relativeRestriction &&
+      if (!wholeMap && (distance < minRange || distance > maxRange)) return false;
+      if (!wholeMap && relativeRestriction &&
           !relativeRestriction.has(`${position[0] - origin[0]},${position[1] - origin[1]}`)) {
         return false;
       }
@@ -78,7 +83,10 @@ export class TargetSystem {
 
       const affected = this.getTargetFromPosition(unit, item, position);
       if (!affected.mainTarget && affected.splash.length === 0) return false;
-      return targetRestrict(unit, item, position, affected.splash, {
+      // EOtF's engine hands target_restrict the main target, which blasts
+      // on an empty tile, spell blasts and line/all AOEs leave empty; upstream
+      // passes the chosen tile.
+      return targetRestrict(unit, item, fork ? affected.mainTarget : position, affected.splash, {
         board: this.board,
         db: this.db,
         game: this.game,
