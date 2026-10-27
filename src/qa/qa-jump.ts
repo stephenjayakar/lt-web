@@ -174,8 +174,12 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   const levelTags: string[] = spec.level ? (game.db.levels.get(spec.level)?.tags ?? []) : [];
   const trialFloor = act <= 3 ? act * perAct - 1 : 3 * perAct + 3;
   const bossFloor = act <= 3 ? act * perAct : 3 * perAct + 5;
+  // Elites come from the Act map's room4 (Intro picks elite_fight from the
+  // run's elite pool on any floor); default to the middle of the Act.
+  const eliteFloor = (act - 1) * perAct + Math.ceil(perAct / 2);
   const floor = spec.floor ?? (levelTags.includes('Trial_Map') ? trialFloor
-    : levelTags.includes('Boss_Map') ? bossFloor : (act - 1) * perAct + 1);
+    : levelTags.includes('Boss_Map') ? bossFloor
+      : levelTags.includes('Elite_Map') ? eliteFloor : (act - 1) * perAct + 1);
   const density = spec.density ?? 0;
   const party = (spec.party && spec.party.length > 0 ? spec.party : DEFAULT_PARTY).map(normaliseUnit);
   const promoted = spec.promoted ?? floor > perAct;
@@ -275,8 +279,17 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
     // Trials, bosses and elites: the Act's own Talk_Room commands. Other maps
     // (picked at random by Talk_Room): its standard-combat commands.
     const block = spec.reward ? null : talkRoomBlock(game, actNid, spec.level);
-    const reward = spec.reward ?? 'Weapons+';
-    const script = block ?? [
+    const elite = levelTags.includes('Elite_Map');
+    const reward = spec.reward ?? (elite ? 'EXP' : 'Weapons+');
+    // Elites: Talk_Room's room4 block, with elite_fight = this level.
+    const script = block ?? (elite ? [
+      'game_var;in_combat;1',
+      `set_next_chapter;${arg(spec.level)}`,
+      `game_var;fought_elites;(v('fought_elites') or []) + [${literal(spec.level)}]`,
+      `game_var;next_reward;${literal(reward)}`,
+      'skip_save;t',
+      'win_game',
+    ] : null) ?? [
       'game_var;in_combat;1',
       `game_var;seen_maps;v('seen_maps') + [${literal(spec.level)}]`,
       `game_var;next_reward;${literal(reward)}`,
