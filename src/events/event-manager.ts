@@ -2204,6 +2204,24 @@ export function evaluatePythonInContext(expression: string, ctx: ConditionContex
   }
 }
 
+/** How often each Python-equivalent evaluation warning has been raised. */
+const repeatedWarnings = new Map<string, number>();
+
+/**
+ * console.warn a message the first time, then only at the 10th, 100th,
+ * 1000th... repeat (with the count). Python logs each one, but a condition
+ * that raises inside a stat lookup or the AI fails hundreds of times a turn,
+ * and a browser console.warn (it records a stack trace) costs far more than
+ * Python's logging call. Logging only: the evaluation result is unchanged.
+ */
+function warnRepeatable(message: string): void {
+  const count = (repeatedWarnings.get(message) ?? 0) + 1;
+  if (repeatedWarnings.size > 10_000) repeatedWarnings.clear();
+  repeatedWarnings.set(message, count);
+  if (count === 1) console.warn(message);
+  else if (Number.isInteger(Math.log10(count))) console.warn(`${message} (x${count})`);
+}
+
 /**
  * Log a failed evaluation the way the Python engine's except-clauses log
  * (logging.error / print). Tests key off the `EventCondition JS eval failed`
@@ -2224,7 +2242,7 @@ function reportEvaluationFailure(
   const pyError = error as { pyType?: string; hostAttribute?: boolean };
   if (isPythonError(error) && pyError.pyType !== 'NameError' && !pyError.hostAttribute) {
     if (warn) {
-      console.warn(`Python evaluation error (Python-equivalent) in "${expression}": ${describePythonError(error)}`);
+      warnRepeatable(`Python evaluation error (Python-equivalent) in "${expression}": ${describePythonError(error)}`);
     }
     return;
   }
