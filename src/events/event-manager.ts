@@ -554,6 +554,20 @@ function counterVars(variables: Map<string, any> | undefined): Map<string, any> 
   return map;
 }
 
+/**
+ * Python @property accessors on component classes, by component nid:
+ * property name -> key of the component's value dict
+ * (item_components/extra_components.py EffectiveDamage).
+ */
+const COMPONENT_PROPERTIES: Record<string, Record<string, string>> = {
+  effective_damage: {
+    tags: 'effective_tags',
+    multiplier: 'effective_multiplier',
+    bonus_damage: 'effective_bonus_damage',
+    show_flash: 'show_effectiveness_flash',
+  },
+};
+
 function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   const game = ctx.game;
   if (!game) return {};
@@ -691,6 +705,7 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
   }
 
   function wrapComponent(nid: string, value: any) {
+    const aliases = COMPONENT_PROPERTIES[nid];
     return new Proxy({
       nid,
       value: value && typeof value === 'object' && !Array.isArray(value)
@@ -699,6 +714,10 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
     }, {
       get(target, property: string | symbol) {
         if (property in target) return target[property as keyof typeof target];
+        if (aliases && typeof property === 'string' && property in aliases) {
+          const key = aliases[property];
+          return value instanceof Map ? value.get(key) ?? null : value?.[key] ?? null;
+        }
         if (value && typeof value === 'object' && typeof property === 'string') {
           return value[property];
         }
@@ -1745,8 +1764,13 @@ function buildPythonGlobals(ctx: ConditionContext): RootScope {
     if (name === 'playback' && Array.isArray(value)) {
       return value.map((mark: any) => {
         if (!mark || typeof mark !== 'object') return mark;
+        // Python playback brushes are dataclass instances (p.nid,
+        // p.attacker, ...), not dicts: `_raw` makes the evaluator read
+        // attributes instead of treating the mark as a dict.
         return {
+          _raw: mark,
           ...mark,
+          ...('item' in mark ? { item: wrapItem(mark.item) ?? mark.item } : {}),
           attacker: wrapUnit(mark.attacker) ?? mark.attacker,
           defender: wrapUnit(mark.defender) ?? mark.defender,
           main_attacker: wrapUnit(mark.main_attacker ?? mark.mainAttacker) ??
