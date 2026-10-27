@@ -259,4 +259,173 @@ test.describe('EOtF fork event commands (engine-checked)', () => {
       drawn: 'Defeat Grigol,Defeat Bosses 2 / 4, <purple>5 turns</>',
     });
   });
+  test('choice rows: blank row for empty or failed expressions, one row for a scalar, empties kept', async ({ page }) => {
+    await bootEotf(page);
+    const top = () => page.evaluate(() => {
+      const st = (window as any).__gameRef.state.getCurrentState();
+      return {
+        values: st?.choiceMenu?.cfg?.entries?.map((entry: any) => entry.value) ?? null,
+        bg: st?.choiceMenu?.cfg?.bg ?? null,
+      };
+    });
+    const press = (input: string) => page.evaluate((key) => (window as any).__harness.stepFrames(1, key), input);
+    const frames = (n: number) => page.evaluate((count) => (window as any).__harness.stepFrames(count, null), n);
+    await runEvent(page, 'QaForkChoiceRows', [
+      'table;qa_t;[];expression;no_bg',
+      'choice;qa_empty;Pick;[];expression',
+      'game_var;qa_after_empty;1',
+      'choice;qa_err;Pick;[][1];expression;no_bg',
+      "choice;qa_scalar;Pick;'a,b';expression",
+      'choice;qa_lit;Pick;Yes,,No',
+      'game_var;qa_done;1',
+    ], 10);
+    const empty = await top();
+    const tableState = await page.evaluate(() => {
+      const st = (window as any).__gameRef.state.getCurrentState();
+      const table = st?.eventTables?.get?.('qa_t');
+      return { tableRows: table ? st.getEventTableRows(table) : null, tableNoBg: table?.noBackground ?? null };
+    });
+    await press('SELECT'); await frames(10);
+    const err = await top();
+    await press('SELECT'); await frames(10);
+    const scalar = await top();
+    await press('SELECT'); await frames(10);
+    const lit = await top();
+    await press('DOWN'); await frames(5);
+    await press('SELECT'); await frames(10);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        vars: ['qa_empty', 'qa_after_empty', 'qa_err', 'qa_scalar', 'qa_lit', 'qa_done']
+          .map((key) => g.gameVars.get(key) ?? null),
+      };
+    });
+    expect({ empty, err, scalar, lit, ...tableState, ...result }).toEqual({
+      empty: { values: [''], bg: 'menu_bg_base' },
+      err: { values: [''], bg: 'menu_bg_base' },
+      scalar: { values: ['a,b'], bg: 'menu_bg_base' },
+      lit: { values: ['Yes', '', 'No'], bg: 'menu_bg_base' },
+      vars: ['', 1, '', 'a,b', '', 1],
+      tableRows: [''],
+      tableNoBg: false,
+    });
+  });
+
+  test('interact_unit without an Ability uses the equipped weapon, else the first item', async ({ page }) => {
+    await bootEotf(page);
+    const started = async (setup: string[]) => {
+      if (setup.length) await runEvent(page, `QaForkInteractSetup${setup.length}`, setup, 20);
+      return page.evaluate(() => {
+        const g = (window as any).__gameRef;
+        const realChange = g.state.change.bind(g.state);
+        let combat = false;
+        g.state.change = (name: string) => {
+          if (name === 'combat') combat = true;
+          else realChange(name);
+        };
+        g.db.events.set('QaForkInteractRun', {
+          name: 'QaForkInteractRun', nid: 'QaForkInteractRun', trigger: 'QaForkInteractRun',
+          level_nid: g.currentLevel?.nid ?? null, condition: 'True', only_once: false, priority: 0,
+          _source: ['interact_unit;Player;Keeper'],
+        });
+        g.memory.delete('combat_item');
+        g.eventManager.triggerSpecific('QaForkInteractRun', { type: 'QaForkInteractRun' }, true);
+        realChange('event');
+        (window as any).__harness.stepFrames(10, null);
+        g.state.change = realChange;
+        const item = g.memory.get('combat_item');
+        g.memory.delete('combat_item');
+        g.memory.delete('combat_target_position');
+        g.combatScript = null;
+        g.eventCombat = false;
+        return combat ? (item?.nid ?? 'combat without item') : 'no combat';
+      });
+    };
+    const weapon = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const keeper = g.units.get('Keeper');
+      if (!keeper.position) {
+        keeper.position = [14, 6];
+        g.board.setUnit(14, 6, keeper);
+      }
+      return g.units.get('Player').items.map((item: any) => item.nid);
+    });
+    const withWeapon = await started([]);
+    const strip = weapon.map((nid: string) => `remove_item;Player;${nid};no_banner`);
+    const firstItem = await started([...strip,
+      'give_item;Player;Vulnerary;no_banner', 'give_item;Player;Iron_Sword;no_banner;no_choice']);
+    const noItems = await started([
+      'remove_item;Player;Vulnerary;no_banner', 'remove_item;Player;Iron_Sword;no_banner']);
+    expect({ weapon, withWeapon, firstItem, noItems }).toEqual({
+      weapon: ['Dragonstone_LT'], withWeapon: 'Dragonstone_LT', firstItem: 'Vulnerary', noItems: 'no combat',
+    });
+  });
+
+  test('add_unit skips a unit carried by an on-map rescuer', async ({ page }) => {
+    await bootEotf(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const player = g.units.get('Player');
+      const trace = g.units.get('Trace');
+      if (!player.position) {
+        player.position = [3, 9];
+        g.board.setUnit(3, 9, player);
+      }
+      player.rescuing = trace;
+      trace.rescuedBy = player;
+    });
+    await runEvent(page, 'QaForkAddCarried', ['add_unit;Trace;5,5']);
+    const carried = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const trace = g.units.get('Trace');
+      const position = trace.position;
+      g.units.get('Player').rescuing = null;
+      trace.rescuedBy = null;
+      return position;
+    });
+    await runEvent(page, 'QaForkAddFree', ['add_unit;Trace;5,5']);
+    const free = await page.evaluate(() => (window as any).__gameRef.units.get('Trace').position);
+    expect({ carried, free }).toEqual({ carried: null, free: [5, 5] });
+  });
+
+  test('a StyleNid keeps its DrawCursor, and skipping drops the event tables', async ({ page }) => {
+    await bootEotf(page);
+    await runEvent(page, 'QaForkSkipBoxes', [
+      'table;qa_t;A,B',
+      'table;qa_e;[];expression',
+      'speak;;Some words here.;center;StyleNid=cinematic',
+      'choice;qa_c;Pick;Yes,No',
+    ], 40);
+    const before = await page.evaluate(() => {
+      const st = (window as any).__gameRef.state.getCurrentState();
+      return { tables: [...st.eventTables.keys()], cursor: st.dialog?.drawCursorFlag ?? null };
+    });
+    await page.evaluate(() => (window as any).__harness.stepFrames(1, 'BACK'));
+    await page.evaluate(() => (window as any).__harness.stepFrames(20, null));
+    const after = await page.evaluate(() => {
+      const st = (window as any).__gameRef.state.getCurrentState();
+      return { choice: !!st.choiceMenu, tables: [...st.eventTables.keys()] };
+    });
+    expect({ before, after }).toEqual({
+      before: { tables: ['qa_t', 'qa_e'], cursor: false },
+      after: { choice: true, tables: [] },
+    });
+  });
+  test('find_item searches the party units by nid or int uid', async ({ page }) => {
+    await bootEotf(page);
+    await runEvent(page, 'QaForkFindItem', [
+      "game_var;qa_party;u('Player').party",
+      "game_var;qa_by_nid;(lambda r: r and r.nid)(find_item('Dragonstone_LT', u('Player').party))",
+      "game_var;qa_by_uid;(lambda r: r and r.nid)(find_item(u('Player').items[0].uid, u('Player').party))",
+      "game_var;qa_by_str_uid;(lambda r: r and r.nid)(find_item(str(u('Player').items[0].uid), u('Player').party))",
+      "game_var;qa_current_party;(lambda r: r and r.nid)(find_item('Dragonstone_LT', None))",
+      "game_var;qa_other_party;(lambda r: r and r.nid)(find_item('Dragonstone_LT', 'Nope'))",
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return ['qa_party', 'qa_by_nid', 'qa_by_uid', 'qa_by_str_uid', 'qa_current_party', 'qa_other_party']
+        .map((key) => g.gameVars.get(key) ?? null);
+    });
+    expect(result).toEqual(['Reserves', 'Dragonstone_LT', 'Dragonstone_LT', null, 'Dragonstone_LT', null]);
+  });
 });
