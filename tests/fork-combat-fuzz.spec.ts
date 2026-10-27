@@ -294,4 +294,41 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
     expect(result!.clamp).toBe(0);
     expect(result!.cleave).toEqual({ mainTarget: [2, 6], splash: [[4, 7], [3, 5]] });
   });
+
+  test('HP_Double keeps its HP through equips and re-entrant max-HP reads', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (kitSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const kit = await (new Function(`${kitSrc}; return makeKit;`)())(game);
+      const { EquipItemAction, UnequipItemAction } = await import('/src/engine/action.ts');
+      const { SkillObject } = await import('/src/objects/skill.ts');
+      try {
+        // A boss like Final's Libra_False: 40 base HP doubled to 80.
+        const boss = kit.make('_FzBoss', 'enemy', {
+          klass: 'Myrmidon', items: ['Iron_Sword', 'Steel_Sword'], skills: ['HP_Double'], stats: { HP: 40 }, hp: 80,
+        });
+        // A stat expression that reads max HP while HP is being computed:
+        // the re-entrant read must still include HP_Double.
+        boss.skills.push(new SkillObject({
+          nid: '_FzReentrant', name: '', desc: '',
+          components: [['stat_change_expression', [['HP', '0 if unit.get_max_hp() == 80 else -1000']]]],
+        } as any));
+        const max = boss.maxHp;
+        // Equip/unequip never clamp HP on the fork, whatever max HP reads.
+        const realMax = boss.getMaxHP.bind(boss);
+        boss.getMaxHP = () => 40;
+        new EquipItemAction(boss, boss.items[1]).execute();
+        const afterEquip = boss.currentHp;
+        new UnequipItemAction(boss, boss.items[1]).execute();
+        const afterUnequip = boss.currentHp;
+        boss.getMaxHP = realMax;
+        return { max, afterEquip, afterUnequip, maxAfter: boss.maxHp };
+      } finally {
+        kit.cleanup();
+      }
+    }, KIT);
+    // Fork engine: equip/unequip never touch HP; max HP stays 80.
+    expect(result).toEqual({ max: 80, afterEquip: 80, afterUnequip: 80, maxAfter: 80 });
+  });
 });

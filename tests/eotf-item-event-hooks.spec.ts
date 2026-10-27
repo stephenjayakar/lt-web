@@ -132,7 +132,10 @@ test.describe('Embrace of the Fog item event hooks', () => {
         components: [['weapon', null]],
       });
       const oldPrimaryItems = primary.items;
+      const oldPrimaryWeapon = primary.equippedWeapon;
       primary.items = [defenseItem];
+      // item2 is the target's equipped weapon (Python resolve_weapon).
+      primary.equippedWeapon = defenseItem;
       const coil = new ItemObject(game.db.items.get('Coil'));
       const mark = (defender: any, hit: boolean) => ({
         attacker,
@@ -195,6 +198,7 @@ test.describe('Embrace of the Fog item event hooks', () => {
         [breakMark(intact)] as any,
       );
       primary.items = oldPrimaryItems;
+      primary.equippedWeapon = oldPrimaryWeapon;
 
       return {
         perHitQueued,
