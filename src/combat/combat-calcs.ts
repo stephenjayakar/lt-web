@@ -389,6 +389,11 @@ export function avoid(
   target?: UnitObject | null,
   mode: 'attack' | 'defense' | 'splash' = 'defense',
   attackInfo: [number, number] = [0, 0],
+  /**
+   * The defender's own item, when the caller knows it (Python's def_item:
+   * None for a splash strike, so no weapon avoid modifiers apply).
+   */
+  ownItem?: ItemObject | null,
 ): number {
   game ??= _eqGameRef?.();
   // Defensive item formulas come from the attacking item in LT.
@@ -407,7 +412,7 @@ export function avoid(
   // Substituting attack speed for SPD instead only matches that when SPD's
   // coefficient happens to be 2, so formulas like EotF's AVOID_SHACKLED
   // (SPD + LCK//2) diverged.
-  const equippedWeapon = resolveWeapon(unit);
+  const equippedWeapon = isForkEngine() && ownItem !== undefined ? ownItem : resolveWeapon(unit);
   const avoidExpr = db.getEquation(eqName) ?? 'SPD * 2 + LCK // 2';
   const baseAvoid = evaluateEquation(avoidExpr, unit, { db });
 
@@ -714,8 +719,11 @@ export function computeHit(
   const acc = accuracy(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
+  // EOtF's engine: avoid(target, def_item, item) uses the strike's def_item
+  // (None for splash) for the defender's weapon modifiers.
   const avo = avoid(
     defender, db, board, attackItem, game, attacker, mode, attackInfo,
+    isForkEngine() ? defenseItem : undefined,
   );
 
   // Dynamic modifiers from items and skills (combat context)
@@ -823,12 +831,15 @@ function computeDamageCore(
 ): number {
   game ??= _eqGameRef?.();
   const defWeapon = resolveWeapon(defender);
+  // EOtF's engine passes the strike's def_item (None for splash) to
+  // defense() (the defender's weapon resist modifiers) and dynamic_damage.
+  const strikeDefItem = isForkEngine() && defenseItem !== undefined ? defenseItem : defWeapon;
   const atk = damage(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
   const defenseMode = mode === 'attack' ? 'defense' : 'attack';
   const def = defense(
-    defender, attackItem, db, board, game, attacker, defWeapon,
+    defender, attackItem, db, board, game, attacker, strikeDefItem,
     defenseMode, attackInfo,
   );
   const triangle = triangleFor(attackItem, defender, db, game, attacker, defenseItem);
@@ -838,11 +849,11 @@ function computeDamageCore(
   // `weapon_effectiveness_multiplied` (Python `compute_advantage_attr`).
   let might = atk;
   might += itemSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, might, db, game,
+    attacker, attackItem, defender, strikeDefItem, mode, attackInfo, might, db, game,
     triangle.attackerDamageAdvantage,
   );
   might += skillSystem.dynamicDamage(
-    attacker, attackItem, defender, defWeapon, mode, attackInfo, might,
+    attacker, attackItem, defender, strikeDefItem, mode, attackInfo, might,
     game,
   );
   might += triangle.damageBonus;
