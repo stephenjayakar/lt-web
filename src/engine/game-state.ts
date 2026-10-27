@@ -574,6 +574,7 @@ export class GameState {
 
     // Per-unit cleanup
     for (const unit of this.units.values()) {
+      unit.isDying = false;
       // Drop rescued units. Python clean_up runs on_drop for the traveler,
       // where EOtF's RescueBonus removes the skill it granted the rescuer
       // (Eat / Serve Forth would otherwise survive into the next chapter).

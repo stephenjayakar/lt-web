@@ -159,11 +159,11 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 4430
+          "line": 4433
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4439
+          "line": 4442
         },
         {
           "source": "src/engine/save.ts",
@@ -177,7 +177,7 @@
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 4430
+          "line": 4433
         }
       ],
       "matchingWebHooks": [],
@@ -641,7 +641,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1335
+          "line": 1333
         }
       ],
       "directReads": [],
@@ -689,7 +689,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1335
+          "line": 1333
         }
       ],
       "directReads": [],
@@ -1194,19 +1194,19 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4581
+          "line": 4584
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4582
+          "line": 4585
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4679
+          "line": 4682
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4680
+          "line": 4683
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1220,19 +1220,19 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4581
+          "line": 4584
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4582
+          "line": 4585
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4679
+          "line": 4682
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4680
+          "line": 4683
         }
       ],
       "matchingWebHooks": [
@@ -1311,7 +1311,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1175
+          "line": 1173
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1325,7 +1325,7 @@
         },
         {
           "source": "src/combat/map-combat.ts",
-          "line": 1175
+          "line": 1173
         }
       ],
       "matchingWebHooks": [],
@@ -1412,19 +1412,19 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15238
+          "line": 15307
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16977
+          "line": 17046
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19473
+          "line": 19545
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19486
+          "line": 19558
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -1464,7 +1464,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1663
+          "line": 1665
         },
         {
           "source": "src/native.ts",
@@ -1511,7 +1511,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1668
+          "line": 1670
         }
       ],
       "directReads": [
@@ -1593,7 +1593,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1667
+          "line": 1669
         }
       ],
       "directReads": [
@@ -1695,7 +1695,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4360
+          "line": 4363
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1703,31 +1703,31 @@
         },
         {
           "source": "src/engine/game-state.ts",
-          "line": 1592
+          "line": 1593
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14989
+          "line": 15058
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 14994
+          "line": 15063
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15006
+          "line": 15075
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 15018
+          "line": 15087
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19654
+          "line": 19726
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 19723
+          "line": 19795
         },
         {
           "source": "src/events/event-command-flags.ts",
@@ -1749,11 +1749,11 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4360
+          "line": 4363
         },
         {
           "source": "src/engine/game-state.ts",
-          "line": 1592
+          "line": 1593
         }
       ],
       "matchingWebHooks": [],
@@ -1812,11 +1812,11 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4468
+          "line": 4471
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4473
+          "line": 4476
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -1850,11 +1850,11 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4468
+          "line": 4471
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4473
+          "line": 4476
         },
         {
           "source": "src/engine/query-engine.ts",
@@ -1895,11 +1895,11 @@
         },
         {
           "source": "src/engine/game-state.ts",
-          "line": 1575
+          "line": 1576
         },
         {
           "source": "src/engine/game-state.ts",
-          "line": 1577
+          "line": 1578
         },
         {
           "source": "src/events/py-expr/parser.ts",
@@ -2277,7 +2277,7 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16217
+          "line": 16286
         },
         {
           "source": "src/events/event-manager.ts",
@@ -2484,7 +2484,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1710
+          "line": 1712
         }
       ],
       "directReads": [
@@ -2539,7 +2539,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1713
+          "line": 1715
         }
       ],
       "directReads": [
@@ -2916,15 +2916,15 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4402
+          "line": 4405
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4452
+          "line": 4455
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4476
+          "line": 4479
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -3094,15 +3094,15 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4402
+          "line": 4405
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4452
+          "line": 4455
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4476
+          "line": 4479
         },
         {
           "source": "src/engine/skill-turn-lifecycle.ts",
@@ -5261,15 +5261,15 @@
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 10649
+          "line": 10704
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 16304
+          "line": 16373
         },
         {
           "source": "src/engine/states/game-states.ts",
-          "line": 17007
+          "line": 17076
         },
         {
           "source": "src/main.ts",
@@ -5635,11 +5635,11 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1576
+          "line": 1578
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1636
+          "line": 1638
         },
         {
           "source": "src/objects/item.ts",
@@ -5744,7 +5744,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1636
+          "line": 1638
         }
       ],
       "directReads": [
@@ -6113,11 +6113,11 @@
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 1550
+          "line": 1549
         },
         {
           "source": "src/combat/animation-combat.ts",
-          "line": 1824
+          "line": 1823
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -8957,13 +8957,13 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 3539
+          "line": 3542
         }
       ],
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 3539
+          "line": 3542
         }
       ],
       "matchingWebHooks": [],
@@ -9107,7 +9107,7 @@
         },
         {
           "source": "src/events/event-manager.ts",
-          "line": 1675
+          "line": 1677
         }
       ],
       "directReads": [
@@ -9292,7 +9292,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4321
+          "line": 4324
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9342,7 +9342,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4321
+          "line": 4324
         }
       ],
       "matchingWebHooks": [],
@@ -9701,7 +9701,7 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 4408
+          "line": 4411
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9737,7 +9737,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4467
+          "line": 4470
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9772,7 +9772,7 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 4458
+          "line": 4461
         }
       ],
       "directReads": [],
@@ -9808,7 +9808,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4409
+          "line": 4412
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9834,7 +9834,7 @@
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 4409
+          "line": 4412
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -9873,7 +9873,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4410
+          "line": 4413
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9899,7 +9899,7 @@
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 4410
+          "line": 4413
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -9940,7 +9940,7 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4411
+          "line": 4414
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9970,7 +9970,7 @@
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 4411
+          "line": 4414
         },
         {
           "source": "src/engine/states/info-menu-state.ts",
@@ -10252,11 +10252,11 @@
       "webReferences": [
         {
           "source": "src/engine/action.ts",
-          "line": 4610
+          "line": 4613
         },
         {
           "source": "src/engine/action.ts",
-          "line": 4616
+          "line": 4619
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -10266,7 +10266,7 @@
       "directReads": [
         {
           "source": "src/engine/action.ts",
-          "line": 4610
+          "line": 4613
         }
       ],
       "matchingWebHooks": [],

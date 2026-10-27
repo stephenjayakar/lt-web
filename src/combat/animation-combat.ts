@@ -1403,11 +1403,10 @@ export class AnimationCombat implements BattleAnimOwner, StrikeEventCombat {
       this.defender.builtGuard = true;
     }
 
+    // Not dead yet: clean_up2 marks them is_dying and Die sets `dead` once
+    // the dying fade (after their UnitDeath events) ends.
     const attackerDead = atkHp <= 0;
     const defenderDead = defHp <= 0;
-
-    if (attackerDead) this.attacker.dead = true;
-    if (defenderDead) this.defender.dead = true;
 
     // Weapon uses
     let attackWeaponBroke = false;

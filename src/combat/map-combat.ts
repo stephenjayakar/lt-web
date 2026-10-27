@@ -820,15 +820,13 @@ export class MapCombat implements StrikeEventCombat {
       if (this.primaryDefender) this.primaryDefender.builtGuard = true;
     }
 
+    // Units at 0 HP are not dead yet: clean_up's game.death.should_die marks
+    // them is_dying, their UnitDeath events run, and the Die action at the
+    // end of the dying fade sets `dead` (Python simple_combat.clean_up).
     const attackerDead = atkHp <= 0;
     const defenderDeaths = this.defenders.filter((unit) => unit.currentHp <= 0);
     const deadDefenders = new Set(defenderDeaths);
     const defenderDead = deadDefenders.has(this.defender);
-
-    if (attackerDead) {
-      this.attacker.dead = true;
-    }
-    for (const unit of defenderDeaths) unit.dead = true;
 
     // Decrement each combatant's own weapon. Attack-stance partners can use
     // a different item from their leader, so their uses and breakage must be
