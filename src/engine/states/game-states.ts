@@ -4077,8 +4077,8 @@ export function finishCoreItemUse(
   // Python LiveToServe.after_strike runs after every strike of the one
   // attacker phase and heals int(X * the requested heal of every ally strike
   // so far that healed something), the phase's `heal_hit` playback. EOtF's
-  // fork routes it through `_get_heal_amount(amount, unit, unit)`, so the
-  // user's own empower_heal bonuses heal even when no ally was healed.
+  // engine adds the user's heal modifiers to a positive amount only, so
+  // nothing happens when no ally was healed.
   const liveToServe = unit.skills.filter((skill: SkillObject) =>
     typeof skill.getComponent<unknown>('live_to_serve') === 'number');
   let allyHealing = 0;
@@ -4088,7 +4088,7 @@ export function finishCoreItemUse(
     }
     for (const skill of liveToServe) {
       const base = Math.trunc(allyHealing * skill.getComponent<number>('live_to_serve')!);
-      const amount = isForkEngine() ? modifiedHealAmount(base, unit, unit, game) : base;
+      const amount = isForkEngine() && base > 0 ? modifiedHealAmount(base, unit, unit, game) : base;
       if (amount <= 0) continue;
       game.actionLog.doAction(new HealAction(unit, amount));
       triggerSkillCharge(game, skill);
@@ -6775,20 +6775,28 @@ export function resolveForkMultiTargetGroup(
   attacker: UnitObject,
   item: ItemObject,
   positions: [number, number][],
-): { representative: UnitObject | null; mainDefender: null; splashDefenders: UnitObject[] } {
-  const splashDefenders: UnitObject[] = [];
+): {
+  representative: UnitObject | null;
+  mainDefender: null;
+  splashDefenders: UnitObject[];
+  splashStrikes: UnitObject[];
+} {
+  const splashStrikes: UnitObject[] = [];
   for (const position of positions) {
     const resolved = game.targetSystem?.getTargetFromPosition(attacker, item, position) ??
       { mainTarget: position, splash: [] };
     for (const target of [resolved.mainTarget, ...resolved.splash]) {
       if (!target) continue;
       const unit = game.board.getUnit(target[0], target[1]) as UnitObject | null;
-      // A position chosen again (the AI's `[target] * num_targets`,
-      // allow_same_target) joins the combat once.
-      if (unit && !splashDefenders.includes(unit)) splashDefenders.push(unit);
+      if (unit) splashStrikes.push(unit);
     }
   }
-  return { representative: splashDefenders[0] ?? null, mainDefender: null, splashDefenders };
+  // A position chosen again (the AI's `[target] * num_targets`,
+  // allow_same_target) is kept in the strike list: the solver strikes that
+  // unit once per entry, all in the same counter-less phase. Everything
+  // else (participants, hooks, presentation) sees each unit once.
+  const splashDefenders = [...new Set(splashStrikes)];
+  return { representative: splashDefenders[0] ?? null, mainDefender: null, splashDefenders, splashStrikes };
 }
 
 /**
@@ -7289,7 +7297,13 @@ export class CombatState extends State {
         rngMode,
         game.board,
         script,
-        groupedCombat ? { mainDefender: primaryDefender, splashDefenders } : undefined,
+        groupedCombat
+          ? {
+            mainDefender: primaryDefender,
+            splashDefenders,
+            ...(forkMultiTarget ? { splashStrikes: forkMultiTarget.splashStrikes } : {}),
+          }
+          : undefined,
         game,
         { deferSolve: true },
       );
@@ -9326,7 +9340,8 @@ export class AIState extends MapState {
     // Python interaction.start_combat aims a multi_target item at
     // `[target] * num_targets`; EOtF's fork engage merges those positions
     // into one splash list with no main target: a single counter-less
-    // combat that strikes the target once per phase and spends one use.
+    // combat that strikes the target once per entry each phase and spends
+    // one use.
     const wanted = numTargets(attacker, weapon);
     if (isForkEngine() && wanted > 1 && defender.position) {
       const [x, y] = defender.position;

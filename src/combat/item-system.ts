@@ -1990,6 +1990,34 @@ export function extraDamage(unit: UnitObject, item: ItemObject, game?: any): num
   return evaluatedItemNumber(item.getComponent('eval_extra_damage'), unit, item, game);
 }
 
+/**
+ * The eval_extra_damage values EOtF's engine sees for an item: its own
+ * component plus the one an active item_override supplies. Its extra-damage
+ * hook adds them all up, and each component deals its own on-hit instance.
+ */
+export function extraDamageSources(unit: UnitObject, item: ItemObject, game?: any): unknown[] {
+  const resolvedGame = game ?? itemSystemGameRef?.();
+  const sources: unknown[] = [];
+  if (item.components.has('eval_extra_damage')) sources.push(item.components.get('eval_extra_damage'));
+  const db = resolvedGame?.db as Database | undefined;
+  if (db) {
+    for (const [nid, value] of itemOverrideComponents(unit, item, db, resolvedGame)) {
+      if (nid === 'eval_extra_damage') sources.push(value);
+    }
+  }
+  return sources;
+}
+
+/** One eval_extra_damage value: int(evaluate(value, unit, item=item)), 0 when it raises. */
+export function evaluatedExtraDamageSource(
+  unit: UnitObject,
+  item: ItemObject,
+  source: unknown,
+  game?: any,
+): number {
+  return evaluatedItemNumber(source, unit, item, game ?? itemSystemGameRef?.());
+}
+
 /** Get base crit value from the weapon. */
 export function crit(_unit: UnitObject, item: ItemObject): number | null {
   return item.getComponent<number>('crit') ?? null;
@@ -2617,7 +2645,7 @@ export function itemIconWhiteness(
 export function dynamicMultiattacks(
   _unit: UnitObject,
   item: ItemObject,
-  _target: UnitObject,
+  _target: UnitObject | null,
   _item2: ItemObject | null,
   mode: string,
   _attackInfo: unknown,

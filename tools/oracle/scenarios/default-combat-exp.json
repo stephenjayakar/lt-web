@@ -1,0 +1,13 @@
+{
+  "name": "default-combat-exp",
+  "description": "Eirika attacks the adjacent Bone with her Rapier: hits, counters, weapon uses and exp gain.",
+  "project": "default.ltproj",
+  "level": "DEBUG",
+  "events": false,
+  "seed": 0,
+  "rng_mode": "True Hit",
+  "growths": "Fixed",
+  "actions": [
+    {"do": "attack", "unit": "Eirika", "target": "Bone", "item": "Rapier"}
+  ]
+}

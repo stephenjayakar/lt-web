@@ -315,8 +315,8 @@ test.describe('Embrace of the Fog dynamic item range and AOE hooks', () => {
 
     expect(result.failures).toEqual([]);
     expect(result.counts).toEqual({
-      eval_min_range: 3,
-      eval_max_range: 24,
+      eval_min_range: 2, // EOtF 2.0.1 data (2.0.0: 3)
+      eval_max_range: 25, // EOtF 2.0.1 data (2.0.0: 24)
       eval_smartblast_aoe: 20,
       eval_ally_blast_aoe: 4,
       all_units_aoe: 2,

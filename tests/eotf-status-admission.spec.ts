@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog status admission and cleansing', () => {
-  test('count-locks all 23 authored status defense and cleansing uses', async ({ page }) => {
+  test('count-locks all 24 authored status defense and cleansing uses', async ({ page }) => {
     await bootEotf(page);
     const inventory = await page.evaluate(() => {
       const selected = new Set([
@@ -39,7 +39,7 @@ test.describe('Embrace of the Fog status admission and cleansing', () => {
 
     expect(inventory).toEqual({
       counts: {
-        block_specific_status: 4,
+        block_specific_status: 5, // EOtF 2.0.1 data (2.0.0: 4)
         block_status: 1,
         immune_status: 14,
         purge_ailments: 1,

@@ -32,9 +32,11 @@ test.describe('Embrace of the Fog forced-movement item hooks', () => {
     });
 
     expect(authored).toEqual({
-      shove_flexible_on_end_combat_initiate: [3, 1, 1, 99, -4, 2, 4, 99, 99],
+      // EOtF 2.0.1 moved one magnitude-2 shove from shove_flexible_on_end_combat_initiate
+      // to shove_flex_stops.
+      shove_flexible_on_end_combat_initiate: [3, 1, 1, 99, -4, 4, 99, 99],
       shove_on_end_combat_initiate: [-1, -1, -1, 1, -2, -2, 1, 3],
-      shove_flex_stops: [-3, 99],
+      shove_flex_stops: [-3, 2, 99],
       pivot_on_end_combat_initiate: [1, 1, 1, 1],
       self_shove_flex_stops: ["unit.get_stat('MOV')"],
       shove_flex_stops_event: [{ magnitude: 2, impact_event: 'Global Ability_Throw_2' }],

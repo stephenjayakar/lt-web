@@ -132,8 +132,12 @@ export class StateMachine {
       }
     }
 
+    // Python StateMachine.update: once start/begin ask to repeat, the frame's
+    // input is skipped, so a key pressed on the frame a state starts (and
+    // hands off) is dropped rather than consumed by it. (Python skips update
+    // and draw too; web states still rely on running them that frame.)
     // --- takeInput ---
-    if (this.runStep(() => current.takeInput(event))) {
+    if (!repeat && this.runStep(() => current.takeInput(event))) {
       repeat = true;
     }
 

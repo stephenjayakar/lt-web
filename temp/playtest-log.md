@@ -80,13 +80,22 @@ errors from the current build beyond the authored-data warnings listed below.
 
 - Prep: once, while a script selected Fight in prep_main, Pick Units opened
   instead and later Enters toggled the Lord out of the deployment (level 53,
-  Act 1 F6). Not reproduced; likely input timing in my driver, but worth a
-  look if prep_main can accept SELECT before its menu is ready.
-- Text entry (hub desk -> Enter Password): Enter toggles a web-only
-  keyboard-typing mode instead of acting as SELECT (Z works). Deliberate web
-  convenience, but it differs from Python's grid-only entry.
+  Act 1 F6). Not reproduced. Two input-timing gaps against Python fixed in
+  fix/dev-flow: prep menu choices now fade through Python's `transition_to`
+  (no input during the fade, so hammered Enters no longer land in Pick Units),
+  and the state machine drops a frame's input once start/begin asked to
+  repeat (`tests/prep-screens.spec.ts`, `tests/state-machine-input.spec.ts`).
+- Text entry (hub desk -> Enter Password): Enter toggles keyboard-typing mode
+  instead of acting as SELECT. Checked: this is Python's text_entry.py
+  behaviour (Enter is not a default game key there; SELECT is X), not a web
+  addition. No change.
 - Headless Chromium logs `[Perf] Long frame` 50-90 ms (update, not draw)
   during combat animations. Repro: any battle in a headless Playwright run.
+  Profiled (CDP) Rekka battle animation and EOtF map combat on an idle machine:
+  mean 2.2-2.5 ms per update, only the first frame over 20 ms; not reproduced
+  at 50-90 ms (the PerfMonitor "update" span includes drawing). Removed the
+  per-frame canvas allocations it showed (combat UI, bars, name tags, damage
+  digits, map combat info windows): GC samples 188 -> ~40, getContext 55 -> ~10.
 - Save failure `Cannot read properties of null (reading '0')` on level 91
   (Fake_Arrive region with no position) was seen once on the pre-merge build;
   current eotf already serializes position-less regions.

@@ -426,6 +426,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
   'redirect_damage',
   'redirect_partial_damage',
   'regeneration',
+  'regeneration_no_anim',
   'remove_status_after_combat',
   'resist',
   'resist_follow_up',
@@ -472,7 +473,7 @@ export const EOTF_SKILL_COMPONENTS = new Set<string>([
 ]);
 
 export const EOTF_ITEM_COMPONENT_COUNT = 185;
-export const EOTF_SKILL_COMPONENT_COUNT = 270;
+export const EOTF_SKILL_COMPONENT_COUNT = 271;
 
 export function assertEotfComponentCounts(): void {
   if (EOTF_ITEM_COMPONENTS.size !== EOTF_ITEM_COMPONENT_COUNT) {

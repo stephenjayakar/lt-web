@@ -1,0 +1,33 @@
+{
+  "ignore": {
+    "frame": "Frame counters differ by design: each side settles with its own state graph.",
+    "stack": "State stacks are informational; the web merges several Python states (docs/parity/states.md).",
+    "game_vars._combat_random_seed": "Web-only: the web persists the combat LCG in game vars; compared via rng.combat instead.",
+    "game_vars._combat_random_state": "Web-only: see rng.combat.",
+    "game_vars._growth_random_seed": "Web-only: see rng.growth.",
+    "game_vars._growth_random_state": "Web-only: see rng.growth.",
+    "game_vars._other_random_seed": "Web-only: see rng.other.",
+    "game_vars._other_random_state": "Web-only: see rng.other.",
+    "game_vars.money": "Web-only mirror of the party's money (give_money and shops also set this game var); party money is compared as `money`.",
+    "level_vars._initial_turn_events_after_level_start": "Web-only bookkeeping flag set by GameState.loadLevel.",
+    "level_vars._turn1_upkeep_done": "Web-only bookkeeping flag for the first status upkeep.",
+    "units.*.skill_data.*.positionStatusSourceType": "Web-only bookkeeping on terrain/region statuses (Python tracks these in game.terrain_status_registry).",
+    "units.*.skill_data.*.positionStatusRegionNid": "Web-only bookkeeping, see above.",
+    "units.*.skill_data.*.sourceType": "Web-only: the web stores a skill's source in skill.data; Python keeps it in the unit's skill source list.",
+    "units.*.skill_data.*.sourceNid": "Web-only, see sourceType.",
+    "units.*.skill_data.*.ability_item_uid": "Python stores the uid of a skill's ability item (engine-specific uid counter).",
+    "units.*.skill_data.*.abilityItemKey:ability": "Web-only registry key of a skill's ability item (see ability_item_uid)."
+  },
+  "zero_equals_missing": {
+    "units.*.stats.*": "Python keeps one entry per DB stat; the web may add class-only stats (e.g. LEAD) at 0.",
+    "units.*.wexp.*": "Both sides drop zero wexp; a type missing on one side equals 0.",
+    "units.*.growth_points.*": "Both sides drop zero growth points."
+  },
+  "null_equals_empty": {
+    "units.*.ai_group": "Python uses None for no AI group, the web an empty string."
+  },
+  "unordered": {
+    "units.*.skills": "Compared as a multiset: the web applies terrain statuses before class skills at level load (see README, Known diffs)."
+  },
+  "state_aliases": {}
+}
