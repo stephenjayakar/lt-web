@@ -73,9 +73,10 @@ test('show_pokedex opens the unit dex and resumes the event on BACK', async ({ p
   await step(page, 1);
 
   const info = await dex(page);
-  // Every Playable unit except Libra_P before Density 10 is cleared.
+  // Every Playable unit except Libra_P and Samael_P before Density 10 is cleared.
   const expected = await page.evaluate(() => [...(window as any).__gameRef.db.units.values()]
-    .filter((u: any) => u.tags.includes('Playable') && u.nid !== 'Libra_P').map((u: any) => u.nid));
+    .filter((u: any) => u.tags.includes('Playable') && !['Libra_P', 'Samael_P'].includes(u.nid))
+    .map((u: any) => u.nid));
   expect(info.count).toBe(expected.length);
   expect(info.unit).toBe(expected[0]);
   expect(info.panel).toBe('inactive');
@@ -184,6 +185,56 @@ test('the detail panel slides open, pages, shows help and toggles favourites', a
     return evaluateExpression("game.is_favorited('Player')", { game: g, gameVars: g.gameVars, levelVars: g.levelVars });
   });
   expect(sorted).toBe(false);
+});
+
+test('Gallery alternates join the wheel with N/A and Samael_P waits for Density 15', async ({ page }) => {
+  await boot(page);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const { RECORDS } = await import('/src/engine/records.ts');
+    // The shipped 2.0.1 data tags these four Gallery.
+    for (const nid of ['Gemini_M', 'Ayaka', 'August', 'Lupus_P']) {
+      const prefab = g.db.units.get(nid);
+      prefab.tags = [...(prefab.tags ?? []), 'Gallery'];
+    }
+    const open = () => {
+      g.memory.set('curr_unit_info', null);
+      const { DexMenuState } = (window as any).__dexModule;
+      const state: any = new DexMenuState();
+      state.start();
+      return state;
+    };
+    (window as any).__dexModule = await import('/src/engine/states/dex-menu-state.ts');
+    (window as any).__dexModule.setDexMenuGameRef(g);
+    RECORDS.replace('Density_10_Cleared', true);
+    const d10 = open();
+    RECORDS.replace('Density_15_Cleared', true);
+    const d15 = open();
+    const has = (state: any, nid: string) => state.allUnits.index(nid) >= 0;
+    const hidden: Record<string, boolean[]> = {};
+    const gallery = ['Gemini_M', 'Ayaka', 'August', 'Lupus_P'];
+    hidden.none = gallery.map((nid) => d15.isHidden(nid));
+    RECORDS.replace('Available_Units', ['Player', 'Akane']);
+    hidden.akaneRecruited = gallery.map((nid) => d15.isHidden(nid));
+    RECORDS.replace('Available_Units', ['Player']);
+    RECORDS.replace('Seen_Units', ['Reese']);
+    hidden.reeseSeen = gallery.map((nid) => d15.isHidden(nid));
+    return {
+      d10: { libra: has(d10, 'Libra_P'), samael: has(d10, 'Samael_P'), gemini: has(d10, 'Gemini_M') },
+      d15: { samael: has(d15, 'Samael_P') },
+      galleryOrder: gallery.every((nid) => has(d15, nid)),
+      hidden,
+    };
+  });
+  expect(result.d10).toEqual({ libra: true, samael: false, gemini: true });
+  expect(result.d15.samael).toBe(true);
+  expect(result.galleryOrder).toBe(true);
+  expect(result.hidden.none).toEqual([true, true, true, true]);
+  // Recruiting a counterpart reveals only its own alternate...
+  expect(result.hidden.akaneRecruited).toEqual([true, false, true, true]);
+  // ...but merely seeing one reveals every Gallery unit (the engine's and/or
+  // precedence).
+  expect(result.hidden.reeseSeen).toEqual([false, false, false, false]);
 });
 
 test('hidden units are black with ??? and an unknown identity page', async ({ page }, testInfo) => {
