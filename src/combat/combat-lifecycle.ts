@@ -864,6 +864,12 @@ export function applyCombatSkillEndHooks(
     }
   }
 
+  const recoilSet = {
+    used: false,
+    targets: [...new Set(strikes
+      .filter((strike) => strike.attacker.skills.some((skill) => skill.hasComponent('better_recoil')))
+      .map((strike) => strike.defender))],
+  };
   for (const { unit, target, item, strikes: pairStrikes } of pairs.values()) {
     const isAlly = checkAlly(unit, target, game.db);
     const endCombatSkills = [...unit.skills];
@@ -1200,7 +1206,21 @@ export function applyCombatSkillEndHooks(
       const recoil = skill.getComponent<unknown>('better_recoil');
       const foughtEnemy = strikes.some((strike) =>
         strike.attacker === unit && checkEnemy(unit, strike.defender, game.db!));
-      if (recoil !== undefined && isHookTarget && unit.currentHp > 0 &&
+      if (recoil !== undefined && isForkEngine()) {
+        // EOtF's BetterRecoil keeps the units struck by any holder in one
+        // class-level set: the first holder's end_combat sees it (then clears
+        // it); otherwise only an enemy end_combat target counts.
+        if (claimGlobalHook(skill, 'better_recoil_fork')) {
+          const viaSet = !recoilSet.used && recoilSet.targets.some((struck) => checkEnemy(unit, struck, game.db!));
+          recoilSet.used = true;
+          const hookTarget = isMainAttacker ? primaryTarget : initiator;
+          const enemyTarget = !!hookTarget && checkEnemy(unit, hookTarget, game.db!);
+          if ((enemyTarget || viaSet) && unit.currentHp > 0) {
+            const amount = combatComponentNumber(game, recoil, unit, target, item, skill, mode);
+            activateHpHook('better_recoil', unit, Math.max(1, unit.currentHp - amount));
+          }
+        }
+      } else if (recoil !== undefined && isHookTarget && unit.currentHp > 0 &&
           (enemyHookTarget || foughtEnemy) &&
           !processedGlobalHooks.get(skill)?.has('better_recoil')) {
         const amount = combatComponentNumber(
