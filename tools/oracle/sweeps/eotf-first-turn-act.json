@@ -1,0 +1,18 @@
+{
+  "name": "eotf-first-turn-act",
+  "description": "Every EOtF level from the captured run state: the Player attacks the nearest enemy in range with its first weapon (else waits), then the turn ends and the AI phases and next upkeep run.",
+  "project": "eotf.ltproj",
+  "levels": "all",
+  "events": true,
+  "through_prep": true,
+  "seed": 0,
+  "run_state": "run-state/eotf-run.json",
+  "level_actions": [
+    {"do": "attack_or_wait", "unit": "Player"},
+    {"do": "end_turn", "max_frames": 60000}
+  ],
+  "known_diffs": [
+    "units.*.growth_points",
+    "units.*.party"
+  ]
+}

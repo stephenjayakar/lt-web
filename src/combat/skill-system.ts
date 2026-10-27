@@ -228,6 +228,23 @@ export function initializeSkillData(
   skill.data.set('stat_changes', changes);
 }
 
+/**
+ * Python UnitObject.remove_skill: a RemoveSkill with no source (an expiring
+ * status, the remove_skill event command) only removes an instance whose source type is removable
+ * (class, personal, fatigue, default). One granted by an item, terrain,
+ * region, aura, rescue or the game stays on (at 0 turns) until its own
+ * source takes it away.
+ */
+export function sourceAllowsPlainRemoval(skill: SkillObject): boolean {
+  const data = skill.data;
+  const types = [
+    data.get('sourceType'), data.get('itemSourceType'), data.get('positionStatusSourceType'),
+    data.get('auraSourceType'), data.get('rescueSourceType'),
+  ];
+  return !types.some((type) => typeof type === 'string' &&
+    ['item', 'terrain', 'region', 'aura', 'traveler', 'global'].includes(type));
+}
+
 /** Python skill_system.additional_tags, including EotF RedirectDamage. */
 export function additionalTags(unit: UnitObject, game?: any): Set<string> {
   const tags = new Set<string>();
