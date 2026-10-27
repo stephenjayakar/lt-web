@@ -221,6 +221,7 @@ The release gate is green: build, all four audits, the full serial suite,
   combat land on the hit (items without damage deal none); splash-only
   attackers carry their own HP between phases; shove impact events join
   the strike's on_hit events in component order.
+- [x] Fork combat from source (`tests/fork-combat-{splash,extras}.spec.ts`): no-target AOE repeats, duplicate multi-target strikes, lifelink/live_to_serve zero cases, extra-damage instances, Spotlight warps, aura initiator, has_damage.
 - [x] AnimationCombat's non-fading `screen_blend` flash draws at full strength.
 - [x] UI parity: help boxes type their text out through the `__default_help`
   dialog (`tests/help-typewriter.spec.ts`); the Controls settings page rebinds

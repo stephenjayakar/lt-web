@@ -8,7 +8,9 @@ import * as skillSystem from './skill-system';
 import {
   damage as itemDamage,
   damageOnMiss,
+  evaluatedExtraDamageSource,
   extraDamage,
+  extraDamageSources,
   hasDamageOnMiss,
   healAmount,
   lifelinkHealForStrike,
@@ -49,6 +51,11 @@ export interface CombatStrike {
   damage: number;
   /** Separate EotF non-critical damage instance applied after normal damage. */
   extraDamage?: number;
+  /**
+   * EOtF: how many equal extra-damage instances `extraDamage` totals, when
+   * the item and an item_override both carry eval_extra_damage.
+   */
+  extraDamageInstances?: number;
   isCounter: boolean;
   /** True for an attack-stance partner strike (half damage). */
   assist?: boolean;
@@ -160,6 +167,7 @@ export class CombatPhaseSolver {
     attackItem: ItemObject,
     defenders: UnitObject[],
     defenseItems: Map<UnitObject, ItemObject | null>,
+    mainTarget?: UnitObject | null,
   ): void {
     this.combatDb = db;
     this.sessionAttacker = attacker;
@@ -177,7 +185,7 @@ export class CombatPhaseSolver {
       this.guardGaugeResults.set(unit, unit.getGuardGauge());
     }
     this.lifecycle = new CombatSkillLifecycle(db, this.randomRoll, this.game);
-    this.lifecycle.beginCombat(attacker, attackItem, defenders, defenseItems);
+    this.lifecycle.beginCombat(attacker, attackItem, defenders, defenseItems, mainTarget);
     this.syncProcPlayback();
   }
 
@@ -237,7 +245,12 @@ export class CombatPhaseSolver {
     board?: GameBoard | null,
     script?: string[] | null,
   ): void {
-    const splash = [...new Set(splashDefenders)].filter((unit) => unit !== mainDefender);
+    // EOtF's engine keeps a unit listed twice in a merged multi-target
+    // splash (the AI aims `[target] * num_targets`): it is struck once per
+    // entry. Upstream de-duplicates.
+    const splash = (isForkEngine() ? splashDefenders : [...new Set(splashDefenders)])
+      .filter((unit) => unit !== mainDefender);
+    const uniqueSplash = [...new Set(splash)];
     this.sessionStrikes = [];
     this.pendingMovement = [];
     if (splash.length === 0 && mainDefender) {
@@ -251,11 +264,14 @@ export class CombatPhaseSolver {
       db,
       attacker,
       attackItem,
-      [...(mainDefender ? [mainDefender] : []), ...splash],
+      [...(mainDefender ? [mainDefender] : []), ...uniqueSplash],
       new Map([
         ...(mainDefender ? [[mainDefender, defenseItem] as [UnitObject, ItemObject | null]] : []),
-        ...splash.map((unit) => [unit, null] as [UnitObject, ItemObject | null]),
+        ...uniqueSplash.map((unit) => [unit, null] as [UnitObject, ItemObject | null]),
       ]),
+      // Python pre_combat sees solver.defender, None when there is no main
+      // target, so the attacker's combat_conditions get target=None.
+      isForkEngine() ? mainDefender : undefined,
     );
     this.session = this.groupGen(
       attacker, attackItem, mainDefender, defenseItem, splash, db, rngMode, board, script,
@@ -431,12 +447,24 @@ export class CombatPhaseSolver {
     for (const effect of strike.allySkillHpChanges ?? []) shift(effect.unit, effect.amount);
   }
 
-  /** Python LiveToServe heal: int(phase heal total * X), fork-modified. */
+  /**
+   * Python LiveToServe heal: int(phase heal total * X). EOtF's engine only
+   * routes a positive amount through its heal modifiers, so nothing healed
+   * means no self-heal at all (the unit's empower_heal is not added to 0).
+   */
   private liveToServeAmount(unit: UnitObject, ratio: number): number {
     const base = Math.trunc(this.phaseAllyHealing * ratio);
-    return isForkEngine()
-      ? skillSystem.modifiedHealAmount(base, unit, unit, this.game)
-      : base;
+    if (!isForkEngine()) return base;
+    return base > 0 ? skillSystem.modifiedHealAmount(base, unit, unit, this.game) : 0;
+  }
+
+  /**
+   * EOtF's engine heal helper for skill lifelink-style heals: an amount of
+   * 0 or less is returned unchanged (so recoil from a negative ratio is not
+   * softened by empower_heal), a positive one gets the heal modifiers.
+   */
+  private forkSelfHealAmount(amount: number, unit: UnitObject): number {
+    return amount <= 0 ? amount : skillSystem.modifiedHealAmount(amount, unit, unit, this.game);
   }
 
   private applyStrikeDamageEffects(
@@ -461,6 +489,9 @@ export class CombatPhaseSolver {
       )
       : null;
     if (proc) {
+      // EOtF's engine: lifelink reads the strike's damage brush, recorded
+      // before TrueMiracle / ignore_damage (after_take_strike) adjust it.
+      const lifelinkDamage = Math.max(0, Math.min(before, strike.damage));
       if (proc.component === 'ignore_damage') {
         strike.damage = 0;
         strike.extraDamage = 0;
@@ -485,10 +516,12 @@ export class CombatPhaseSolver {
       if (!everyStrike) this.customSurvivalTriggered.add(proc.skill);
       this.applySelfLifelink(
         strike,
-        Math.max(
-          0,
-          Math.min(before, strike.damage + (strike.extraDamage ?? 0)),
-        ),
+        isForkEngine()
+          ? lifelinkDamage
+          : Math.max(
+            0,
+            Math.min(before, strike.damage + (strike.extraDamage ?? 0)),
+          ),
       );
       this.applyPostStrikeSkillEffects(target, strike, before);
       const resolvedDamage = strike.damage + (strike.extraDamage ?? 0);
@@ -524,20 +557,42 @@ export class CombatPhaseSolver {
     grandmasterHit?: number,
     mode: 'attack' | 'defense' | 'splash' = 'attack',
     attackInfo: [number, number] = [0, 0],
-  ): number {
+  ): { extraDamage: number; extraDamageInstances?: number } {
     if (!hit || guarded || glancing ||
         target.tags.includes('IgnoringDamage') ||
-        skillSystem.additionalTags(target, this.game).has('IgnoringDamage')) return 0;
+        skillSystem.additionalTags(target, this.game).has('IgnoringDamage')) return { extraDamage: 0 };
+    const defenseItem = target.items.find((candidate) => candidate.isWeapon()) ?? null;
+    if (isForkEngine()) {
+      // As EOtF's engine does: only the item's eval_extra_damage component
+      // deals extra damage, once per such component (the item's own plus an
+      // item_override's), and only for an item with a damage hook. Each
+      // instance deals the item total plus the skill eval_extra_damage total.
+      const sources = extraDamageSources(striker, item, this.game);
+      if (sources.length === 0 || itemDamage(striker, item, this.game) === null) {
+        return { extraDamage: 0 };
+      }
+      const itemValue = sources.reduce<number>(
+        (total, source) => total + evaluatedExtraDamageSource(striker, item, source, this.game), 0,
+      );
+      const skillValue = skillSystem.evaluatedExtraDamage(
+        striker, item, target, defenseItem, mode, attackInfo, itemValue, this.game,
+      );
+      let value = Math.max(0, itemValue + skillValue);
+      if (grandmasterHit !== undefined) value = Math.trunc(value * grandmasterHit / 100);
+      if (value <= 0) return { extraDamage: 0 };
+      return sources.length > 1
+        ? { extraDamage: value * sources.length, extraDamageInstances: sources.length }
+        : { extraDamage: value };
+    }
     const itemValue = item.hasComponent('eval_extra_damage')
       ? extraDamage(striker, item, this.game)
       : 0;
-    const defenseItem = target.items.find((candidate) => candidate.isWeapon()) ?? null;
     const skillValue = skillSystem.evaluatedExtraDamage(
       striker, item, target, defenseItem, mode, attackInfo, itemValue, this.game,
     );
     let value = Math.max(0, itemValue + skillValue);
     if (grandmasterHit !== undefined) value = Math.trunc(value * grandmasterHit / 100);
-    return value;
+    return { extraDamage: value };
   }
 
   private combatSkillActive(
@@ -636,12 +691,11 @@ export class CombatPhaseSolver {
   }
 
   /**
-   * Skill `lifelink` / `live_to_serve` after_strike on a miss. Both Python
-   * engines run Lifelink.after_strike on every strike (a miss heals 0 and
-   * still triggers the charge). EOtF's fork routes the heal through
-   * `_get_heal_amount(amount, unit, unit)`, so the striker's own
-   * empower_heal bonuses (and multipliers) heal even on a miss; its
-   * LiveToServe does the same whenever that result is positive.
+   * Skill `lifelink` / `live_to_serve` after_strike on a miss. Upstream
+   * runs Lifelink.after_strike on every strike: a miss heals 0 and still
+   * triggers the charge. EOtF's engine skips a lifelink that dealt nothing,
+   * so a miss heals nothing and triggers no charge; its LiveToServe still
+   * heals from the phase's earlier ally heals.
    */
   private applyMissSelfHealing(strike: CombatStrike): void {
     strike.selfSkillHpChange = 0;
@@ -649,11 +703,7 @@ export class CombatPhaseSolver {
     const fork = isForkEngine();
     for (const skill of [...strike.attacker.skills]) {
       if (!this.combatSkillActive(strike.attacker, skill, strike)) continue;
-      const heal = (): number => fork
-        ? skillSystem.modifiedHealAmount(0, strike.attacker, strike.attacker, this.game)
-        : 0;
-      if (typeof skill.getComponent<unknown>('lifelink') === 'number') {
-        strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + heal();
+      if (!fork && typeof skill.getComponent<unknown>('lifelink') === 'number') {
         skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
       }
       const liveToServe = skill.getComponent<unknown>('live_to_serve');
@@ -696,13 +746,21 @@ export class CombatPhaseSolver {
       };
       const lifelink = skill.getComponent<unknown>('lifelink');
       if (typeof lifelink === 'number') {
-        // EOtF fork: `_get_heal_amount(true_damage, unit, unit)`.
-        apply(Math.trunc(trueDamage * lifelink), true, fork);
+        const amount = Math.trunc(trueDamage * lifelink);
+        if (!fork) {
+          apply(amount, true);
+        } else if (amount !== 0) {
+          // EOtF's engine: nothing happens (no heal, no charge) when the
+          // strike's lifelink amount is 0; otherwise the heal modifiers
+          // apply to a positive amount only.
+          strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) +
+            this.forkSelfHealAmount(amount, strike.attacker);
+          skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
+        }
       }
       // LiveToServe.after_strike runs on every strike and heals X of the
-      // phase's requested ally heals so far; EOtF's fork routes it through
-      // `_get_heal_amount(amount, unit, unit)`, so the unit's own
-      // empower_heal bonuses heal even when no ally was healed.
+      // phase's requested ally heals so far (EOtF: with heal modifiers, and
+      // only when that amount is positive).
       const liveToServe = skill.getComponent<unknown>('live_to_serve');
       if (typeof liveToServe === 'number') {
         const amount = this.liveToServeAmount(strike.attacker, liveToServe);
@@ -1239,7 +1297,7 @@ export class CombatPhaseSolver {
       hit,
       crit,
       damage: dmg,
-      extraDamage: this.evaluatedExtraDamage(
+      ...this.evaluatedExtraDamage(
         striker,
         item,
         target,
@@ -1309,7 +1367,8 @@ export class CombatPhaseSolver {
     script?: string[] | null,
   ): Generator<CombatStrike[], void, void> {
     const doubleSplash = !!db.getConstant('double_splash', false);
-    const splashHp = new Map(splash.map((unit) => [unit, this.trackHp(unit, unit.currentHp)]));
+    const fork = isForkEngine();
+    const splashHp = new Map([...new Set(splash)].map((unit) => [unit, this.trackHp(unit, unit.currentHp)]));
     const result: CombatStrike[] = [];
     let propagatedAttacks = 0;
 
@@ -1323,7 +1382,9 @@ export class CombatPhaseSolver {
       let sharedAttackProcs = sourceStrike?.attackProcs;
       for (const target of splash) {
         const hpRef = splashHp.get(target) ?? { hp: 0 };
-        if (hpRef.hp <= 0 && !skillSystem.ignoreDyingInCombat(target)) continue;
+        // EOtF's engine strikes every splash entry each phase, including a
+        // unit already brought to 0 HP (it is only removed after combat).
+        if (!fork && hpRef.hp <= 0 && !skillSystem.ignoreDyingInCombat(target)) continue;
         const strike = forcedToken
           ? this.resolveScriptedStrike(
             attacker, attackItem, target, db, false, forcedToken, board, 'splash',
@@ -1396,6 +1457,8 @@ export class CombatPhaseSolver {
         }
         yield strikes;
       }
+    } else if (fork) {
+      yield* this.forkNoTargetSplashGen(attacker, attackItem, splash, splashHp, appendSplash, doubleSplash);
     } else {
       const reference = splash[0];
       if (reference) {
@@ -1415,6 +1478,68 @@ export class CombatPhaseSolver {
     }
 
     this.strikes = result;
+  }
+
+  /**
+   * EOtF's AttackerState for a combat with no main target (line/all-enemy
+   * AOE, merged multi-target). Every subattack strikes the whole splash
+   * list (double_splash), the multiattack count is re-read after each one,
+   * and the phase count is 1 + dynamic_attacks + blitzes with no target (so
+   * no speed doubling), all re-evaluated before each phase. Nothing counters.
+   */
+  private *forkNoTargetSplashGen(
+    attacker: UnitObject,
+    attackItem: ItemObject,
+    splash: UnitObject[],
+    splashHp: Map<UnitObject, { hp: number }>,
+    appendSplash: (
+      forcedToken?: string,
+      sourceStrike?: CombatStrike,
+      explicitAttackInfo?: [number, number],
+    ) => CombatStrike[],
+    doubleSplash: boolean,
+  ): Generator<CombatStrike[], void, void> {
+    if (splash.length === 0) return;
+    const attackerHp = splashHp.get(attacker) ?? this.trackHp(attacker, attacker.currentHp);
+    let numAttacks = 0;
+    let numSubattacks = 0;
+    let blitzesUsed = 0;
+    for (;;) {
+      const appended = appendSplash(undefined, undefined, [numAttacks, numSubattacks]);
+      if (appended.length > 0) yield appended;
+      numSubattacks++;
+      const info: [number, number] = [numAttacks, numSubattacks];
+      // Runs on resuming after the yield, so formulas see the HP the
+      // previous subattack left (Python applies a phase before the next).
+      const multiattacks = calcs.computeStrikeCount(
+        attacker, attackItem, null, null, 'attack', info, this.game,
+      );
+      if (numSubattacks >= multiattacks) {
+        numAttacks++;
+      } else if (!doubleSplash) {
+        numSubattacks = multiattacks;
+        numAttacks++;
+      }
+      if (attackerHp.hp <= 0 && !skillSystem.ignoreDyingInCombat(attacker)) return;
+      const nextInfo: [number, number] = [numAttacks, numSubattacks];
+      const blitzes = calcs.computeBlitzPhases(
+        attacker, attackItem, null, null, 'attack', nextInfo, this.game,
+      );
+      const phases = 1 + blitzes + calcs.computeExtraAttackPhases(
+        attacker, attackItem, null, null, 'attack', nextInfo, this.game,
+      );
+      const hasUses = this.itemHasUses(attacker, attackItem);
+      if (hasUses && numSubattacks < multiattacks) continue;
+      if (hasUses && blitzesUsed < blitzes && numAttacks < phases) {
+        numSubattacks = 0;
+        blitzesUsed++;
+      } else if (hasUses && numAttacks < phases) {
+        // Desperation or not, with no defender the attacker goes again.
+        numSubattacks = 0;
+      } else {
+        return;
+      }
+    }
   }
 
   resolve(
@@ -1879,7 +2004,7 @@ export class CombatPhaseSolver {
       hit,
       crit,
       damage: dmg,
-      extraDamage: this.evaluatedExtraDamage(
+      ...this.evaluatedExtraDamage(
         striker, item, target, hit, guarded, glancing,
         rngMode === 'grandmaster' ? finalHit : undefined,
         mode,
