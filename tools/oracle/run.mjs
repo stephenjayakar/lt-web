@@ -3,7 +3,7 @@
  * Differential oracle: run scenarios through the Python engine and the web
  * engine and print field-level differences.
  *
- *   npm run oracle -- [scenario.json | name | dir ...] [--all] [--keep] [--web-only|--py-only] [-v]
+ *   npm run oracle -- [scenario.json | name | dir ...] [--full] [--all] [--web-only|--py-only] [-v]
  *
  * With no scenario arguments every tools/oracle/scenarios/*.json runs.
  * Raw run outputs go to $LT_ORACLE_OUT (default E:/BigData/lt-oracle/out).
@@ -86,7 +86,7 @@ async function main() {
       fs.writeFileSync(path.join(dir, 'web.json'), JSON.stringify(web, null, 1));
       if (!fs.existsSync(path.join(dir, 'py.json'))) fs.writeFileSync(path.join(dir, 'py.json'), JSON.stringify(py, null, 1));
       const report = diffRuns(py, web, scenario);
-      console.log(formatReport(name, report, { all: flags.has('--all') }));
+      console.log(formatReport(name, report, { all: flags.has('--all'), full: flags.has('--full') }));
       const harnessFail = report.errors.length > 0;
       worst = Math.max(worst, report.ok ? 0 : harnessFail ? 2 : 1);
       summary.push(`${report.ok ? 'MATCH' : harnessFail ? 'ERROR' : 'DIFF '}  ${name}`);

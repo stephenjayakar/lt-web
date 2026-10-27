@@ -166,8 +166,12 @@ class Engine:
             raise OracleError('project not found: %s' % proj)
         RESOURCES.load(proj, CURRENT_SERIALIZATION_VERSION)
         DB.load(proj, CURRENT_SERIALIZATION_VERSION)
+        # debug=0 like a shipped build: event conditions read
+        # cf.SETTINGS['debug'] (default.ltproj's "Global Debug Setup") and the
+        # web has no debug mode. Engine exceptions still propagate because
+        # the driver calls game.state.update() itself, outside driver.run().
         base = {
-            'debug': 1, 'animation': 'Never', 'music_volume': 0, 'sound_volume': 0,
+            'debug': 0, 'animation': 'Never', 'music_volume': 0, 'sound_volume': 0,
             'mouse': 0, 'autoend_turn': 0, 'confirm_end': 0, 'text_speed': 0,
             'show_terrain': 0, 'show_objective': 0, 'autocursor': 1, 'talk_boop': 0,
         }
@@ -194,11 +198,23 @@ class Engine:
         engine.get_true_time = lambda: engine.constants['current_time']
 
     # -- level -------------------------------------------------------------
-    def start_level(self, level_nid: str, seed: int, events: bool) -> None:
+    def start_level(self, level_nid: str, seed: int, events: bool,
+                    rng_mode: str | None = None, growths: str | None = None) -> None:
         from app.engine import game_state
         from app.utilities import static_random
         self.cf.SETTINGS['random_seed'] = int(seed)
-        self.game = game_state.start_level(level_nid)
+        # game_state.start_level(), with the difficulty overrides applied
+        # between build_new() and the level build so generic autolevels
+        # already use the scenario's growth method.
+        if not game_state.game:
+            game_state.game = game_state.GameState()
+        else:
+            game_state.game.clear()
+        self.game = game_state.game
+        self.game.load_states(['start_level_asset_loading'])
+        self.game.build_new()
+        self.apply_mode(rng_mode, growths)
+        self.game.start_level(level_nid)
         self.static_random = static_random
         if not events:
             self._suppress_events = True
@@ -234,6 +250,10 @@ class Engine:
         if button:
             inp.keys_pressed[button] = True
             inp.key_down_events.append(button)
+        # Asset-loading states poll worker threads against the (frame) clock;
+        # join them so the outcome never depends on wall-clock speed.
+        for t in getattr(self.game.state.current_state(), 'loading_threads', None) or []:
+            t.join()
         surf, repeat = self.game.state.update(button, self.surf)
         guard = 0
         while repeat:
@@ -698,8 +718,8 @@ def run_scenario(scn: dict) -> dict:
     try:
         e = Engine(scn.get('project', 'default.ltproj'))
         e.boot(scn.get('settings'))
-        e.start_level(str(scn['level']), scn.get('seed', 0), scn.get('events', True))
-        e.apply_mode(scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'))
+        e.start_level(str(scn['level']), scn.get('seed', 0), scn.get('events', True),
+                      scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'))
         e.settle(skip=scn.get('skip', 'SELECT'), max_frames=scn.get('start_frames', 20000))
         r = Runner(e, scn)
         r.setup(scn.get('setup', []))

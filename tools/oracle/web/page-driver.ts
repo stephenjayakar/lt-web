@@ -172,7 +172,11 @@ class WebEngine {
 }
 
 class Runner {
-  constructor(private e: WebEngine) {}
+  private e: WebEngine;
+
+  constructor(e: WebEngine) {
+    this.e = e;
+  }
 
   setup(ops: any[]): void {
     const e = this.e;
@@ -301,7 +305,8 @@ class Runner {
       if (a.item) e.choose(a.item); else e.press('SELECT');
       await e.settle();
     }
-    e.expect('targeting', 'combat_targeting');
+    // Staves land in item_targeting on the web, combat_targeting in Python.
+    e.expect('targeting', 'combat_targeting', 'item_targeting');
     await this.targetAndFire(a.target);
   }
 
@@ -543,15 +548,17 @@ export async function runScenario(scn: Scenario): Promise<Json> {
     // Python build_new: fresh game vars holding only the seed.
     g.gameVars.clear();
     g.gameVars.set('_random_seed', scn.seed ?? 0);
+    // Fresh difficulty mode with the scenario overrides, set before the level
+    // builds so generic autolevels use them (loadLevel keeps an existing
+    // mode). Same defaults as py_driver.py: Python's own default mode object
+    // pins True Hit; growths default to Fixed so level-ups are seed independent.
     g.currentMode = null;
-    await g.loadLevel(String(scn.level));
-    g.initDifficulty?.();
-    // Same defaults as py_driver.py (Python's own default mode object pins
-    // True Hit; growths default to Fixed so level-ups are seed independent).
+    g.initDifficulty();
     if (g.currentMode) {
       g.currentMode.rng_mode = scn.rng_mode ?? 'True Hit';
       g.currentMode.growths = scn.growths ?? 'Fixed';
     }
+    await g.loadLevel(String(scn.level));
     if (scn.events === false) {
       // loadLevel already queued (and once-marked) the level_start events;
       // Python never triggers them at all in this mode.
