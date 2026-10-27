@@ -235,6 +235,7 @@ import {
   applyStolenItemTransfer,
   combatTradePair,
   applyCombatSkillEndHooks,
+  applyUnusableCombatItems,
   triggerAbilityItemCharge,
   triggerSkillCharge,
   playbackMarks,
@@ -8011,6 +8012,10 @@ export class CombatState extends State {
             isForkEngine() && !this.getPrimaryCombatDefender() ? null : activeCombat.defender,
             activeCombat.procPlayback,
           );
+          applyUnusableCombatItems(game, [
+            [activeCombat.attacker, activeCombat.attackItem],
+            [this.getPrimaryCombatDefender(), activeCombat.defenseItem],
+          ]);
           const itemEndEvents = this.captureEvents(() =>
             queueCombatEndItemEvents(game, activeCombat.strikes));
           this.heldEndEvents = this.orderEndCombatEvents(skillEndEvents, itemEndEvents);

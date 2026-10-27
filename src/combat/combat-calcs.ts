@@ -831,9 +831,11 @@ function computeDamageCore(
 ): number {
   game ??= _eqGameRef?.();
   const defWeapon = resolveWeapon(defender);
-  // EOtF's engine passes the strike's def_item (None for splash) to
-  // defense() (the defender's weapon resist modifiers) and dynamic_damage.
-  const strikeDefItem = isForkEngine() && defenseItem !== undefined ? defenseItem : defWeapon;
+  // EOtF's engine: Damage.on_hit computes the damage with the target's own
+  // weapon (target.get_weapon()), splash strikes included; only the hit and
+  // crit rolls use the strike's def_item (None for splash).
+  const strikeDefItem = defWeapon;
+  if (isForkEngine()) defenseItem = undefined;
   const atk = damage(
     attacker, attackItem, db, game, defender, defWeapon, mode, attackInfo,
   );
