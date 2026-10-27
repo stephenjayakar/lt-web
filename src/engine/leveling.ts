@@ -64,12 +64,15 @@ export function cappedExpGain(unit: UnitObject, exp: number, game: LevelCapGame)
  * then level up (one growth roll per level, with the unit's leveling method
  * unless `customMethod` is given) until the exp is below 100 or the cap is
  * reached. Returns the exp actually granted and each level's stat changes.
+ * `bonusExp` marks Python's `bonus_exp` ExpState, the only one whose level-ups
+ * raise current HP (see levelUpUnit).
  */
 export function applyExpGain(
   unit: UnitObject,
   amount: number,
   customMethod: string | undefined,
   game: any,
+  bonusExp: boolean = false,
 ): { applied: number; levelUps: Record<string, number>[] } {
   const applied = game ? cappedExpGain(unit, amount, game) : amount;
   const levelUps: Record<string, number>[] = [];
@@ -78,7 +81,7 @@ export function applyExpGain(
   while (unit.exp >= 100 && unit.level < levelCap) {
     unit.exp -= 100;
     levelUps.push(game
-      ? levelUpUnit(unit, customMethod, game)
+      ? levelUpUnit(unit, customMethod, game, bonusExp)
       : unit.levelUp(customMethod ?? 'random'));
   }
   if (unit.level >= levelCap && unit.exp >= 100) unit.exp = 0;
@@ -452,19 +455,30 @@ export function difficultyAutoLevel(
   return totals;
 }
 
-/** Apply one displayed level-up through the same deterministic engine as autolevel. */
+/**
+ * Apply one displayed level-up through the same deterministic engine as autolevel.
+ *
+ * Python ExpState applies the gains with
+ * `ApplyStatChanges(unit, changes, increase_current_stats=name == 'bonus_exp')`:
+ * a combat/item/event level-up leaves current HP alone (only clamped to the
+ * new max), and only the base's bonus-exp screen adds the max-HP increase.
+ * The EOtF fork passes False there too.
+ */
 export function levelUpUnit(
   unit: UnitObject,
   customMethod: string | undefined,
   game: any,
+  bonusExp: boolean = false,
 ): Record<string, number> {
   const result = autoLevelUnit(unit, 1, customMethod, game);
   const oldHp = unit.currentHp;
+  const oldMaxHp = unit.maxHp;
   for (const [nid, change] of Object.entries(result.statChanges)) {
     if (unit.stats[nid] !== undefined) unit.stats[nid] += change;
   }
   unit.growthPoints = result.growthPoints;
   unit.level += 1;
-  unit.currentHp = Math.max(0, Math.min(unit.maxHp, oldHp + (result.statChanges.HP ?? 0)));
+  const increase = bonusExp && !isForkEngine() ? Math.max(0, unit.maxHp - oldMaxHp) : 0;
+  unit.currentHp = Math.max(0, Math.min(unit.maxHp, oldHp + increase));
   return result.statChanges;
 }

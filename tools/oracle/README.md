@@ -207,22 +207,14 @@ went away. `--full` prints everything, `--all` lists matching steps too.
 
 ## Starter scenarios and the current baseline
 
-All scenarios run to completion on both sides. Remaining diffs are engine
-behaviour, not harness artefacts (checked against the Python source):
-
-| Diff | Seen in |
-|---|---|
-| Python's `Wait` sets `has_moved`/`has_traded`/`has_attacked`; the web only `finished` | every wait or automatic post-combat wait |
-| Combat level-up raises current HP on the web; Python only for bonus exp | default-level-up (hp 16 vs 17) |
-| Item use and heal staves draw two combat RNG rolls in Python, none on the web | default-use-item, default-heal-staff (`rng.combat`) |
-| `gba_poison` is not implemented on the web (no damage, no RNG roll) | default-statuses-turns |
-| `cannot_use_items` statuses unequip the weapon in Python | default-statuses-turns |
-| An enemy whose Stunned expires at its phase upkeep acts that phase in Python, not on the web | default-statuses-turns (turn 2) |
-| Dead units are `finished` in Python | eotf-ex2-combat |
-| Terrain status of a unit moved by `move_group` appears a step later on the web | default-prologue-intro |
+All scenarios run to completion on both sides, and no known differences
+remain in the starter scenarios.
 
 Matching so far: combat strike order, damage, weapon uses, exp and RNG in the
-default and EOtF attacks; trade results; Vulnerary and Heal amounts; inline
+default and EOtF attacks; trade results; Vulnerary and Heal amounts and their
+combat RNG draws; Wait and post-combat action flags (dead units included);
+level-up HP; `gba_poison`, Stunned/Sleep unequipping and expiring at upkeep;
+terrain statuses after event moves; inline
 event commands (vars, money, items, HP, team, regions, movement, stats, exp,
 wexp, unit removal); the EOtF Dragon AI phase; unit loading/deployment by
 event in EOtF; unit construction (class skills, parties, generic wexp and

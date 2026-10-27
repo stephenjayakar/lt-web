@@ -30,6 +30,7 @@ import { ItemObject as ItemObjectClass } from '../../objects/item';
 import { available as itemAvailable, inventoryFull } from '../../combat/item-system';
 import { noTrade } from '../../combat/skill-system';
 import { isForkEngine } from '../engine-flavor';
+import { startupSkinnedSpriteName } from '../../ui/sprites';
 import { canUseBaseItem } from './game-states';
 import {
   Choice,
@@ -711,7 +712,8 @@ export class OptimizeAllChoiceState extends State {
     const [ox, oy] = screenOrigin();
     if (!this.menu) return surf;
     const width = this.boxWidth();
-    const box = baseSurf(width, 40, 'menu_bg_base');
+    // A bare create_base_surf: EOtF keeps the skin the game started with.
+    const box = baseSurf(width, 40, startupSkinnedSpriteName('menu_bg_base'));
     const bx = ox + 120 - Math.floor(box.width / 2);
     const by = oy + 80 - 28;
     blitTranslucent(surf, box, bx, by, 0);

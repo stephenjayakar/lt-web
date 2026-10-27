@@ -45,6 +45,7 @@ import { MovementSystem } from '../movement/movement-system';
 import { EventManager } from '../events/event-manager';
 import { AudioManager } from '../audio/audio-manager';
 import { HUD } from '../ui/hud';
+import { currentWindowSkin } from '../ui/sprites';
 import { AIController } from '../ai/ai-controller';
 import { SkillObject } from '../objects/skill';
 import {
@@ -179,6 +180,13 @@ export class GameState {
   memory: Map<string, any>;
   /** Spoken dialog history used by the in-conversation log overlay. */
   dialogLogEntries: Array<{ speaker: string; text: string }>;
+  /**
+   * EOtF window skin baked into the built-in text speak styles
+   * (__default_text, narration, narration_top). The engine builds its speak
+   * style library when a game starts and saves it, so those boxes keep the
+   * skin chosen at New Game. Null: follow the live skin.
+   */
+  speakStyleSkin: unknown = null;
 
   // -- Base screen data -----------------------------------------------------
   /** Base conversations: key=convo NID, value=true if viewed/ignored. */
@@ -370,6 +378,7 @@ export class GameState {
     this.marketItems = new Map();
     this.unlockedLore = [];
     this.dialogLogEntries = [];
+    this.speakStyleSkin = currentWindowSkin();
     // sweep()
     this.levelVars = new Map();
     this.turnCount = 1;

@@ -193,7 +193,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
         present: g.units.has('Eirika'),
         globalBonus: g.gameVars.get('_global_level_cap_bonus'),
       };
-      const actions = Array.from({ length: 4 }, () => g.actionLog.undo());
+      const actions = Array.from({ length: 5 }, () => g.actionLog.undo());
       const restored = g.units.get('Eirika');
       const undone = {
         sameIdentity: restored === original,
@@ -226,6 +226,7 @@ test.describe('Event command batch 3 (zero-usage completeness)', () => {
     expect(result.redone).toEqual(result.changed);
     expect(result.actionNames).toEqual([
       'UnregisterUnitAction',
+      'LeaveMapAction',
       'SetUnitFieldAction',
       'SetGameVarAction',
       'HealAction',
@@ -1568,7 +1569,7 @@ test.describe('Event command batch 3h (repair shop, cleanup, formation)', () => 
     expect(placed.inSpot).toBe(true);
     expect(placed.undone).toEqual({ pos: null, boardUnit: null, finished: false });
     expect(placed.redone).toEqual(placed.changed);
-    expect(placed.actionNames).toEqual(['ResetAllAction', 'ArriveOnMapAction']);
+    expect(placed.actionNames).toEqual(['ResetAction', 'ArriveOnMapAction']);
   });
 });
 

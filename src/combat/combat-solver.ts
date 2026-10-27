@@ -6,6 +6,7 @@ import type { GameBoard } from '../objects/game-board';
 import * as calcs from './combat-calcs';
 import * as skillSystem from './skill-system';
 import {
+  crit as itemCrit,
   damage as itemDamage,
   damageOnMiss,
   evaluatedExtraDamageSource,
@@ -56,6 +57,15 @@ export interface CombatStrike {
    * the item and an item_override both carry eval_extra_damage.
    */
   extraDamageInstances?: number;
+  /**
+   * EOtF: the damage the strike's digits show when a survival hook
+   * (TrueMiracle, ignore_damage) changed what `damage` applies.
+   */
+  shownDamage?: number;
+  /** EOtF: the extra damage the purple digits show when that changed. */
+  shownExtraDamage?: number;
+  /** EOtF: the item lifelink heal the solver settled for this strike (misses too). */
+  itemLifelinkHeal?: number;
   isCounter: boolean;
   /** True for an attack-stance partner strike (half damage). */
   assist?: boolean;
@@ -144,6 +154,14 @@ export class CombatPhaseSolver {
    */
   private phaseAllyHealing = 0;
   /**
+   * EOtF: every unit's HP when the current phase began. Python queues a
+   * phase's HP changes as actions and applies them only after the phase, so
+   * each strike's true damage, lifelink and survival checks read these.
+   */
+  private readonly phaseStartHp = new Map<UnitObject, number>();
+  /** EOtF: the phase's damage brushes so far (lifelink variants total them). */
+  private phaseDamage: Array<{ attacker: UnitObject; raw: number; trueDamage: number; crit: boolean }> = [];
+  /**
    * The last resolved strike's attack/defense procs. Python ends a strike's
    * sub-combat (removing its proc skills) only after the strike's damage and
    * after-strike hooks, so removal waits for applyStrikeDamage.
@@ -221,6 +239,7 @@ export class CombatPhaseSolver {
 
   /** Register a simulated HP reference so strike events can adjust it. */
   private trackHp(unit: UnitObject, hp: number): { hp: number } {
+    if (!this.phaseStartHp.has(unit)) this.phaseStartHp.set(unit, hp);
     const ref = { hp };
     const refs = this.simHps.get(unit);
     if (refs) refs.push(ref);
@@ -288,6 +307,12 @@ export class CombatPhaseSolver {
     this.applyPendingMovement();
     const session = this.session;
     this.phaseAllyHealing = 0;
+    this.phaseStartHp.clear();
+    this.phaseDamage = [];
+    for (const unit of this.simHps.keys()) {
+      const hp = this.simulatedHp(unit);
+      if (hp !== undefined) this.phaseStartHp.set(unit, hp);
+    }
     const step = this.withLiveHp(() => session.next());
     if (step.done) {
       this.session = null;
@@ -406,6 +431,14 @@ export class CombatPhaseSolver {
     ignoreDying: boolean = false,
   ): void {
     try {
+      if (isForkEngine()) {
+        // Every strike of a phase reads the HP the phase began with.
+        const before = this.phaseHp(target, hp.hp);
+        this.recordAllyHealing(target, strike, before);
+        this.applyForkStrikeDamageEffects(target, hp, strike, ignoreDying, before);
+        this.applyStrikeSideHp(strike, before);
+        return;
+      }
       const before = hp.hp;
       this.recordAllyHealing(target, strike, before);
       this.applyStrikeDamageEffects(target, hp, strike, ignoreDying);
@@ -442,7 +475,18 @@ export class CombatPhaseSolver {
     const ownerItem = strike.attacker === this.sessionAttacker
       ? this.sessionAttackItem ?? strike.item
       : strike.item;
-    const itemHeal = lifelinkHealForStrike(strike.attacker, ownerItem, strike, targetHpBefore);
+    let itemHeal: number;
+    if (isForkEngine()) {
+      // Item Lifelink.after_strike runs on every strike, misses included,
+      // on the phase's damage so far clamped to the target's HP.
+      itemHeal = lifelinkHealForStrike(
+        strike.attacker, ownerItem, strike, targetHpBefore,
+        this.clampToHp(this.phaseTotals(strike.attacker).trueSum, targetHpBefore),
+      );
+      strike.itemLifelinkHeal = itemHeal;
+    } else {
+      itemHeal = lifelinkHealForStrike(strike.attacker, ownerItem, strike, targetHpBefore);
+    }
     shift(strike.attacker, itemHeal + (strike.selfSkillHpChange ?? 0));
     for (const effect of strike.allySkillHpChanges ?? []) shift(effect.unit, effect.amount);
   }
@@ -465,6 +509,166 @@ export class CombatPhaseSolver {
    */
   private forkSelfHealAmount(amount: number, unit: UnitObject): number {
     return amount <= 0 ? amount : skillSystem.modifiedHealAmount(amount, unit, unit, this.game);
+  }
+
+  /** EOtF: a unit's HP when the current phase began. */
+  private phaseHp(unit: UnitObject, fallback: number): number {
+    const hp = this.phaseStartHp.get(unit);
+    if (hp !== undefined) return hp;
+    this.phaseStartHp.set(unit, fallback);
+    return fallback;
+  }
+
+  /** Python utils.clamp(amount, 0, hp). */
+  private clampToHp(amount: number, hp: number): number {
+    return Math.min(Math.max(amount, 0), hp);
+  }
+
+  /** EOtF: the phase's damage brushes by `attacker` so far. */
+  private phaseTotals(attacker: UnitObject): {
+    trueSum: number; rawSum: number; critTrueSum: number; count: number;
+  } {
+    const totals = { trueSum: 0, rawSum: 0, critTrueSum: 0, count: 0 };
+    for (const entry of this.phaseDamage) {
+      if (entry.attacker !== attacker) continue;
+      totals.trueSum += entry.trueDamage;
+      totals.rawSum += entry.raw;
+      if (entry.crit) totals.critTrueSum += entry.trueDamage;
+      totals.count++;
+    }
+    return totals;
+  }
+
+  /**
+   * EOtF's engine resolves a strike's HP changes as queued actions: the
+   * damage brush records min(damage, HP at phase start); lifelink-style
+   * after_strike hooks total the phase's brushes; TrueMiracle checks each
+   * ChangeHP against the HP the phase began with; and the actions apply in
+   * order after the phase, each clamped to [0, max HP]. A unit struck twice
+   * in one phase can therefore fall through a TrueMiracle save.
+   */
+  private applyForkStrikeDamageEffects(
+    target: UnitObject,
+    hp: { hp: number },
+    strike: CombatStrike,
+    ignoreDying: boolean,
+    before: number,
+  ): void {
+    const connected = strike.hit || hasDamageOnMiss(strike.item);
+    const rawDamage = strike.damage;
+    const rawExtra = strike.extraDamage ?? 0;
+    if (connected && rawDamage >= 0 && itemDamage(strike.attacker, strike.item, this.game) !== null) {
+      this.phaseDamage.push({
+        attacker: strike.attacker,
+        raw: rawDamage,
+        trueDamage: Math.max(0, Math.min(rawDamage, before)),
+        crit: strike.crit,
+      });
+    }
+    if (!connected) {
+      this.applyForkPhaseLifelinks(strike, before);
+      this.applyPostStrikeSkillEffects(target, strike, before);
+      return;
+    }
+    const proc = rawDamage + rawExtra > 0
+      ? skillSystem.damagePreventionSkill(
+        target,
+        before - rawDamage - rawExtra <= 0,
+        this.customSurvivalTriggered,
+        this.game,
+      )
+      : null;
+    if (proc) {
+      strike.survivalProc = proc;
+      strike.defenseProcs = [
+        ...(strike.defenseProcs ?? []),
+        { kind: 'defense_proc', unit: target, parentSkill: proc.skill, procSkill: proc.skill },
+      ];
+      const everyStrike = (proc.component === 'TrueMiracle' || proc.component === 'ignore_damage') &&
+        !proc.skill.hasComponent('build_charge') && !skillSystem.hasDrainingCharge(proc.skill);
+      if (!everyStrike) this.customSurvivalTriggered.add(proc.skill);
+    }
+    // after_strike (the striker's lifelink) runs before the target's
+    // after_take_strike survival hooks rewrite the damage.
+    this.applyForkPhaseLifelinks(strike, before);
+    this.applyPostStrikeSkillEffects(target, strike, before);
+
+    const clamp = (value: number): number => Math.max(0, Math.min(target.maxHp, value));
+    const running = hp.hp;
+    let afterHit: number;
+    if (proc?.component === 'ignore_damage') {
+      afterHit = running;
+    } else if (proc && (proc.component === 'TrueMiracle' || proc.component === 'True_Miracle_Event')) {
+      // ChangeHP becomes -(phase-start HP) + extra + 1; the extra damage
+      // action follows it.
+      afterHit = clamp(clamp(running - (before - 1) + (rawExtra > 0 ? rawExtra : 0)) - rawExtra);
+    } else if (proc) {
+      afterHit = clamp(running - Math.min(rawDamage + rawExtra, Math.max(0, before - 1)));
+    } else {
+      afterHit = clamp(clamp(running - rawDamage) - rawExtra);
+    }
+    if (proc) {
+      // Digits still show the damage brushes; `damage` is what applied.
+      const applied = Math.max(0, running - afterHit);
+      strike.shownDamage = rawDamage;
+      if (rawExtra > 0) strike.shownExtraDamage = rawExtra;
+      strike.extraDamage = Math.min(rawExtra, applied);
+      strike.damage = applied - strike.extraDamage;
+    }
+    const final = clamp(afterHit + (strike.defenderSkillHpChange ?? 0));
+    hp.hp = ignoreDying && final <= 0 ? 1 : final;
+  }
+
+  /**
+   * EOtF lifelink-style after_strike hooks, which run on every strike (a
+   * miss included) and total the phase's damage brushes by the striker:
+   * lifelink and ally lifelinks heal X of the true damage clamped to this
+   * target's phase-start HP, shitty_lifelink X of the raw damage,
+   * eval_lifelink its value per brush, lifelink_on_crit X of the crit
+   * brushes. Heals go through the engine's guarded heal helper.
+   */
+  private applyForkPhaseLifelinks(strike: CombatStrike, targetHp: number): void {
+    strike.selfSkillHpChange = 0;
+    strike.allySkillHpChanges = [];
+    const unit = strike.attacker;
+    const totals = this.phaseTotals(unit);
+    const dealt = this.clampToHp(totals.trueSum, targetHp);
+    for (const skill of [...unit.skills]) {
+      if (!this.combatSkillActive(unit, skill, strike)) continue;
+      const heal = (amount: number): void => {
+        strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + this.forkSelfHealAmount(amount, unit);
+        skillSystem.consumeMiracleCharge(skill, unit, this.game);
+      };
+      const lifelink = skill.getComponent<unknown>('lifelink');
+      if (typeof lifelink === 'number') {
+        const amount = Math.trunc(dealt * lifelink);
+        if (amount !== 0) heal(amount);
+      }
+      const liveToServe = skill.getComponent<unknown>('live_to_serve');
+      if (typeof liveToServe === 'number') {
+        const amount = this.liveToServeAmount(unit, liveToServe);
+        if (amount > 0) {
+          strike.selfSkillHpChange = (strike.selfSkillHpChange ?? 0) + amount;
+          skillSystem.consumeMiracleCharge(skill, unit, this.game);
+        }
+      }
+      const unbounded = skill.getComponent<unknown>('shitty_lifelink');
+      if (typeof unbounded === 'number') {
+        const amount = Math.trunc(Math.max(0, totals.rawSum) * unbounded);
+        if (amount !== 0) heal(amount);
+      }
+      const evaluated = skill.getComponent<unknown>('eval_lifelink');
+      if (typeof evaluated === 'string' && totals.count > 0) {
+        const amount = this.evaluateSkillNumber(evaluated, strike, skill) * totals.count;
+        if (amount !== 0) heal(amount);
+      }
+      const onCrit = skill.getComponent<unknown>('lifelink_on_crit');
+      if (typeof onCrit === 'number') {
+        const amount = Math.trunc(this.clampToHp(totals.critTrueSum, targetHp) * onCrit);
+        if (amount > 0) heal(amount);
+      }
+      this.applyAllyLifelinks(strike, skill, dealt);
+    }
   }
 
   private applyStrikeDamageEffects(
@@ -778,64 +982,69 @@ export class CombatPhaseSolver {
       if (strike.crit && typeof onCrit === 'number') {
         apply(Math.trunc(trueDamage * onCrit), false, true);
       }
-      const grantAllies = (
-        percentage: number,
-        center: UnitObject,
-        range: number,
-        includeSelf: boolean,
-      ): void => {
-        const amount = Math.trunc(trueDamage * percentage);
-        if (amount <= 0 || !center.position) return;
-        let granted = 0;
-        for (const candidate of this.game?.units?.values?.() ?? []) {
-          if (!candidate.position) continue;
-          if (candidate === strike.attacker && !includeSelf) continue;
-          if (!skillSystem.checkAlly(strike.attacker, candidate, this.game.db)) continue;
-          if (this.game.board?.getUnit(
-            candidate.position[0],
-            candidate.position[1],
-          ) !== candidate) continue;
-          const distance =
-            Math.abs(candidate.position[0] - center.position[0]) +
-            Math.abs(candidate.position[1] - center.position[1]);
-          if (distance > range) continue;
-          strike.allySkillHpChanges!.push({
-            unit: candidate,
-            amount: skillSystem.modifiedHealAmount(
-              amount,
-              candidate,
-              strike.attacker,
-              this.game,
-            ),
-          });
-          granted++;
-        }
-        if (granted > 0) {
-          skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
-        }
-      };
-      const adjacent = skill.getComponent<unknown>('ally_lifelink');
-      if (typeof adjacent === 'number') {
-        grantAllies(adjacent, strike.attacker, 1, false);
+      this.applyAllyLifelinks(strike, skill, trueDamage);
+    }
+  }
+
+  /** Skill ally_lifelink / ally_lifelink_target / ally_lifelink_ranged heals. */
+  private applyAllyLifelinks(strike: CombatStrike, skill: SkillObject, trueDamage: number): void {
+    const grantAllies = (
+      percentage: number,
+      center: UnitObject,
+      range: number,
+      includeSelf: boolean,
+    ): void => {
+      const amount = Math.trunc(trueDamage * percentage);
+      if (amount <= 0 || !center.position) return;
+      let granted = 0;
+      for (const candidate of this.game?.units?.values?.() ?? []) {
+        if (!candidate.position) continue;
+        if (candidate === strike.attacker && !includeSelf) continue;
+        if (!skillSystem.checkAlly(strike.attacker, candidate, this.game.db)) continue;
+        if (this.game.board?.getUnit(
+          candidate.position[0],
+          candidate.position[1],
+        ) !== candidate) continue;
+        const distance =
+          Math.abs(candidate.position[0] - center.position[0]) +
+          Math.abs(candidate.position[1] - center.position[1]);
+        if (distance > range) continue;
+        strike.allySkillHpChanges!.push({
+          unit: candidate,
+          amount: skillSystem.modifiedHealAmount(
+            amount,
+            candidate,
+            strike.attacker,
+            this.game,
+          ),
+        });
+        granted++;
       }
-      const targetAdjacent = skill.getComponent<unknown>('ally_lifelink_target');
-      if (typeof targetAdjacent === 'number') {
-        grantAllies(targetAdjacent, strike.defender, 1, false);
+      if (granted > 0) {
+        skillSystem.consumeMiracleCharge(skill, strike.attacker, this.game);
       }
-      const ranged = skill.getComponent<unknown>('ally_lifelink_ranged');
-      if (ranged && typeof ranged === 'object') {
-        const option = (key: string): unknown => ranged instanceof Map
-          ? ranged.get(key)
-          : (ranged as Record<string, unknown>)[key];
-        const percentage = Number(option('percentage') ?? 0.5);
-        const range = Math.max(0, Math.trunc(Number(option('range') ?? 1)));
-        grantAllies(
-          Number.isFinite(percentage) ? percentage : 0.5,
-          strike.attacker,
-          Number.isFinite(range) ? range : 1,
-          option('include self?') === true,
-        );
-      }
+    };
+    const adjacent = skill.getComponent<unknown>('ally_lifelink');
+    if (typeof adjacent === 'number') {
+      grantAllies(adjacent, strike.attacker, 1, false);
+    }
+    const targetAdjacent = skill.getComponent<unknown>('ally_lifelink_target');
+    if (typeof targetAdjacent === 'number') {
+      grantAllies(targetAdjacent, strike.defender, 1, false);
+    }
+    const ranged = skill.getComponent<unknown>('ally_lifelink_ranged');
+    if (ranged && typeof ranged === 'object') {
+      const option = (key: string): unknown => ranged instanceof Map
+        ? ranged.get(key)
+        : (ranged as Record<string, unknown>)[key];
+      const percentage = Number(option('percentage') ?? 0.5);
+      const range = Math.max(0, Math.trunc(Number(option('range') ?? 1)));
+      grantAllies(
+        Number.isFinite(percentage) ? percentage : 0.5,
+        strike.attacker,
+        Number.isFinite(range) ? range : 1,
+        option('include self?') === true,
+      );
     }
   }
 
@@ -1932,17 +2141,13 @@ export class CombatPhaseSolver {
     // Pair Up guard case afterward -- the guard doesn't skip the roll, it just
     // discards it. Mirror that ordering so the combat-random stream position
     // stays aligned with Python even when a strike is guarded.
-    // Items without a hit hook (Steal, Warp, utility staves) auto-hit in LT
-    // and never call generate_roll() at all.
-    let hitRoll = true;
-    let roll = 0;
-    let effectiveHit = finalHit;
-    if (item.hasComponent('hit')) {
-      const detail = this.rollHitDetailed(finalHit, rngMode);
-      hitRoll = detail.hit;
-      roll = detail.roll;
-      effectiveHit = detail.effectiveHit;
-    }
+    // Items without a hit value (Steal, Warp, utility staves) still draw the
+    // roll: compute_hit gives them 10000 (computeHit's 100), so they always
+    // hit, but process() calls generate_roll() before comparing.
+    const detail = this.rollHitDetailed(finalHit, rngMode);
+    const hitRoll = detail.hit;
+    const roll = detail.roll;
+    const effectiveHit = detail.effectiveHit;
     const hit = guarded || hitRoll;
 
     // Roll for crit.
@@ -1950,7 +2155,12 @@ export class CombatPhaseSolver {
     // strike hits, regardless of guard_hit -- guard_hit only gates whether the
     // crit *effect* applies (`if crit and not guard_hit:`), not whether the
     // roll happens. Consume the roll first, then discard the result on guard.
-    const critRoll = hit ? this.randomRoll() < critChance : false;
+    // Crits must be on (the `crit` constant or crit_anyway), and an item
+    // without a crit value has to_crit None and draws nothing.
+    const critsOn = db.getConstant<boolean | number>('crit', true) !== false || skillSystem.critAnyway(striker);
+    const critRoll = hit && critsOn && itemCrit(striker, item) !== null
+      ? this.randomRoll() < critChance
+      : false;
     const crit = critRoll && !guarded;
 
     // Glancing hit: solver.py -- when a strike hits but isn't a crit, and

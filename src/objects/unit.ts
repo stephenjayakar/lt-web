@@ -159,8 +159,23 @@ export class UnitObject {
    * and is what `Canto`/`CantoPlus`/`CantoSharp.canto_movement()` return for a
    * canto re-move (movement_components.py). Reset to full MOV whenever the
    * unit's turn state resets (start of turn / new level).
+   *
+   * Like Python's `movement_left` property, a unit that has not moved
+   * (`has_moved`: finished, attacked, traded or moved) reads its live
+   * movement, so a MOV change after the phase reset (a Stunned status
+   * expiring at upkeep) applies to that phase.
    */
-  movementLeft: number;
+  get movementLeft(): number {
+    const hasMoved = this.finished || this.hasAttacked || this.hasTraded || this.hasMoved;
+    return hasMoved ? this.storedMovementLeft : this.getMovement();
+  }
+
+  set movementLeft(value: number) {
+    this.storedMovementLeft = value;
+  }
+
+  /** Python `_movement_left`: the budget recorded by the last move/reset. */
+  private storedMovementLeft: number = 0;
 
   // -- Party membership ---------------------------------------------------
   /** Party NID this unit belongs to. Empty string if unassigned. */
@@ -392,7 +407,8 @@ export class UnitObject {
   }
 
   /** Return all items including multi_item subitems (Python `get_all_items`). */
-  private getAllItems(): ItemObject[] {
+  /** Python item_funcs.get_all_items: items with multi-items expanded. */
+  getAllItems(): ItemObject[] {
     const result: ItemObject[] = [];
     const visited = new Set<ItemObject>();
     const append = (item: ItemObject): void => {

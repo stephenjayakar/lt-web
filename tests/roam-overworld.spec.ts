@@ -383,10 +383,13 @@ test.describe('Roam shop interaction', () => {
         // instance instead of the (now-cleared) transient game fields.
         shopUnitNid: shopState?.unit?.nid ?? null,
         shopItemNids: (shopState?.shopItems ?? []).map((it: any) => it.nid),
+        // Python item_funcs.create_items(unit, ...): the shopper owns the stock.
+        shopItemOwners: (shopState?.shopItems ?? []).map((it: any) => it.owner?.nid ?? null),
       };
     });
 
     expect(opened.stateName).toBe('shop');
+    expect(new Set(opened.shopItemOwners)).toEqual(new Set(['Eirika']));
     expect(opened.shopUnitNid).toBe('Eirika');
     expect(opened.shopItemNids).toContain('Iron_Sword');
 

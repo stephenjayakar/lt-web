@@ -79,6 +79,11 @@ const OPTION_WIDTH = 104;
 const PAGES = ['vital', 'items', 'skill', 'upgrade', 'seals'] as const;
 type Page = typeof PAGES[number];
 
+/** Gallery (alternate-version) units and the unit whose recruitment reveals each. */
+const GALLERY_COUNTERPARTS: [string, string][] = [
+  ['Gemini_M', 'Gemini_F'], ['Ayaka', 'Akane'], ['Lupus_P', 'Canes_P'], ['August', 'Reese'],
+];
+
 const WEAPON_ORDER = ['Sword', 'Lance', 'Axe', 'Bow', 'Knife', 'Anima', 'Light', 'Dark', 'Staff', 'Stone'];
 /** Tag -> row of the 16px type_icons strip. */
 const TYPE_ICON_ROWS: Record<string, number> = {
@@ -550,7 +555,10 @@ class DexDetailPanel {
 
     const recruited = recordList('Available_Units').includes(nid) ||
       (nid === 'Yasukage' && !!record('yasukage_unlocked'));
-    if (recruited) blitText(surf, 'text', 'Recruited!', 5, 136, 'green');
+    // Gallery units (alternate versions) have no recruit status. The engine
+    // asks for 'gray', which the text font lacks, so N/A prints in white.
+    if ((unit.tags ?? []).includes('Gallery')) blitText(surf, 'text', 'N/A', 5, 136, 'white');
+    else if (recruited) blitText(surf, 'text', 'Recruited!', 5, 136, 'green');
     else blitText(surf, 'text', 'Not Recruited', 5, 136, 'red');
 
     if (!hidden) {
@@ -785,10 +793,14 @@ export class DexMenuState extends State {
     this.bg.scrollSpeed = 25; // ScrollingBackground's own speed (not create_background's 50)
     preloadSprites(['unit_selector_glow', 'unit_select_base', 'unit_select_glow', 'buttons',
       'status_platform', 'type_icons', 'menu_highlight', 'menu_hand']);
-    const playable = [...game.db.units.values()].filter((u: any) => (u.tags ?? []).includes('Playable'));
-    const nids: string[] = record('Density_10_Cleared')
-      ? playable.map((u: any) => u.nid)
-      : playable.filter((u: any) => u.nid !== 'Libra_P').map((u: any) => u.nid);
+    // Playable and Gallery units in DB order; Libra_P and Samael_P join after
+    // Density 10 is cleared, then Samael_P waits for Density 15.
+    const excluded = !record('Density_10_Cleared') ? ['Libra_P', 'Samael_P']
+      : !record('Density_15_Cleared') ? ['Samael_P'] : [];
+    const nids: string[] = [...game.db.units.values()]
+      .filter((u: any) => (u.tags ?? []).includes('Playable') || (u.tags ?? []).includes('Gallery'))
+      .map((u: any) => u.nid)
+      .filter((nid: string) => !excluded.includes(nid));
     this.allUnits = new SlidingWindowUnitList(nids);
     this.initialUnit = game.memory?.get?.('curr_unit_info') ?? null;
     const unitNid = this.initialUnit ?? nids[0];
@@ -810,7 +822,18 @@ export class DexMenuState extends State {
 
   isHidden(nid: string): boolean {
     if (nid === this.initialUnit) return false;
-    if (recordList('Available_Units').includes(nid)) return false;
+    const available = recordList('Available_Units');
+    const seen = recordList('Seen_Units');
+    if ((getGame().db.units.get(nid)?.tags ?? []).includes('Gallery')) {
+      // An alternate version shows once its counterpart is recruited. The
+      // engine's `nid == X and P in Available or P in Seen` binds as
+      // `(... and ...) or ...`, so any counterpart in Seen_Units reveals
+      // every Gallery unit; kept as the game plays.
+      for (const [alt, counterpart] of GALLERY_COUNTERPARTS) {
+        if ((nid === alt && available.includes(counterpart)) || seen.includes(counterpart)) return false;
+      }
+    }
+    if (available.includes(nid)) return false;
     if (recordList('Seen_Units').includes(nid)) return false;
     if (record('yasukage_unlocked') && nid === 'Yasukage') return false;
     return true;

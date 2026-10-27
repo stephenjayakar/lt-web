@@ -94,6 +94,18 @@ function fontFor(type: string) {
   return areFontsReady() ? (FONT[type] ?? FONT.convo ?? FONT.text ?? null) : null;
 }
 
+/**
+ * Python FONT[font].blit(text, color=font_color): an explicit palette name,
+ * 'white' included, recolours the font. (Surface.drawText treats 'white' as
+ * "no colour", which left white-on-window dialogs such as the shop's in the
+ * convo font's default black.)
+ */
+function drawDialogText(surf: Surface, text: string, x: number, y: number, color: string, fontType: string): void {
+  const font = areFontsReady() ? FONT[fontType] : undefined;
+  if (font && color && font.hasColor(color)) font.blit(surf, text, x, y, color);
+  else surf.drawText(text, x, y, color, fontType);
+}
+
 function measure(fontType: string, text: string): number {
   const font = fontFor(fontType);
   return font ? font.width(text) : text.length * 6;
@@ -663,7 +675,7 @@ export class Dialog {
     const flush = (): void => {
       if (!run) return;
       if (y >= clip[1] - 8 && y < clip[1] + clip[3]) {
-        surf.drawText(run, cursorX, y, runColor, runFont);
+        drawDialogText(surf, run, cursorX, y, runColor, runFont);
       }
       cursorX += measure(runFont, run);
       run = '';
@@ -741,7 +753,7 @@ export class Dialog {
     if (x < 0) x = this.position[0] + 16;
     surf.blit(getMenuBackgroundSync(64, 16, this.nameTagBg), x, y);
     const w = measure(this.fontType, this.speaker);
-    surf.drawText(this.speaker, x + 32 - Math.floor(w / 2), y, this.fontColor, this.fontType);
+    drawDialogText(surf, this.speaker, x + 32 - Math.floor(w / 2), y, this.fontColor, this.fontType);
   }
 
   /** Draw the dialog box. Completed ending cards may retain their final text. */
