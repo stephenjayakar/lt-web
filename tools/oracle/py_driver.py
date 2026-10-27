@@ -41,7 +41,7 @@ BUTTONS = ('UP', 'DOWN', 'LEFT', 'RIGHT', 'SELECT', 'BACK', 'INFO', 'AUX', 'STAR
 REST_STATES = {
     'free', 'menu', 'move', 'canto_wait', 'weapon_choice', 'spell_choice',
     'combat_targeting', 'targeting', 'item', 'item_child', 'item_targeting',
-    'trade', 'option_menu', 'option_child', 'free_roam',
+    'trade', 'option_menu', 'option_child', 'free_roam', 'prep_main',
 }
 
 
@@ -335,7 +335,8 @@ class Engine:
         self.settle(until=lambda en: en.top() == 'title_start', max_frames=6000)
 
     def start_level(self, level_nid: str, seed: int, events: bool,
-                    rng_mode: str | None = None, growths: str | None = None) -> None:
+                    rng_mode: str | None = None, growths: str | None = None,
+                    game_vars: dict | None = None) -> None:
         from app.engine import game_state
         from app.utilities import static_random
         self.cf.SETTINGS['random_seed'] = int(seed)
@@ -350,6 +351,9 @@ class Engine:
         self.game.load_states(['start_level_asset_loading'])
         self.game.build_new()
         self.apply_mode(rng_mode, growths)
+        # Run state a real playthrough would have set before this level.
+        for k, v in (game_vars or {}).items():
+            self.game.game_vars[k] = v
         self.game.start_level(level_nid)
         self.static_random = static_random
         if not events:
@@ -750,6 +754,11 @@ class Runner:
         finally:
             e._suppress_events = was
 
+    def do_choose(self, a) -> None:
+        """Pick a named option in whatever menu the top state shows."""
+        self.e.choose(a['option'])
+        self.e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
+
     def do_frames(self, a) -> None:
         for _ in range(int(a.get('n', 1))):
             self.e.step(None)
@@ -879,7 +888,8 @@ def run_scenario(scn: dict, backend: str = 'upstream') -> dict:
         if scn.get('startup_events', True):
             e.run_startup()
         e.start_level(str(scn['level']), scn.get('seed', 0), scn.get('events', True),
-                      scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'))
+                      scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'),
+                      scn.get('start_game_vars'))
         e.settle(skip=scn.get('skip', 'SELECT'), max_frames=scn.get('start_frames', 20000))
         r = Runner(e, scn)
         r.setup(scn.get('setup', []))

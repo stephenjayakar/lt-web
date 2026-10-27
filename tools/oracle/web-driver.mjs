@@ -74,7 +74,8 @@ export async function runWebScenario(scenario, { browser, verbose = false } = {}
       harness: 'true', project, level: String(scenario.level), clean: 'true', bundle: 'false',
       seed: String(scenario.seed ?? 0),
     });
-    await page.goto(`${BASE}/?${q}`);
+    // A cold Vite server transforms the whole engine on first load.
+    await page.goto(`${BASE}/?${q}`, { timeout: 180_000, waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => !!window.__harness?.ready, null, { timeout: 120_000 });
     const result = await page.evaluate(async (scn) => {
       const mod = await import('/tools/oracle/web/page-driver.ts');

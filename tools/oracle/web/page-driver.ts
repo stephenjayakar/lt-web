@@ -37,12 +37,13 @@ export interface Scenario {
   skip?: string;
   start_frames?: number;
   startup_events?: boolean;
+  start_game_vars?: Record<string, unknown>;
 }
 
 const REST_STATES = new Set([
   'free', 'menu', 'move', 'canto_wait', 'weapon_choice', 'spell_choice',
   'combat_targeting', 'targeting', 'item', 'item_child', 'item_targeting', 'item_use',
-  'trade', 'option_menu', 'option_child', 'free_roam',
+  'trade', 'option_menu', 'option_child', 'free_roam', 'prep_main',
 ]);
 
 class OracleError extends Error {}
@@ -141,20 +142,24 @@ class WebEngine {
     let { menu, items } = this.activeMenu();
     const opts: any[] = menu.options;
     const lw = want.toLowerCase();
+    // ui/menu ChoiceMenu rows carry label/value; ui/prep-ui Choice rows wrap
+    // a typed entry (text or item).
+    const label = (o: any): string => String(o.label ?? o.entry?.text ?? o.entry?.item?.nid ?? '');
+    const value = (o: any): string => String(o.value ?? o.entry?.item?.nid ?? '');
+    const index = (m: any): number => (typeof m.selectedIndex === 'number' ? m.selectedIndex : m.currentIndex);
     let idx = -1;
     if (items) idx = items.findIndex((it: any) => it?.nid === want);
     if (idx < 0) {
-      idx = opts.findIndex((o: any) =>
-        String(o.label ?? '').toLowerCase() === lw || String(o.value ?? '').toLowerCase() === lw);
+      idx = opts.findIndex((o: any) => label(o).toLowerCase() === lw || value(o).toLowerCase() === lw);
     }
     if (idx < 0) {
-      throw new OracleError(`option ${want} not in ${this.top()} menu ${JSON.stringify(opts.map((o: any) => o.label))}`);
+      throw new OracleError(`option ${want} not in ${this.top()} menu ${JSON.stringify(opts.map(label))}`);
     }
-    for (let n = 0; n < opts.length + 2 && menu.selectedIndex !== idx; n++) {
-      this.press(idx > menu.selectedIndex ? 'DOWN' : 'UP');
+    for (let n = 0; n < opts.length + 2 && index(menu) !== idx; n++) {
+      this.press(idx > index(menu) ? 'DOWN' : 'UP');
       menu = this.activeMenu().menu;
     }
-    if (menu.selectedIndex !== idx) throw new OracleError(`could not reach option ${want} in ${this.top()}`);
+    if (index(menu) !== idx) throw new OracleError(`could not reach option ${want} in ${this.top()}`);
     this.press('SELECT');
   }
 
@@ -416,6 +421,12 @@ class Runner {
     }
   }
 
+  /** Pick a named option in whatever menu the top state shows. */
+  async do_choose(a: Action): Promise<void> {
+    this.e.choose(a.option);
+    await this.e.settle({ skip: a.skip, maxFrames: a.max_frames });
+  }
+
   async do_frames(a: Action): Promise<void> {
     for (let i = 0; i < Number(a.n ?? 1); i++) this.e.step(null);
   }
@@ -572,6 +583,8 @@ export async function runScenario(scn: Scenario): Promise<Json> {
     // Python build_new: fresh game vars holding only the seed.
     g.gameVars.clear();
     g.gameVars.set('_random_seed', scn.seed ?? 0);
+    // Run state a real playthrough would have set before this level.
+    for (const [k, v] of Object.entries(scn.start_game_vars ?? {})) g.gameVars.set(k, v);
     // Fresh difficulty mode with the scenario overrides, set before the level
     // builds so generic autolevels use them (loadLevel keeps an existing
     // mode). Same defaults as py_driver.py: Python's own default mode object
