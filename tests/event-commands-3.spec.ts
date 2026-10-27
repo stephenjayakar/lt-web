@@ -1569,7 +1569,7 @@ test.describe('Event command batch 3h (repair shop, cleanup, formation)', () => 
     expect(placed.inSpot).toBe(true);
     expect(placed.undone).toEqual({ pos: null, boardUnit: null, finished: false });
     expect(placed.redone).toEqual(placed.changed);
-    expect(placed.actionNames).toEqual(['ResetAllAction', 'ArriveOnMapAction']);
+    expect(placed.actionNames).toEqual(['ResetAction', 'ArriveOnMapAction']);
   });
 });
 

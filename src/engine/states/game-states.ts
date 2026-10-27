@@ -37,6 +37,7 @@ import type {
   GenericUnitData,
 } from '../../data/types';
 import { ItemObject as ItemObjectClass, createItemTree } from '../../objects/item';
+import { getSkillAbilityOptions, type SkillAbilityOption } from '../../combat/skill-abilities';
 import { SkillObject } from '../../objects/skill';
 import {
   evaluateCondition,
@@ -114,6 +115,7 @@ import {
   HasTradedAction,
   WaitAction,
   ResetAllAction,
+  ResetAction,
   ProcessStatusEffectsAction,
   GainMoneyAction,
   GiveBexpAction,
@@ -962,55 +964,7 @@ function applyCombatParticipantItemStartHooks(
   }
 }
 
-export interface SkillAbilityOption {
-  skill: SkillObject;
-  item: ItemObject;
-  component: 'ability' | 'ability_attack_charge' | 'ability_parent';
-}
-
-/** Python skill_system.get_extra_abilities, with stable registered item identity. */
-export function getSkillAbilityOptions(game: any, unit: UnitObject): SkillAbilityOption[] {
-  const result: SkillAbilityOption[] = [];
-  const components = [
-    'ability',
-    'ability_attack_charge',
-    'ability_parent',
-  ] as const;
-  const registerTree = (item: ItemObject, key: string): void => {
-    game.items.set(key, item);
-    item.subitems.forEach((child, index) =>
-      registerTree(child, `${key}_sub_${index}_${child.nid}`));
-  };
-  for (const skill of unit.skills) {
-    const total = Number(skill.data.get('total_charge'));
-    const charge = Number(skill.data.get('charge'));
-    if (skill.hasComponent('build_charge') && Number.isFinite(total) && charge < total) {
-      continue;
-    }
-    if (hasDrainingCharge(skill) && Number.isFinite(charge) && charge <= 0) continue;
-    if (!skillConditionActive(skill, unit, { game })) continue;
-    for (const component of components) {
-      const itemNid = skill.getComponent<string>(component);
-      if (!itemNid) continue;
-      const prefab = game.db.items.get(itemNid);
-      if (!prefab) continue;
-      const dataKey = `abilityItemKey:${component}`;
-      let registryKey = skill.data.get(dataKey);
-      let item = typeof registryKey === 'string'
-        ? game.items.get(registryKey) as ItemObject | undefined
-        : undefined;
-      if (!item || item.nid !== itemNid) {
-        registryKey = `ability_${unit.nid}_${skill.uid}_${component}_${itemNid}`;
-        item = createItemTree(prefab, (nid) => game.db.items.get(nid));
-        registerTree(item, registryKey);
-        skill.data.set(dataKey, registryKey);
-      }
-      item.owner = unit;
-      result.push({ skill, item, component });
-    }
-  }
-  return result;
-}
+export { getSkillAbilityOptions, type SkillAbilityOption };
 
 /** Get all adjacent allied units to a unit at a specific position. */
 function getAdjacentAllies(unit: UnitObject, x: number, y: number): UnitObject[] {
@@ -9399,14 +9353,11 @@ export class AIState extends MapState {
   ): void {
     const game = getGame();
 
-    // Equip the AI's chosen weapon via a reversible action so the turnwheel
-    // can undo it and status_on_equip hooks fire. Matches Python's
-    // action.EquipItem in ai_controller.py.
-    if (attacker.canEquip(weapon)) {
+    // Python AIController.attack: EquipItem the chosen item when it is one of
+    // the unit's own items (not a skill ability) and can be equipped. The AI
+    // never brings it to the top of the inventory.
+    if (attacker.getAllItems().includes(weapon) && attacker.canEquip(weapon)) {
       game.actionLog.doAction(new EquipItemAction(attacker, weapon));
-    }
-    if (attacker.items.includes(weapon)) {
-      game.actionLog.doAction(new BringToTopItemAction(attacker, weapon));
     }
     if (!weapon.isWeapon()) game.memory.set('combat_item', weapon);
     // Python interaction.start_combat aims a multi_target item at
@@ -12774,15 +12725,15 @@ export class EventState extends State {
         done();
       };
     }
-    const previousHasMoved = unit.hasMoved;
-    const previousMovementLeft = unit.movementLeft;
     game.movementSystem.beginMove(
       unit,
       path,
       1000 / Math.max(1, speedMs),
       () => {
-        unit.hasMoved = previousHasMoved;
-        unit.movementLeft = previousMovementLeft;
+        // Python UnitPathMovementComponent.finish: an event move ends with
+        // action.Reset, so the walker is fully refreshed (a unit that had
+        // already acted can act again; EOtF's engine also runs on_refresh).
+        game.actionLog.doAction(new ResetAction(unit));
         onComplete();
       },
       // Python MovementSystem.update: a following event move puts the
@@ -14530,7 +14481,8 @@ export class EventState extends State {
           const spot = openSpots[idx];
           if (spot) {
             game.actionLog.doAction(new ArriveOnMapAction(game, unit, spot));
-            game.actionLog.doAction(new ResetAllAction([unit]));
+            // Python action.Reset: also runs on_refresh in EOtF's engine.
+            game.actionLog.doAction(new ResetAction(unit));
           }
         });
         this.advancePointer();
@@ -16227,7 +16179,9 @@ export class EventState extends State {
       case 'reset': {
         const unitNid = args[0] ?? '';
         const unit = this.findUnit(unitNid);
-        if (unit) game.actionLog.doAction(new RefreshUnitAction(unit));
+        // Python event reset: action.Reset (movement back to full; EOtF's
+        // engine also runs on_refresh outside phase change and prep).
+        if (unit) game.actionLog.doAction(new ResetAction(unit));
         this.advancePointer();
         return false;
       }
@@ -18942,6 +18896,9 @@ export class EventState extends State {
         const unit = game.units.get(args[0]);
         if (unit) {
           game.actionLog.doAction(new ResurrectAction(unit));
+          // Python resurrect follows with action.Reset (on_refresh in EOtF's
+          // engine, where Null Refresh waits the unit).
+          game.actionLog.doAction(new ResetAction(unit));
         } else {
           console.warn(`Event resurrect: unit not found (${args[0] ?? ''})`);
         }
