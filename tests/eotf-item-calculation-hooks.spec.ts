@@ -287,7 +287,7 @@ test.describe('Embrace of the Fog item calculation hooks', () => {
 
     expect(result.failures).toEqual([]);
     expect(result.counts).toEqual({
-      damage_any: 8,
+      damage_any: 9, // EOtF 2.0.1 data (2.0.0: 8)
       eval_damage: 33,
       eval_damage_any: 1,
       eval_extra_damage: 9,
@@ -297,7 +297,7 @@ test.describe('Embrace of the Fog item calculation hooks', () => {
       eval_dragon: 23,
       eval_dragon_magic: 13,
       magic_weapon_rank: 5,
-      weapon_type_exempt: 26,
+      weapon_type_exempt: 28, // EOtF 2.0.1 data (2.0.0: 26)
     });
   });
 });

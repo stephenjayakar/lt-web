@@ -367,7 +367,8 @@ test.describe('Embrace of the Fog event expression data', () => {
       return { changed, undone: structuredClone(snapshot()) };
     });
 
-    expect(authoredCounts).toEqual({ create: 249, update: 208, replace: 1 });
+    // EOtF 2.0.1 data (a500736e): 261 create_record / 225 update_record (2.0.0: 249 / 208).
+    expect(authoredCounts).toEqual({ create: 261, update: 225, replace: 1 });
     expect(result.changed).toEqual({
       created: { status: 'Discovered' },
       units: ['Player', 'Kaku'],

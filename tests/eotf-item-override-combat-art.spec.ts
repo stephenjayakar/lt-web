@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog item overrides and combat arts', () => {
-  test('count-locks all 593 authored override, combat-art, and weapon-access uses', async ({ page }) => {
+  test('count-locks all 589 authored override, combat-art, and weapon-access uses', async ({ page }) => {
     await bootEotf(page);
     const inventory = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -41,7 +41,7 @@ test.describe('Embrace of the Fog item overrides and combat arts', () => {
       counts: {
         allowed_weapons: 167,
         combat_art: 172,
-        item_override: 199,
+        item_override: 195, // EOtF 2.0.1 data (2.0.0: 199)
         wexp_unusable_skill: 15,
         wexp_usable_skill: 40,
       },

@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog item combat sequencing', () => {
-  test('count-locks all 437 authored action, brave, counter, double, and miss-damage uses', async ({ page }) => {
+  test('count-locks all 441 authored action, brave, counter, double, and miss-damage uses', async ({ page }) => {
     await bootEotf(page);
     const inventory = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -40,7 +40,7 @@ test.describe('Embrace of the Fog item combat sequencing', () => {
 
     expect(inventory).toEqual({
       counts: {
-        attack_after_combat: 248,
+        attack_after_combat: 252, // EOtF 2.0.1 data (2.0.0: 248)
         brave: 7,
         brave_on_attack: 23,
         cannot_be_countered: 28,

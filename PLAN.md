@@ -17,8 +17,10 @@ Embrace of the Fog 2.0 is web-compatible when a fresh browser profile can:
 - pass the EOtF audit, campaign checkpoints, all-level gates, build, parity
   audit, full serial suite, and visual/audio/input checks.
 
-Target: public `LordTweed/Tweeds_Roguelite` commit `d9d2975` (2026-07-25),
-installed as `lt-maker/eotf.ltproj`.
+Target: public `LordTweed/Tweeds_Roguelite` commit `a500736e` (2026-10-25,
+project metadata 2.0.1, identical to the official release's `EotF.ltproj`),
+installed as `lt-maker/eotf.ltproj`. Upgraded from `d9d2975` (2.0.0) on
+2026-10-26.
 
 ## Status
 
@@ -43,9 +45,9 @@ Verified baseline:
   contain their choice highlights;
 - all eight missing catalog-backed resources are classified as intentional,
   unreferenced aliases, with zero unclassified missing resources;
-- strict mode count-locks 74 verified item and 270 verified skill component
+- strict mode count-locks 74 verified item and 271 verified skill component
   NIDs and rejects count drift; and
-- all 4,937 conditions, 249 eval substitutions, and 646 loop expressions execute
+- all 4,966 conditions, 252 eval substitutions, and 646 loop expressions execute
   in strict mode through the Python expression evaluator (`src/events/py-expr`:
   tokenizer, CPython-precedence parser, Python-semantics tree evaluator), whose
   parse trees match CPython's `ast` on all 7,912 distinct EOtF expressions and
