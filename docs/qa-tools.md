@@ -274,6 +274,13 @@ LT_QA=1 npx vite build --outDir E:/BigData/lt-web-cache/perf-dist --emptyOutDir
 npm run perf:frames -- --dist E:/BigData/lt-web-cache/perf-dist --port 5198 --label prod --profile
 ```
 
+`node scripts/perf-digest.mjs [--level Loreia] [--map-combat] [--turns 1]`
+checks that a performance change kept the game logic unchanged. It
+auto-plays whole turns from a fixed seed after asset loads have settled,
+stops at the exact start of the next player phase, and prints an md5 of
+every unit's position, HP and death state. Two builds with the same logic
+print the same digest. Run it against a dev server.
+
 `--dist` serves a production build plus the QA chunk, with `/game-data`
 mapped to `lt-maker/`. Results are written to
 `E:/BigData/lt-web-playtest/perf/<label>.json`. Headless Chromium rasterises

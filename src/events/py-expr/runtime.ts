@@ -30,11 +30,22 @@ export class PyException extends Error {
    * attribute, so this can be missing port support instead of an error
    * Python would raise too.
    */
-  hostAttribute = false;
+  hostAttribute: boolean;
   constructor(pyType: string, message: string) {
-    super(`${pyType}: ${message}`);
+    // Python exceptions are control flow here (hasattr, failing conditions
+    // the AI evaluates hundreds of times a turn); a JS stack trace of the
+    // evaluator's internals is never read and was a measurable cost.
+    const errorCtor = Error as { stackTraceLimit?: number };
+    const limit = errorCtor.stackTraceLimit;
+    errorCtor.stackTraceLimit = 0;
+    try {
+      super(`${pyType}: ${message}`);
+    } finally {
+      errorCtor.stackTraceLimit = limit;
+    }
     this.name = 'PyException';
     this.pyType = pyType;
+    this.hostAttribute = false;
   }
 }
 

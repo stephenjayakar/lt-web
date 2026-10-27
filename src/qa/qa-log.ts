@@ -108,6 +108,13 @@ export class QaLog {
     if (!this.recording) return null;
     const text = message.slice(0, MAX_MESSAGE);
     const key = `${kind}|${text}`;
+    const existing = this.entries.get(key);
+    // A message repeated hundreds of times a turn (an AI condition) only
+    // refreshes its last context now and then: reading it is not free.
+    if (existing && existing.count % 64 !== 0) {
+      existing.count += 1;
+      return existing;
+    }
     let ctx: QaContext;
     try {
       // Reading the context must never recurse into another warning.
@@ -116,7 +123,6 @@ export class QaLog {
     } finally {
       this.recording = true;
     }
-    const existing = this.entries.get(key);
     if (existing) {
       existing.count += 1;
       existing.last = ctx;
