@@ -283,7 +283,7 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
       const game = (window as any).__gameRef;
       const { SkillObject } = await import('/src/objects/skill.ts');
       const { ItemObject } = await import('/src/objects/item.ts');
-      const { evaluateExpression } = await import('/src/events/event-manager.ts');
+      const { evaluateExpression, evaluateInt } = await import('/src/events/event-manager.ts');
       const unit = game.units.get('Player');
       const target = game.units.get('Keeper');
       const ally = game.units.get('Lib');
@@ -410,7 +410,9 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
       const values = expressions.map(({ prefab, component, expression }) => {
         const skill = new SkillObject(prefab);
         skill.data.set('multiSkillSource', parent);
-        const value = evaluateExpression(expression, {
+        // evaluateExpression raises like Python's eval; the engine's call
+        // sites (evaluateInt) catch it as Python's except-clauses do.
+        const context = {
           game,
           unit1: unit,
           unit2: target,
@@ -426,12 +428,22 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
             ['base_value', 20],
             ['combat_calcs', combatCalcs],
           ]),
-        });
+        };
+        let raised = false;
+        let value: unknown = null;
+        try {
+          value = evaluateExpression(expression, context);
+        } catch {
+          raised = true;
+        }
         return {
           nid: prefab.nid,
           component,
           expression,
+          raised,
           value: Number(value),
+          // What the engine's dynamic_* call sites compute.
+          engineValue: evaluateInt(expression, context),
         };
       });
       for (const alias of aliases) {
@@ -439,7 +451,10 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
       }
       return {
         total: values.length,
-        invalid: values.filter(({ value }) => !Number.isFinite(value)),
+        invalid: values.filter(({ raised, value }) => !raised && !Number.isFinite(value)),
+        raised: [...new Set(values.filter(({ raised }) => raised).map(({ expression }) => expression))].sort(),
+        raisedEngineValues: [...new Set(values
+          .filter(({ raised }) => raised).map(({ engineValue }) => engineValue))],
       };
     }, COMPONENTS);
 
@@ -447,7 +462,8 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
     // Authored expressions that CPython itself cannot evaluate: two
     // conditional expressions missing `else` (SyntaxError) and
     // `unit.stats('MAG')` calling a dict (TypeError). Python's call sites
-    // catch these and use 0, as the web now does.
+    // catch these and use 0, as the web does: evaluateExpression raises
+    // like Python's eval, and evaluateInt is the call sites' except-clause.
     const pythonErrors = [
       "-2 * item2.damage.value if any([tag == 'Dragon' for tag in item2.effective_damage.tags])",
       "unit.stats('MAG') // 5",
@@ -455,6 +471,8 @@ test.describe('Embrace of the Fog evaluated combat calculations', () => {
     ];
     expect(failures.filter((text) =>
       !pythonErrors.some((expression) => text.includes(`"${expression}"`)))).toEqual([]);
-    expect(result.invalid.filter(({ expression }) => !pythonErrors.includes(expression))).toEqual([]);
+    expect(result.raised).toEqual([...pythonErrors].sort());
+    expect(result.raisedEngineValues).toEqual([0]);
+    expect(result.invalid).toEqual([]);
   });
 });
