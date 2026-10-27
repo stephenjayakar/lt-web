@@ -331,4 +331,71 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
     // Fork engine: equip/unequip never touch HP; max HP stays 80.
     expect(result).toEqual({ max: 80, afterEquip: 80, afterUnequip: 80, maxAfter: 80 });
   });
+
+  test('stacking after-combat status, end_combat gains, aura grants, chapter-use Galeforce, splash triangle', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (kitSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const kit = await (new Function(`${kitSrc}; return makeKit;`)())(game);
+      if (!kit.origin) return null;
+      const lifecycle = await import('/src/combat/combat-lifecycle.ts');
+      try {
+        // Iron Knife's after-combat Toxin stacks on a unit already poisoned
+        // (the fork's room-battle game over shows two Toxins).
+        const knifer = kit.make('_FzKnifer2', 'enemy', { klass: 'Thief', items: ['Iron_Knife'], stats: { STR: 30, SKL: 30 } });
+        const poisoned = kit.make('_FzPoisoned', 'player', { skills: ['Toxin'], stats: { HP: 10 }, hp: 3 });
+        kit.place(knifer, 0, 0);
+        kit.place(poisoned, 2, 0);
+        kit.fight(knifer, poisoned, ['hit1', 'end']);
+        const toxins = poisoned.skills.filter((s: any) => s.nid === 'Toxin').length;
+        game.removeUnit(knifer.nid);
+        game.removeUnit(poisoned.nid);
+
+        // Impact Absorption's Empowered, gained during end_combat by a unit
+        // killed in it, is not dropped by its own lost_on_end_combat2.
+        const killer = kit.make('_FzKiller', 'player', { klass: 'Myrmidon', items: ['Iron_Sword'], stats: { STR: 40, SKL: 30 } });
+        const absorber = kit.make('_FzAbsorber', 'enemy', { skills: ['Impact_Absorption'], stats: { HP: 10 }, hp: 2 });
+        kit.place(killer, 0, 1);
+        kit.place(absorber, 1, 1);
+        kit.fight(killer, absorber, ['hit1', 'end']);
+        const empowered = kit.skills(absorber).includes('Empowered');
+        game.removeUnit(absorber.nid);
+
+        game.removeUnit(killer.nid);
+        // A player's MoodRuiner gives its enemy attacker BadVibes_Debuff (an
+        // aura) after combat: the aura child reaches the ruiner at once.
+        const bully = kit.make('_FzBully', 'enemy', { klass: 'Myrmidon', items: ['Iron_Sword'] });
+        const ruiner = kit.make('_FzRuiner', 'player', { skills: ['MoodRuiner'], stats: { HP: 40 } });
+        kit.place(bully, 0, 1);
+        kit.place(ruiner, 1, 1);
+        kit.fight(bully, ruiner, ['miss1', 'end']);
+        const vibes = kit.skills(bully).includes('BadVibes_Debuff');
+        const child = kit.skills(ruiner).includes('BadVibes_Child');
+        game.removeUnit(ruiner.nid);
+        game.removeUnit(bully.nid);
+
+        // Excalipoor (1 chapter use, status_on_equip Galeforce_Weapon): its
+        // kill still grants Galeforce; the axe-less sword is unequipped after.
+        const hero = kit.make('_FzHero', 'player', { klass: 'Myrmidon', items: ['Excalipoor'], stats: { STR: 40, SKL: 30 } });
+        const victim = kit.make('_FzVictim', 'enemy', { stats: { HP: 10 }, hp: 2 });
+        kit.place(hero, 3, 0);
+        kit.place(victim, 4, 0);
+        const fought = kit.fight(hero, victim, ['hit1', 'end']);
+        lifecycle.applyUnusableCombatItems(game, [[hero, hero.items[0]], [null, null]]);
+        const galeforce = kit.skills(hero).includes('Galeforce_Status');
+        const stillEquipped = hero.equippedWeapon?.nid ?? null;
+        return { toxins, empowered, vibes, child, galeforce, stillEquipped, killed: fought.strikes.length };
+      } finally {
+        kit.cleanup();
+      }
+    }, KIT);
+    expect(result).not.toBeNull();
+    expect(result!.toxins).toBe(2);
+    expect(result!.empowered).toBe(true);
+    expect(result!.vibes).toBe(true);
+    expect(result!.child).toBe(true);
+    expect(result!.galeforce).toBe(true);
+    expect(result!.stillEquipped).toBeNull();
+  });
 });

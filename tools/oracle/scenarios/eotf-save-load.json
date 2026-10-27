@@ -1,0 +1,57 @@
+{
+  "name": "eotf-save-load",
+  "description": "EOtF fork round trip: event-loaded units after a level-up and promotion, a combat, suspend and continue, then the Dragon's phase and a second combat.",
+  "project": "eotf.ltproj",
+  "level": "EX_2",
+  "events": false,
+  "seed": 11,
+  "actions": [
+    {
+      "do": "event",
+      "script": [
+        "load_unit;Termina;player",
+        "add_unit;Termina;6,3;immediate",
+        "give_exp;Termina;100",
+        "autolevel_to;Termina;10",
+        "promote;Termina;Paladin",
+        "game_var;Floor;3",
+        "give_money;250;no_banner"
+      ]
+    },
+    {
+      "do": "attack",
+      "unit": "Termina",
+      "target": "Dragon"
+    },
+    {
+      "do": "save_load"
+    },
+    {
+      "do": "end_turn"
+    },
+    {
+      "do": "save_load"
+    },
+    {
+      "do": "event",
+      "script": [
+        "load_unit;Aeilem;player",
+        "add_unit;Aeilem;6,3;immediate"
+      ]
+    },
+    {
+      "do": "attack",
+      "unit": "Aeilem",
+      "target": "Dragon"
+    }
+  ],
+  "setup": [
+    {
+      "unit": "Yusha",
+      "position": [
+        7,
+        2
+      ]
+    }
+  ]
+}

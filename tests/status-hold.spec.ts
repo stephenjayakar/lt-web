@@ -184,7 +184,11 @@ test.describe('status_on_hold lifecycle', () => {
     // Give the hold item (adds a sourced instance).
     await giveItem(page, 'Eirika', 'Fili_Shield');
     const withItem = await getUnitDetail(page, 'Eirika');
-    expect(withItem.skillNids.filter((s: string) => s === 'NegateFlyEff').length).toBe(2);
+    // Python's unit.skills shows one instance per nid; the sourced one waits
+    // shadowed behind the natural one.
+    expect(withItem.skillNids.filter((s: string) => s === 'NegateFlyEff').length).toBe(1);
+    expect(await page.evaluate(() => (window as any).__gameRef.units.get('Eirika').shadowedSkills
+      .filter((s: any) => s.nid === 'NegateFlyEff').length)).toBe(1);
 
     // Remove the item — only the sourced instance should be removed.
     await removeItem(page, 'Eirika', 'Fili_Shield');

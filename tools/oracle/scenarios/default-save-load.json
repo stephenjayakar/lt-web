@@ -1,0 +1,76 @@
+{
+  "name": "default-save-load",
+  "description": "Upstream round trip mid-level: after a combat, statuses, vars and a region, suspend and continue, then play an enemy phase and another attack.",
+  "project": "default.ltproj",
+  "level": "0",
+  "events": false,
+  "seed": 3,
+  "growths": "Random",
+  "setup": [
+    {
+      "unit": "Eirika",
+      "add_skills": [
+        "Poisoned"
+      ]
+    },
+    {
+      "unit": "Seth",
+      "add_skills": [
+        "ResistPlus"
+      ]
+    },
+    {
+      "game_var": "Foo",
+      "value": 7
+    },
+    {
+      "level_var": "Bar",
+      "value": "x"
+    },
+    {
+      "unit": "Seth",
+      "position": [
+        8,
+        5
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "do": "event",
+      "script": [
+        "add_region;Trap;6,5;1,1;Status;Poisoned",
+        "give_money;150;no_banner",
+        "give_item;Eirika;Iron_Sword;no_banner"
+      ]
+    },
+    {
+      "do": "attack",
+      "unit": "Seth",
+      "target": "102",
+      "item": "Silver_Lance"
+    },
+    {
+      "do": "save_load"
+    },
+    {
+      "do": "end_turn"
+    },
+    {
+      "do": "save_load"
+    },
+    {
+      "do": "move",
+      "unit": "Seth",
+      "to": [
+        10,
+        7
+      ]
+    },
+    {
+      "do": "attack",
+      "unit": "Seth",
+      "target": "O'Neill"
+    }
+  ]
+}

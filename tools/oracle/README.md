@@ -69,7 +69,8 @@ npx playwright install chromium
 | `LT_ORACLE_OUT` | `$LT_ORACLE_HOME/out` | raw run outputs |
 | `LT_ORACLE_PYTHON` | `$LT_ORACLE_HOME/venv/Scripts/python.exe` | upstream interpreter |
 | `LT_FORK_ENGINE`, `LT_FORK_PYTHON` | from `config.json` | fork engine dir and interpreter |
-| `ORACLE_PORT` | `PLAYWRIGHT_PORT`, else 5190 | Vite port (reused if already serving) |
+| `ORACLE_PORT` | `PLAYWRIGHT_PORT`, else 5190 | Vite port; a server already on it is reused, so use a port per worktree |
+| `ORACLE_VITE_TIMEOUT_MS` | 300000 | how long to wait for Vite to transform the engine |
 
 ### How the Python side runs headless
 
@@ -84,6 +85,10 @@ Settings: `animation=Never` (map combat), `autoend_turn=0`, `confirm_end=0`,
 `text_speed=0`, `mouse=0`, `debug=0`; the web side sets the same settings.
 Input is injected through the engine's own input manager (one frame pressed,
 one released), and the state machine is updated exactly like `driver.run`.
+The web side gets the same frame clock: `performance.now()` advances 1000/60
+ms per stepped frame (level-up, promotion and prep screens time themselves
+with it), and a New Game reuses the scenario seed (`fixedRandomSeed`, like
+Python's `random_seed` setting).
 
 ## Scenario schema
 
@@ -100,7 +105,9 @@ one released), and the state machine is updated exactly like `driver.run`.
   "seed": 0,                          // _random_seed for the combat/growth/other LCGs
   "rng_mode": "True Hit",             // RNGOption value (Classic, True Hit, True Hit Plus, Fates Hit, Grandmaster)
   "growths": "Fixed",                 // GrowthOption value (Random, Fixed, Dynamic)
+  "include": "eotf-run-start",        // start from another scenario: its fields, setup and actions first
   "start_game_vars": {"Game_Level": 1}, // set right after build_new, before level events
+  "start_records": {"Progress": 3},   // persistent records (RECORDS.replace) after on_startup
   "settings": {"autoend_turn": 1},    // config overrides, both sides
   "setup": [ ... ],                   // direct state edits after the level settles
   "actions": [ ... ],                 // one snapshot after each
@@ -159,7 +166,9 @@ pending state change or moving unit, pressing SELECT to advance dialog.
 | `{"do": "end_turn"}` | option menu `End`, runs the AI phases until player phase (or free roam, or a game over) |
 | `{"do": "attack_or_wait", "unit": "Player"}` | attack the nearest valid target with the first weapon if the menu offers Attack, else Wait |
 | `{"do": "event", "script": ["give_money;100", "..."]}` | inline event (also `"nid"` for a DB event, `"trigger"` for a trigger class) |
-| `{"do": "choose", "option": "Fight"}` | pick an option in the top state's menu |
+| `{"do": "choose", "option": "Fight"}` | pick an option in the top state's menu, including event `choice` menus (grids walked by rows, then columns; `value\|text` entries match on either part) |
+| `{"do": "roam_talk", "target": "Keeper", "from": [x, y]}` | free roam: put the roam unit beside the target, inside the talk range, and SELECT |
+| `{"do": "save_load", "states": ["free"]}` | suspend in each engine's own format and continue (Python: `game.save()` pickled and loaded as `save.load_game` does; web: `suspendGame` / `loadSuspend`); the report also lists anything an engine's own reload changed |
 | `{"do": "press", "button": "START"}`, `{"do": "frames", "n": 30}`, `{"do": "settle"}` | raw control |
 
 Every action accepts `max_frames`; `event` and `settle` accept `skip`
@@ -212,14 +221,21 @@ The report prints a diff at the step where it first appears or changes;
 later steps only count it as persisting, and `(now equal)` marks one that
 went away. `--full` prints everything, `--all` lists matching steps too.
 
-## Starter scenarios and the current baseline
+## Scenarios and the current baseline
 
-All scenarios run to completion on both sides. Remaining diffs are engine
-behaviour, not harness artefacts (checked against the Python source):
+All scenarios run to completion on both sides, and all match.
 
-| Diff | Seen in |
+| Group | Scenarios |
 |---|---|
-| none currently | — |
+| default.ltproj starters | `default-*`: combat exp, level-up, AI phase, heal staff, trade, Vulnerary, event commands, statuses over turns, Prologue intro, event-built units |
+| Level-up / promotion / class change | `default-growth-promotion` (upstream, Random), `eotf-growth-{fixed,random,dynamic}` (fork, seed 7): give_exp, autolevel_to, promote, change_class |
+| Save/load round trip | `default-save-load`, `eotf-save-load`, `eotf-room-battle`: suspend and continue mid-level, then play on |
+| EOtF run | `eotf-hub-start`, `eotf-run-start` (hub records, roam talk, Depart, sortie, stage room, prep, enemy phase), `eotf-room-battle` (on to defeat and back to the hub) |
+| EOtF maps | `eotf-ex2-combat`, `eotf-ex2-ai-phase`, `eotf-room1-event-units` |
+
+Known quirk both engines share: a load restarts the growth and "other" RNG
+streams from the seed (Python saves only the combat stream), which the
+report shows as `(… reload changed) rng.other`.
 
 Matching so far: combat strike order, damage, weapon uses, exp and RNG in the
 default and EOtF attacks; trade results; Vulnerary and Heal amounts and their
@@ -239,12 +255,13 @@ units, `load_unit` and `create_unit` (default-event-units, eotf-hub-start).
   combat and AI phases run; event-loaded units can be fought on room maps.
 - **upstream**: loads EOtF only through the shim (no `resources/fonts`, no
   `game_data/credit`), then runs the same scenarios.
-- **both**: room levels (`0`, `1`, ...) with their level events need the run
-  state the hub's run-start events create (`Floor`, item pools such as
-  `irons`, the party); a direct level start stops in `Global_Level_Start` /
-  `Generate_Enemies` on the fork too. Use `"events": false` plus event
-  scripts and setup for room maps, or seed variables with
-  `start_game_vars`.
+- **both**: room levels (`0`, `1`, ...) started directly with their level
+  events lack the run state the hub's run-start events create (`Floor`, item
+  pools such as `irons`, the party) and stop in `Global_Level_Start` /
+  `Generate_Enemies`, on the fork too. Reach real rooms through the hub
+  instead: `"include": "eotf-run-start"` ends on turn 1 of a generated room
+  after its enemy phase. For isolated maps use `"events": false` plus event
+  scripts and setup, or seed variables with `start_game_vars`.
 
 ## Run states
 

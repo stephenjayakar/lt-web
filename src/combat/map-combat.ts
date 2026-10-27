@@ -836,8 +836,8 @@ export class MapCombat implements StrikeEventCombat {
         // is only unusable (unequipped) until the chapter ends.
         const chapterUsesOnly = isForkEngine() && item.hasComponent('c_uses') && !item.hasComponent('uses');
         if (broke && chapterUsesOnly) {
-          if (unit.equippedWeapon === item || unit.equippedAccessory === item) unit.unequip(item);
-          unit.autoequip();
+          // Unequipped later, after the end-of-combat hooks
+          // (applyUnusableCombatItems, Python handle_unusable_items).
           broke = false;
         } else if (broke && !item.hasComponent('no_break_out_of_uses')) {
           const inventoryIndex = unit.items.indexOf(item);

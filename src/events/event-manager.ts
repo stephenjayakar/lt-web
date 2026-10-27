@@ -693,15 +693,17 @@ function componentValue(candidate: any, nid: string): any {
 
 /**
  * Python @property accessors on component classes, by component nid:
- * property name -> key of the component's value dict
- * (item_components/extra_components.py EffectiveDamage).
+ * property name -> [key of the component's value dict, its __init__
+ * default] (item_components/extra_components.py EffectiveDamage, whose
+ * value starts from those defaults). Expressions read them on the
+ * component, e.g. `item.effective_damage.tags`.
  */
-const COMPONENT_PROPERTIES: Record<string, Record<string, string>> = {
+const COMPONENT_PROPERTIES: Record<string, Record<string, [string, unknown]>> = {
   effective_damage: {
-    tags: 'effective_tags',
-    multiplier: 'effective_multiplier',
-    bonus_damage: 'effective_bonus_damage',
-    show_flash: 'show_effectiveness_flash',
+    tags: ['effective_tags', []],
+    multiplier: ['effective_multiplier', 3],
+    bonus_damage: ['effective_bonus_damage', 0],
+    show_flash: ['show_effectiveness_flash', true],
   },
 };
 
@@ -716,8 +718,10 @@ function wrapComponent(nid: string, value: any) {
     get(target, property: string | symbol) {
       if (property in target) return target[property as keyof typeof target];
       if (aliases && typeof property === 'string' && property in aliases) {
-        const key = aliases[property];
-        return value instanceof Map ? value.get(key) ?? null : value?.[key] ?? null;
+        const [key, init] = aliases[property];
+        const fallback = Array.isArray(init) ? [...init] : init;
+        if (value instanceof Map) return value.has(key) ? value.get(key) : fallback;
+        return value && typeof value === 'object' && key in value ? value[key] : fallback;
       }
       if (value && typeof value === 'object' && typeof property === 'string') {
         return value[property];

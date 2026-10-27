@@ -29,6 +29,7 @@ import {
   SetItemUsesAction,
   SetCurrentHpAction,
   UpdateRecordsAction,
+  UnequipItemAction,
 } from '../engine/action';
 import {
   applyItemEndResourceHooks,
@@ -320,7 +321,8 @@ export function queueCombatSkillStartEvents(
 
   for (const participant of participants) {
     for (const skill of [...participant.unit.skills]) {
-      if (participant.item && !combatSkillEnabled(
+      // EOtF checks the condition for a weaponless participant too (item=None).
+      if ((participant.item || isForkEngine()) && !combatSkillEnabled(
         game, participant.unit, skill, participant.target, participant.item,
         participant.item2, participant.mode,
       )) continue;
@@ -717,6 +719,11 @@ export function applyCombatSkillEndHooks(
   if (!game.actionLog || !game.db) return 0;
   initiator ??= strikes[0]?.attacker;
   if (primaryTarget === undefined) primaryTarget = strikes[0]?.defender;
+  const skillsAtCleanup = new Set<SkillObject>([
+    ...(initiator?.skills ?? []),
+    ...(primaryTarget?.skills ?? []),
+    ...strikes.flatMap((strike) => [...strike.attacker.skills, ...strike.defender.skills]),
+  ]);
   let applied = 0;
   const conditionOwners = new Set<UnitObject>([
     ...(initiator ? [initiator] : []),
@@ -1568,6 +1575,9 @@ export function applyCombatSkillEndHooks(
     for (const skill of [...unit.skills]) {
       const raw = skill.getComponent<unknown>('lost_on_end_combat2');
       if (raw === undefined) continue;
+      // Only skills present when cleanup_combat marked them: a status gained
+      // during end_combat (Impact Absorption's Empowered) survives this combat.
+      if (isForkEngine() && !skillsAtCleanup.has(skill)) continue;
       const options = raw && typeof raw === 'object'
         ? raw as Record<string, unknown>
         : {};
@@ -2015,6 +2025,24 @@ export function applyOnHitForcedMovement(
 }
 
 /** Apply item end-combat resource hooks once per item that participated. */
+/**
+ * EOtF's clean_up ends with handle_unusable_items: an item left with no
+ * chapter uses is unequipped only now, after every end_combat hook (so a
+ * Galeforce status-on-equip still counts for the kill that spent it).
+ */
+export function applyUnusableCombatItems(
+  game: CombatLifecycleGame,
+  pairs: Array<[UnitObject | null, ItemObject | null]>,
+): void {
+  if (!isForkEngine() || !game.actionLog) return;
+  for (const [unit, item] of pairs) {
+    if (!unit || !item || !item.hasComponent('c_uses') || item.hasComponent('uses')) continue;
+    if (Number(item.data.get('c_uses') ?? 1) > 0) continue;
+    if (unit.equippedWeapon !== item && unit.equippedAccessory !== item) continue;
+    game.actionLog.doAction(new UnequipItemAction(unit, item));
+  }
+}
+
 /** EOtF's shared-set after-combat statuses (see applyCombatItemEndHooks). */
 function applySharedAfterCombatStatuses(game: CombatLifecycleGame, strikes: CombatStrike[]): number {
   const db = game.db!;

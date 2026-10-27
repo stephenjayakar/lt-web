@@ -115,6 +115,33 @@ export class GameBoard {
     this.teamGrid[y][x] = unit.team;
     unit.position = [x, y];
     if (!unit.previousPosition) unit.previousPosition = [x, y];
+    this.markArrival(unit);
+    this.onUnitPositionChanged?.();
+  }
+
+  /**
+   * Per-unit arrival counter. Python decides ignore_terrain /
+   * ignore_region_status when a unit arrives on a tile (GameState.arrive),
+   * so position statuses re-check those only after a new arrival.
+   */
+  private arrivals = new WeakMap<UnitObject, number>();
+
+  private markArrival(unit: UnitObject): void {
+    this.arrivals.set(unit, (this.arrivals.get(unit) ?? 0) + 1);
+  }
+
+  arrivalStamp(unit: UnitObject): number {
+    return this.arrivals.get(unit) ?? 0;
+  }
+
+  /**
+   * Python PutUnitDown(test=True) at a unit's own tile (PrimaryAI.quick_move
+   * back to orig_pos after every AI evaluation): a fresh arrival, so its
+   * terrain/region statuses are re-decided.
+   */
+  reArrive(unit: UnitObject): void {
+    if (!unit.position) return;
+    this.markArrival(unit);
     this.onUnitPositionChanged?.();
   }
 
@@ -160,6 +187,7 @@ export class GameBoard {
     this.unitGrid[newY][newX] = unit;
     this.teamGrid[newY][newX] = unit.team;
     unit.position = [newX, newY];
+    this.markArrival(unit);
     this.onUnitPositionChanged?.();
   }
 

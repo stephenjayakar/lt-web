@@ -4294,6 +4294,15 @@ function restoreEquipState(unit: UnitObject, state: EquipState): void {
 }
 
 /** Add an already-created skill object, avoiding duplicates, reversibly. */
+/**
+ * EOtF's AddSkill/RemoveSkill propagate (or withdraw) an aura skill's
+ * children at once when its owner is on the map.
+ */
+function refreshAurasForSkill(unit: UnitObject, skill: SkillObject): void {
+  if (!isForkEngine() || !unit.position || !skill.hasComponent('aura')) return;
+  _getGame?.()?.refreshAuras?.();
+}
+
 export class AddSkillAction extends Action {
   private unit: UnitObject;
   private skill: SkillObject;
@@ -4319,6 +4328,7 @@ export class AddSkillAction extends Action {
     this.equipBefore = captureEquipState(this.unit);
     this.addSkill();
     this.unit.autoequip();
+    refreshAurasForSkill(this.unit, this.skill);
   }
 
   private addSkill(): void {
@@ -4496,6 +4506,7 @@ export class AddSkillAction extends Action {
   reverse(): void {
     this.removeAddedSkill();
     if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
+    refreshAurasForSkill(this.unit, this.skill);
   }
 
   private removeAddedSkill(): void {
@@ -4559,6 +4570,7 @@ export class RemoveSkillAction extends Action {
     this.equipBefore = captureEquipState(this.unit);
     this.removeSkill();
     this.unit.autoequip();
+    refreshAurasForSkill(this.unit, this.skill);
   }
 
   private equipBefore: EquipState | null = null;
@@ -4589,6 +4601,7 @@ export class RemoveSkillAction extends Action {
     if (isCantoSkill(this.skill)) this.unit.hasCanto = true;
     this.refreshVariantSprite();
     if (this.equipBefore) restoreEquipState(this.unit, this.equipBefore);
+    refreshAurasForSkill(this.unit, this.skill);
   }
 
   private refreshVariantSprite(): void {

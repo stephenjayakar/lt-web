@@ -2807,19 +2807,41 @@ function addItemSourcedSkill(
   skill.data.set(ITEM_SOURCE_KEY, item);
   skill.data.set(ITEM_SOURCE_TYPE_KEY, 'item');
   skill.data.set(ITEM_SOURCE_NID_KEY, item.nid);
+  // Python unit.skills shows one instance per nid (up to `stack`): an item
+  // whose status_on_hold and status_on_equip (or multi_status_on_hold) grant
+  // the same skill applies it once. Keep the extra instance shadowed.
+  if (unit.skills.filter((existing) => existing.nid === skillNid).length >= visibleStackLimit(skill)) {
+    (unit.shadowedSkills ??= []).push(skill);
+    return;
+  }
   unit.skills.push(skill);
   if (isCantoSkill(skill)) unit.hasCanto = true;
 }
 
+function visibleStackLimit(skill: SkillObject): number {
+  const stack = Number(skill.getComponent<unknown>('stack') ?? 1);
+  return Number.isFinite(stack) ? Math.max(1, stack) : 1;
+}
+
 /** Remove exactly one item-sourced instance of `skillNid` for `item`. */
 function removeOneItemSourcedSkill(unit: UnitObject, item: ItemObject, skillNid: string): void {
-  for (let i = unit.skills.length - 1; i >= 0; i--) {
-    const skill = unit.skills[i];
-    if (skill.nid === skillNid &&
-        skill.data.get(ITEM_SOURCE_TYPE_KEY) === 'item' &&
-        skill.data.get(ITEM_SOURCE_KEY) === item) {
-      unit.skills.splice(i, 1);
-      break;
+  const matches = (skill: SkillObject) => skill.nid === skillNid &&
+    skill.data.get(ITEM_SOURCE_TYPE_KEY) === 'item' &&
+    skill.data.get(ITEM_SOURCE_KEY) === item;
+  const shadowed = unit.shadowedSkills ?? [];
+  // A shadowed instance goes first: removing it changes nothing visible.
+  const hidden = shadowed.findIndex(matches);
+  if (hidden >= 0) {
+    shadowed.splice(hidden, 1);
+  } else {
+    for (let i = unit.skills.length - 1; i >= 0; i--) {
+      if (matches(unit.skills[i])) {
+        unit.skills.splice(i, 1);
+        // An instance it was hiding becomes visible.
+        const next = shadowed.findIndex((skill) => skill.nid === skillNid);
+        if (next >= 0) unit.skills.push(shadowed.splice(next, 1)[0]);
+        break;
+      }
     }
   }
   unit.hasCanto = unit.skills.some(isCantoSkill);
@@ -2828,6 +2850,7 @@ function removeOneItemSourcedSkill(unit: UnitObject, item: ItemObject, skillNid:
 /** Remove every item-sourced skill for `item` (used on save-load re-derivation). */
 export function removeAllItemSourcedSkills(unit: UnitObject): void {
   unit.skills = unit.skills.filter((skill) => !isItemSourcedSkill(skill));
+  unit.shadowedSkills = (unit.shadowedSkills ?? []).filter((skill) => !isItemSourcedSkill(skill));
   unit.hasCanto = unit.skills.some(isCantoSkill);
 }
 

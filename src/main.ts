@@ -56,16 +56,12 @@ import {
   MenuState,
   ItemUseState,
   ItemMenuState,
-  TravelerTransferState,
   CantoWaitState,
   BaseUseState,
   AccessoryChoiceState,
   CombatArtChoiceState,
   ItemTargetingState,
   TradeState,
-  RescueState,
-  TransferState,
-  DropState,
   WeaponChoiceState,
   UnlockSelectState,
   TargetingState,
@@ -764,7 +760,6 @@ async function main(): Promise<void> {
     new MenuState(),
     new ItemUseState(),
     new ItemMenuState(),
-    new TravelerTransferState(),
     new CantoWaitState(),
     new BaseUseState(),
     new AccessoryChoiceState(),
@@ -775,9 +770,6 @@ async function main(): Promise<void> {
     new PromotionState(),
     new ClassChangeState(),
     new TradeState(),
-    new RescueState(),
-    new TransferState(),
-    new DropState(),
     new WeaponChoiceState(),
     new UnlockSelectState(),
     new TargetingState(),
@@ -944,6 +936,7 @@ async function main(): Promise<void> {
     // state so a fresh, fully-deterministic sequence starts from this seed.
     function applySeed(seed: number, source: string): void {
       gameState.gameVars.set('_random_seed', seed);
+      gameState.fixedRandomSeed = seed;
       gameState.gameVars.delete('_combat_random_seed');
       gameState.gameVars.delete('_growth_random_seed');
       console.info(`[Harness] Deterministic RNG seed set from ${source}: ${seed}`);

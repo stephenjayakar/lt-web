@@ -778,7 +778,9 @@ export type ChoiceEntry =
   /** BasicOption('') used by menus.Trade for open inventory slots. */
   | { kind: 'blank' }
   /** menu_options.LoreOption (84 wide); `header` rows show the category. */
-  | { kind: 'lore'; lore: LoreEntry; header: boolean };
+  | { kind: 'lore'; lore: LoreEntry; header: boolean }
+  /** A row with its own width and draw (record_book options and the like). */
+  | { kind: 'custom'; width: number; ignore?: boolean; draw?: (surf: Surface, x: number, y: number) => void };
 
 interface ChoiceOption {
   entry: ChoiceEntry;
@@ -809,6 +811,8 @@ export class Choice {
   stock: number[] | null = null;
   /** Choice.set_hard_limit: pad with EmptyOptions up to `limit`. */
   hardLimit = false;
+  /** Choice.y_offset: room above the first row (record_book header). */
+  yOffset = 0;
   /** Unit at the convoy/shop (ConvoyItemOption colours, shop prices). */
   owner: UnitObject | null = null;
   /** Choice.set_color with a font nid (e.g. the shop's 'convo-white'). */
@@ -827,7 +831,7 @@ export class Choice {
 
   setOptions(entries: ChoiceEntry[] | string[]): void {
     const list: ChoiceEntry[] = (entries as any[]).map((e) => typeof e === 'string' ? { kind: 'text', text: e } : e);
-    this.options = list.map((entry) => ({ entry, ignore: entry.kind === 'empty' }));
+    this.options = list.map((entry) => ({ entry, ignore: entry.kind === 'empty' || (entry.kind === 'custom' && !!entry.ignore) }));
     if (this.hardLimit) {
       while (this.options.length < this.limit) this.options.push({ entry: { kind: 'empty' }, ignore: true });
     } else if (this.options.length === 0) {
@@ -972,6 +976,7 @@ export class Choice {
       return 104;
     }
     if (e.kind === 'blank') return 104;
+    if (e.kind === 'custom') return e.width;
     if (e.kind === 'lore') return 84;
     // HorizOption.width is the bare text width; BasicOption adds 24.
     return textWidth(e.text) + (this.horizontal ? 0 : 24);
@@ -985,7 +990,7 @@ export class Choice {
 
   getMenuHeight(): number {
     if (this.horizontal) return 24;
-    return Math.min(this.limit, this.options.length) * 16 + 8;
+    return this.yOffset + Math.min(this.limit, this.options.length) * 16 + 8;
   }
 
   getTopleft(): [number, number] {
@@ -1013,7 +1018,7 @@ export class Choice {
     }
     const end = Math.min(this.options.length, this.scroll + this.limit);
     for (let i = this.scroll; i < end; i++) {
-      rects.push([i, ox + x, oy + y + 4 + (i - this.scroll) * 16, this.optionWidth(this.options[i]), 16]);
+      rects.push([i, ox + x, oy + y + 4 + this.yOffset + (i - this.scroll) * 16, this.optionWidth(this.options[i]), 16]);
     }
     return rects;
   }
@@ -1103,6 +1108,10 @@ export class Choice {
         // EOtF's engine prints a sold-out (0) stock in red.
         drawTextRight(surf, stock >= 0 ? String(stock) : '--', x + 128, y, stock === 0 && isForkEngine() ? 'red' : main);
       }
+      return;
+    }
+    if (e.kind === 'custom') {
+      e.draw?.(surf, x, y);
       return;
     }
     if (e.kind === 'lore') {

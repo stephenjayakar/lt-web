@@ -323,3 +323,27 @@ export function attackablePositions(
   }
   return [...result.values()];
 }
+
+/**
+ * Python TargetSystem._get_all_attackable_positions: the union of
+ * attackablePositions over `items` from `moves`, and nothing once the unit
+ * has attacked unless `force`. Used for the hover/move/menu range highlights
+ * (get_all_attackable_positions_weapons/_spells).
+ */
+export function allAttackablePositions(
+  unit: UnitObject,
+  items: ItemObject[],
+  moves: TargetPosition[],
+  board: GameBoard,
+  game?: any,
+  force: boolean = false,
+): TargetPosition[] {
+  if (!force && unit.hasAttacked) return [];
+  const result = new Map<string, TargetPosition>();
+  for (const item of items) {
+    for (const pos of attackablePositions(unit, item, moves, board, game)) {
+      result.set(`${pos[0]},${pos[1]}`, pos);
+    }
+  }
+  return [...result.values()];
+}

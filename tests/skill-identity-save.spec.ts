@@ -71,7 +71,9 @@ async function getSkillInstances(
   return page.evaluate((unitNid) => {
     const unit = (window as any).__gameRef?.units?.get?.(unitNid);
     if (!unit) return [];
-    return unit.skills.map((s: any) => ({
+    // Visible skills, then item-granted instances shadowed behind a visible
+    // same-nid skill (Python keeps both in _skills).
+    return [...unit.skills, ...(unit.shadowedSkills ?? [])].map((s: any) => ({
       uid: s.uid,
       nid: s.nid,
       initiatorNid: s.initiatorNid ?? null,

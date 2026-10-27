@@ -36,9 +36,14 @@ function addStatus(
   initiator?: UnitObject,
   game?: any,
 ): void {
-  if (!statusNid || target.skills.some((skill) => skill.nid === statusNid)) return;
+  if (!statusNid) return;
   const prefab = db.skills.get(statusNid);
   if (!prefab) return;
+  // Python AddSkill stacks a `stack` skill up to its limit (a second Toxin
+  // from the killing hit's after-combat status); a plain skill is applied once.
+  const stackValue = Number(prefab.components.find(([nid]: [string, unknown]) => nid === 'stack')?.[1] ?? 1);
+  const stackLimit = isForkEngine() && Number.isFinite(stackValue) ? Math.max(1, stackValue) : 1;
+  if (target.skills.filter((skill) => skill.nid === statusNid).length >= stackLimit) return;
   const skill = new SkillObject(prefab);
   // Python StatusOnHit: action.AddSkill(target, value, unit) — initiator is attacker.
   if (initiator) skill.initiatorNid = initiator.nid;
