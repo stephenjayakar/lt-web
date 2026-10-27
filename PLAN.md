@@ -242,6 +242,16 @@ The release gate is green: build, all four audits, the full serial suite,
   view-range filter; ties break in CPython set order (strike tiles, Event
   targets) and AStar uses Python's heap; test moves pull auras and terrain
   statuses; tilemap layers start hidden except base.
+- [x] AI differential round 2 (`tests/fork-ai-targets.spec.ts`): paths stay
+  inside the board bounds; PrimaryAI scores empty tiles (tile blasts) and skill
+  abilities without the availability check, and attack() drops an unavailable
+  item; a damage-0 blast adds no splash lethality; the fork's get_weapon never
+  equips; move_unit ignores an unparseable position; the AI state waits for a
+  queued combat, so canto runs. AI fuzz 116/116 (was 113), first-turn sweep
+  146/147 turns (was 144; Boss_Hidden is a fork error), turn fuzz 153/160
+  (was 133; 6 fork crashes left).
+- [ ] Turn fuzz 23-031: an aura child (`Protective_Gaze_Child`, range-99 enemy
+  aura) drops off the web a turn early.
 - [x] Strike timing (`tests/fork-followups.spec.ts` "Python strike timing"):
   on-hit shove/swap/pivot/draw_back destinations are fixed when their phase is
   solved; each phase is solved against the HP earlier phases left (HP
