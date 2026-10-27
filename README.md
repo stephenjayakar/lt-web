@@ -6,13 +6,14 @@
 
 The compatibility target is
 [`LordTweed/Tweeds_Roguelite`](https://gitlab.com/LordTweed/tweeds_roguelite)
-at commit `d9d2975` (project metadata `EotF` 2.0.0). The project data is not
-part of the lt-web distribution. Install an authorized copy at the stable path
-used by the audit, build, and browser:
+at commit `a500736e` (project metadata `EotF` 2.0.1, the version the official
+release ships). The project data is not part of the lt-web distribution.
+Install an authorized copy at the stable path used by the audit, build, and
+browser:
 
 ```bash
 git clone https://gitlab.com/LordTweed/tweeds_roguelite.git lt-maker/eotf-source
-git -C lt-maker/eotf-source checkout d9d2975
+git -C lt-maker/eotf-source checkout a500736e
 ln -s eotf-source/Gacha_Game.ltproj lt-maker/eotf.ltproj
 npm run audit:eotf
 npm run dev

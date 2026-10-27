@@ -8,7 +8,7 @@ async function bootEotf(page: Page): Promise<void> {
 }
 
 test.describe('Embrace of the Fog core item combat formulas', () => {
-  test('count-locks all 441 authored formula, effectiveness, range-magic, and triangle uses', async ({ page }) => {
+  test('count-locks all 443 authored formula, effectiveness, range-magic, and triangle uses', async ({ page }) => {
     await bootEotf(page);
     const inventory = await page.evaluate(() => {
       const game = (window as any).__gameRef;
@@ -70,9 +70,9 @@ test.describe('Embrace of the Fog core item combat formulas', () => {
         alternate_accuracy_formula: 2,
         alternate_attack_speed_formula: 1,
         alternate_avoid_formula: 2,
-        alternate_damage_formula: 119,
+        alternate_damage_formula: 120, // EOtF 2.0.1 data (2.0.0: 119)
         alternate_defense_speed_formula: 1,
-        alternate_resist_formula: 129,
+        alternate_resist_formula: 130, // EOtF 2.0.1 data (2.0.0: 129)
         custom_triangle_multiplier: 3,
         effective: 7,
         effective_damage: 154,

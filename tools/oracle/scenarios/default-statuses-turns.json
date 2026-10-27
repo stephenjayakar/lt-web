@@ -1,0 +1,18 @@
+{
+  "name": "default-statuses-turns",
+  "description": "Poison, an upkeep stat change and a timed stun across two full turn changes on the Prologue map.",
+  "project": "default.ltproj",
+  "level": "0",
+  "events": false,
+  "seed": 0,
+  "setup": [
+    {"unit": "Eirika", "add_skills": ["Poisoned"]},
+    {"unit": "Seth", "add_skills": ["ResistPlus"]},
+    {"unit": "101", "add_skills": ["Stunned"]},
+    {"unit": "102", "add_skills": ["Sleep"]}
+  ],
+  "actions": [
+    {"do": "end_turn"},
+    {"do": "end_turn"}
+  ]
+}

@@ -288,7 +288,7 @@ test.describe('EOtF engine fork combat hooks', () => {
     });
   });
 
-  test('the AI aims a multi_target item as one counter-less combat that strikes once', async ({ page }) => {
+  test('the AI aims a multi_target item as one counter-less combat that strikes once per target slot', async ({ page }) => {
     await bootEotf(page);
     const result = await page.evaluate(async (arenaSrc) => {
       const game = (window as any).__gameRef;
@@ -339,10 +339,12 @@ test.describe('EOtF engine fork combat hooks', () => {
         strikes: combat.strikes.map((strike: any) => `${strike.attacker.nid}>${strike.defender.nid}`),
       };
     }, ARENA);
+    // EOtF's engine keeps the AI's `[target] * 3` duplicates in the merged
+    // splash list, so Sear strikes its one target three times.
     expect(result).toEqual({
       primary: null,
       defenders: ['_AiSearFoe'],
-      strikes: ['_AiSearCaster>_AiSearFoe'],
+      strikes: ['_AiSearCaster>_AiSearFoe', '_AiSearCaster>_AiSearFoe', '_AiSearCaster>_AiSearFoe'],
     });
   });
 

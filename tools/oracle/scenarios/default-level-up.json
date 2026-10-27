@@ -1,0 +1,17 @@
+{
+  "name": "default-level-up",
+  "description": "Eirika at 95 exp kills a 1 HP Bone: kill exp, a Fixed-growths level-up, and the growth points it leaves behind.",
+  "project": "default.ltproj",
+  "level": "DEBUG",
+  "events": false,
+  "seed": 0,
+  "rng_mode": "True Hit",
+  "growths": "Fixed",
+  "setup": [
+    {"unit": "Eirika", "exp": 95},
+    {"unit": "Bone", "hp": 1}
+  ],
+  "actions": [
+    {"do": "attack", "unit": "Eirika", "target": "Bone", "item": "Rapier"}
+  ]
+}

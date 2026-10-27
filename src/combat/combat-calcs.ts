@@ -1317,7 +1317,7 @@ export function computeCrit(
 export function computeStrikeCount(
   unit: UnitObject,
   item: ItemObject,
-  target: UnitObject,
+  target: UnitObject | null,
   defenseItem: ItemObject | null,
   mode: 'attack' | 'defense' = 'attack',
   attackInfo: [number, number] = [0, 0],
@@ -1344,7 +1344,7 @@ export function computeStrikeCount(
 export function computeExtraAttackPhases(
   unit: UnitObject,
   item: ItemObject,
-  target: UnitObject,
+  target: UnitObject | null,
   defenseItem: ItemObject | null,
   mode: 'attack' | 'defense',
   attackInfo: [number, number],
@@ -1359,7 +1359,7 @@ export function computeExtraAttackPhases(
 export function computeBlitzPhases(
   unit: UnitObject,
   item: ItemObject,
-  target: UnitObject,
+  target: UnitObject | null,
   defenseItem: ItemObject | null,
   mode: 'attack' | 'defense',
   attackInfo: [number, number],

@@ -1,0 +1,15 @@
+{
+  "name": "eotf-ex2-ai-phase",
+  "description": "EOtF EX_2 without events: Yusha waits in place, then the enemy phase runs the Dragon boss AI and play returns to player phase 2.",
+  "project": "eotf.ltproj",
+  "level": "EX_2",
+  "events": false,
+  "seed": 3,
+  "setup": [
+    {"unit": "Yusha", "position": [6, 5]}
+  ],
+  "actions": [
+    {"do": "wait", "unit": "Yusha"},
+    {"do": "end_turn"}
+  ]
+}
