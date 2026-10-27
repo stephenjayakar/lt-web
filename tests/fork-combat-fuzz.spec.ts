@@ -76,7 +76,7 @@ const KIT = `
       const tg = resolveCombatTargetGroup(game, attacker, item, target, target.position);
       const grouped = !tg.mainDefender || tg.splashDefenders.length > 0;
       const defItem = tg.mainDefender ? calcs.getEquippedWeapon(tg.mainDefender, db, game) : null;
-      if (tg.mainDefender) lifecycle.queueCombatSkillStartEvents(game, attacker, tg.mainDefender, item, defItem);
+      lifecycle.queueCombatSkillStartEvents(game, attacker, tg.mainDefender ?? null, item, defItem, tg.splashDefenders);
       const mc = new MapCombat(
         attacker, item, tg.representative, defItem, db, game.rngMode, game.board, script,
         grouped ? { mainDefender: tg.mainDefender, splashDefenders: tg.splashDefenders } : undefined, game,
@@ -397,5 +397,103 @@ test.describe('EOtF engine fork: combat fuzz regressions', () => {
     expect(result!.child).toBe(true);
     expect(result!.galeforce).toBe(true);
     expect(result!.stillEquipped).toBeNull();
+  });
+
+  test('start-of-combat with no main target, phase-end skill gains, override on-hit statuses', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (kitSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const kit = await (new Function(`${kitSrc}; return makeKit;`)())(game);
+      if (!kit.origin) return null;
+      try {
+        // Sanguine Wrath (gain_on_strike Crit_20, combat_condition
+        // check_enemy(unit, target)): with no main target the condition
+        // fails, so a line attack grants nothing; a 1v1 grants Crit_20.
+        const wrath = kit.make('_FzWrath', 'player', { klass: 'Myrmidon', items: ['Necro_Breath'], skills: ['Sanguine_Wrath'], stats: { MAG: 1, SKL: 30 } });
+        const lined = kit.make('_FzLined', 'enemy', { stats: { HP: 60 } });
+        kit.place(wrath, 0, 0);
+        kit.place(lined, 1, 0);
+        const line = kit.fight(wrath, lined, ['hit1', 'end']);
+        const lineCrits = wrath.skills.filter((s: any) => s.nid === 'Crit_20').length;
+        game.removeUnit(wrath.nid);
+        game.removeUnit(lined.nid);
+
+        // Flickering Flames (gain_on_miss): a missed main strike's child is
+        // added once the phase (splash included) is solved, so it is still
+        // held after the combat.
+        const flicker = kit.make('_FzFlicker', 'player', { klass: 'Fighter', items: ['Ragnarok'], skills: ['Flickering_Flames'] });
+        const mainFoe = kit.make('_FzMainFoe', 'enemy', { stats: { HP: 60 } });
+        const sideFoe = kit.make('_FzSideFoe', 'enemy', { stats: { HP: 60 } });
+        kit.place(flicker, 3, 0);
+        kit.place(mainFoe, 4, 0);
+        kit.place(sideFoe, 4, 1);
+        const blast = kit.fight(flicker, mainFoe, ['miss1', 'miss1', 'end']);
+        const flickerChild = kit.skills(flicker).includes('Flickering_Flames_Child');
+        game.removeUnit(flicker.nid);
+        game.removeUnit(mainFoe.nid);
+        game.removeUnit(sideFoe.nid);
+
+        // To The Skies (item_override status_on_hit Temp_Flying) with
+        // Explode (status_on_hit Burning): both statuses land.
+        const caster = kit.make('_FzCaster', 'player', { klass: 'Cleric', items: ['Explode'], skills: ['ToTheSkies'], stats: { MAG: 5, SKL: 30 } });
+        const burnt = kit.make('_FzBurnt', 'enemy', { stats: { HP: 60 } });
+        kit.place(caster, 0, 0);
+        kit.place(burnt, 2, 0);
+        kit.fight(caster, burnt, ['hit1', 'end']);
+        return {
+          lineStrikes: line.strikes.length, lineCrits,
+          blastTargets: blast.strikes.map((s: any) => s.defender.nid).sort(), flickerChild,
+          burnt: kit.skills(burnt),
+        };
+      } finally {
+        kit.cleanup();
+      }
+    }, KIT);
+    expect(result).not.toBeNull();
+    expect(result!.lineStrikes).toBeGreaterThan(0);
+    expect(result!.lineCrits).toBe(0);
+    expect(result!.blastTargets).toEqual(['_FzMainFoe', '_FzSideFoe']);
+    expect(result!.flickerChild).toBe(true);
+    expect(result!.burnt).toEqual(expect.arrayContaining(['Burning', 'Temp_Flying']));
+  });
+
+  test('turn-fuzz cases: ally auras follow ignore_alliances, a self-targeted heal keeps its HP', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async (kitSrc) => {
+      const game = (window as any).__gameRef;
+      // eslint-disable-next-line no-new-func
+      const kit = await (new Function(`${kitSrc}; return makeKit;`)())(game);
+      if (!kit.origin) return null;
+      try {
+        // Raging_Plus (ignore_alliances) leaves its bearer no allies, so
+        // Leading_Charge_Plus's ally aura reaches nobody.
+        const rager = kit.make('_FzRager', 'enemy', { skills: ['Raging_Plus', 'Leading_Charge_Plus'] });
+        const mate = kit.make('_FzMate', 'enemy');
+        const leader = kit.make('_FzLeader', 'enemy', { skills: ['Leading_Charge_Plus'] });
+        const follower = kit.make('_FzFollower', 'enemy');
+        kit.place(rager, -2, 0);
+        kit.place(mate, -1, 0);
+        kit.place(leader, 5, 0);
+        kit.place(follower, 5, 1);
+        game.refreshAuras?.();
+        const mateChild = kit.skills(mate).includes('Leading_Charge_Child');
+        const followerChild = kit.skills(follower).includes('Leading_Charge_Child');
+        for (const u of [rager, mate, leader, follower]) game.removeUnit(u.nid);
+
+        // Bubble_Heal (eval_heal max HP // 10) used on oneself, as
+        // Bubble_Shield_Status's upkeep event does through interact_unit.
+        const bubbler = kit.make('_FzBubbler', 'enemy', { items: ['Bubble_Heal'], equip: false, stats: { HP: 28 }, hp: 14 });
+        kit.place(bubbler, 2, 0);
+        kit.fight(bubbler, bubbler);
+        return { mateChild, followerChild, bubbleHp: bubbler.currentHp };
+      } finally {
+        kit.cleanup();
+      }
+    }, KIT);
+    expect(result).not.toBeNull();
+    expect(result!.mateChild).toBe(false);
+    expect(result!.followerChild).toBe(true);
+    expect(result!.bubbleHp).toBe(16);
   });
 });

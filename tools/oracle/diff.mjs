@@ -18,8 +18,8 @@ export function loadNoncomparable() {
   return {
     ignore: Object.keys(raw.ignore ?? {}),
     zeroMissing: Object.keys(raw.zero_equals_missing ?? {}),
-    nullEmpty: Object.keys(raw.null_equals_empty ?? {}),
     falseMissing: Object.keys(raw.false_equals_missing ?? {}),
+    nullEmpty: Object.keys(raw.null_equals_empty ?? {}),
     unordered: Object.keys(raw.unordered ?? {}),
     stateAliases: raw.state_aliases ?? {},
   };
@@ -87,8 +87,8 @@ export function diffRuns(py, web, scenario = {}) {
   const known = makeMatcher(scenario.known_diffs ?? []);
   const alias = (s) => nc.stateAliases[s] ?? s;
   const zeroMissing = makeMatcher(nc.zeroMissing);
-  const nullEmpty = makeMatcher(nc.nullEmpty);
   const falseMissing = makeMatcher(nc.falseMissing);
+  const nullEmpty = makeMatcher(nc.nullEmpty);
   const unordered = makeMatcher(nc.unordered);
   const eq = (p, a, b) =>
     (zeroMissing(p) && (a ?? 0) === 0 && (b ?? 0) === 0) ||

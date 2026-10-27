@@ -24,7 +24,11 @@
     "units.*.skill_data.*.auraParentSkillUid": "Web-only, see auraOwnerNid.",
     "units.*.skill_data.*.auraSourceType": "Web-only, see auraOwnerNid.",
     "units.*.skill_data.*.rescueSource": "Web-only link from a traveler skill to its rescuer (Python keeps it in the unit's skill source list).",
-    "units.*.skill_data.*.rescueSourceType": "Web-only, see rescueSource."
+    "units.*.skill_data.*.rescueSourceType": "Web-only, see rescueSource.",
+    "units.*.skill_data.*.abilityItemKey:*": "Web-only registry keys of a skill's component ability items (ability_attack_charge...)."
+  },
+  "false_equals_missing": {
+    "units.*.skill_data.*.active": "Python's CombatArt.init stores active=False on every combat-art skill; the web only sets it while the art is active."
   },
   "zero_equals_missing": {
     "units.*.stats.*": "Python keeps one entry per DB stat; the web may add class-only stats (e.g. LEAD) at 0.",

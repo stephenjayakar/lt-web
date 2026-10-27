@@ -304,6 +304,17 @@ lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
   tile than the fork: level 24 with events off, Player/Gorbat/Pilus/Viran
   (L14) on the formation tiles, three `end_turn`s; citizen 108 ends at (6,4)
   on the web and (7,5) in the fork (A* or travel tie-break).
+- [x] Turn-lifecycle fuzz (`tools/oracle/fuzz.mjs`) fixes: status re-gain
+  displaces (refreshes) a DEFAULT instance; upkeep/endstep actions deferred
+  per unit with Python's event-vs-playback order and after_take_strike
+  (gain_skill_after_take_damage, ignore_damage, TrueMiracle); EvalUpkeepDamage
+  draws the combat stream; aura skills propagate when given; sourced timed
+  skills are not removed; negative skills are off while immune; kill_unit
+  keeps HP; End waits nobody and runs the player AI phase.
+- [ ] Fuzz leftovers: the fork has no `add_skill` alias for `give_skill`
+  (the web accepts it); `load_unit` units miss class skills (Flying) and
+  class stat caps (Wall40 HP 30); AI ability use (Temptation → Charm/Seduced)
+  and some AI moves differ (Citizens with Defend/Pursue).
 
 ### P8.7 — QA sweep findings (Acts 1–2)
 
