@@ -294,19 +294,34 @@ lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
   autoequip); a unit whose stun ends at upkeep acts that phase (live
   `movement_left`); event-moved units keep terrain statuses.
 - [x] EOtF fork: units on Fixed growths start with 50 growth points per stat.
+- [ ] AI `Move_to` an occupied `Enemy_Seize` region picks a different stop
+  tile than the fork: level 24 with events off, Player/Gorbat/Pilus/Viran
+  (L14) on the formation tiles, three `end_turn`s; citizen 108 ends at (6,4)
+  on the web and (7,5) in the fork (A* or travel tie-break).
 
-### P8.7 — QA sweep findings (Acts 3–4, bosses, EX, hub)
+### P8.7 — QA sweep findings (Acts 1–2)
+
+`npm run qa:run` sweeps of Acts 1–2.
+
+- [x] AIState kept has_run_ai only until the next pushed state popped (its
+  begin() reset the phase), and AI combats dropped a no_equip skill weapon
+  (Haymaker): one unit attacked forever; the AI canto step never ran.
+- [x] `resurrect` on a dying unit is DeathManager.miracle (TakenPrisoner).
+
+### P8.8 — QA sweep findings (Acts 3–4, bosses, EX, hub)
 
 `npm run qa:run` sweeps (`docs/qa-tools.md`) of Acts 3–4, every Act 3/4
 trial, boss and elite, the EX levels, Boss_Hidden and the hub tour.
 
 - [x] `item.effective_damage.tags` / `.multiplier` (EffectiveDamage
-  properties) in skill expressions.
-- [x] combat_end `playback` holds mark brushes (Item_DeathDance).
+  properties, with their `__init__` defaults) in skill expressions (also
+  Acts 1–2).
+- [x] combat_end `playback` holds mark brushes (Item_DeathDance; Renpet and
+  Critical Reinforcement in Acts 1–2).
 - [x] Unset trigger fields no longer shadow trigger_specific local args
   (event_after_combat playback: Ability_Fili_Flight).
 - [x] win_game ends the level when an event is queued mid-outro (elite
-  outros with interact_unit softlocked, e.g. Gemini).
+  outros with interact_unit softlocked, e.g. Gemini and Nikume).
 - [x] Frameless combat effects (Promotion1/2, spell parents) load no sheet.
 - [ ] Python NameErrors on unit nids substituted into expressions
   (Item_Catcher_SEC `get_item(Player, ...)`, `check_dead`) are reported as

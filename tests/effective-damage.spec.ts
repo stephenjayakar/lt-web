@@ -382,4 +382,37 @@ test.describe('effective_damage item component', () => {
     // the bonus grows by exactly (multiplier - 1) * wtDmgBonus = 2 * wtDmgBonus.
     expect(result!.foldDiff).toBe(2 * result!.wtDmgBonus);
   });
+  // Python EffectiveDamage exposes tags/multiplier/bonus_damage/show_flash as
+  // @property accessors; EOtF skills read `item.effective_damage.tags`
+  // (Riposte_Arc_Nerf, Shell_Armor, Effective_Retreat...). QA sweep: the
+  // port raised AttributeError on every evaluation.
+  test('expressions read EffectiveDamage property accessors', async ({ page }) => {
+    await page.goto('/?harness=true&level=DEBUG&bundle=false');
+    await waitForHarness(page);
+    const result = await page.evaluate(async () => {
+      const g = (window as any).__gameRef;
+      const { ItemObject } = await import('/src/objects/item.ts');
+      const { evaluateExpression } = await import('/src/events/event-manager.ts');
+      const make = (value: unknown) => new ItemObject({
+        nid: '_EffProps', name: '_EffProps', desc: '', icon_nid: '', icon_index: [0, 0],
+        components: [['weapon', null], ['damage', 5], ['effective_damage', value]],
+      } as any);
+      const ctx = (item: any) => ({ game: g, unit1: g.units.get('Eirika'), unit2: g.units.get('Bone'), item,
+        gameVars: g.gameVars, levelVars: g.levelVars, localArgs: new Map() });
+      const full = make({ effective_tags: ['Armor', 'Horse'], effective_multiplier: 2, effective_bonus_damage: 4, show_effectiveness_flash: false });
+      const partial = make({ effective_tags: ['Dragon'] });
+      const read = (item: any) => evaluateExpression(
+        '[item.effective_damage.tags, item.effective_damage.multiplier, item.effective_damage.bonus_damage, item.effective_damage.show_flash]',
+        ctx(item));
+      return {
+        full: read(full),
+        partial: read(partial),
+        any: evaluateExpression("any([tag in item.effective_damage.tags for tag in ['Horse']])", ctx(full)),
+      };
+    });
+    expect(result.full).toEqual([['Armor', 'Horse'], 2, 4, false]);
+    // Defaults from EffectiveDamage.__init__.
+    expect(result.partial).toEqual([['Dragon'], 3, 0, true]);
+    expect(result.any).toBe(true);
+  });
 });
