@@ -56,7 +56,7 @@ import {
   onRemoveRescue,
   unitHasTag,
 } from '../combat/skill-system';
-import { refreshAuras } from '../combat/aura-system';
+import { auraScopeForMove, refreshAuras, type AuraScope } from '../combat/aura-system';
 import { refreshPositionStatuses } from './position-status-system';
 import { MapSprite } from '../rendering/map-sprite';
 import { MapAnimation } from '../rendering/map-animation';
@@ -793,7 +793,7 @@ export class GameState {
 
     // c. Create GameBoard from tilemap ------------------------------------
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
-    this.board.onUnitPositionChanged = () => this.refreshPositionSkills();
+    this.board.onUnitPositionChanged = (unit) => this.refreshPositionSkills(unit ?? null);
     this.board.regionSource = () => this.currentLevel?.regions;
     this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
@@ -1039,7 +1039,7 @@ export class GameState {
 
     // Rebuild game board
     this.board = new GameBoard(this.tilemap.width, this.tilemap.height);
-    this.board.onUnitPositionChanged = () => this.refreshPositionSkills();
+    this.board.onUnitPositionChanged = (unit) => this.refreshPositionSkills(unit ?? null);
     this.board.regionSource = () => this.currentLevel?.regions;
     this.targetSystem = new TargetSystem(this.db, this.board, this);
     this.board.initFromTilemap(this.tilemap);
@@ -1719,7 +1719,9 @@ export class GameState {
     }
 
     this.units.set(unit.nid, unit);
-    this.refreshPositionSkills();
+    // Python arrive for the new unit alone (its board placement ran before
+    // it was registered here).
+    this.refreshPositionSkills(unit);
   }
 
   /**
@@ -1745,16 +1747,20 @@ export class GameState {
    * incremental per-tile registry). Also safe to call after save/load
    * restoration to re-derive aura coverage from scratch.
    */
-  refreshAuras(): void {
+  refreshAuras(scope: AuraScope | null = null): void {
     if (!this.board) return;
-    refreshAuras(this.units.values(), this.board, this.db);
+    refreshAuras(this.units.values(), this.board, this.db, null, scope);
   }
 
-  /** Re-derive all position-sourced skills after any board registry change. */
-  refreshPositionSkills(): void {
+  /**
+   * Re-derive all position-sourced skills after any board registry change.
+   * `moved` is the unit that arrived or left (Python game.arrive/leave): on
+   * EOtF's engine only its aura links are re-decided; without it, all are.
+   */
+  refreshPositionSkills(moved: UnitObject | UnitObject[] | null = null): void {
     if (!this.board) return;
     refreshPositionStatuses(this.units.values(), this.board, this.db, this);
-    this.refreshAuras();
+    this.refreshAuras(moved ? auraScopeForMove(moved) : null);
   }
 
   /** Rebuild derived, looping UnitAnim overlays without persisting them. */

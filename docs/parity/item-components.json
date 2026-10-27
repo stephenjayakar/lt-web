@@ -6055,15 +6055,15 @@
         },
         {
           "source": "src/engine/action.ts",
-          "line": 2724
+          "line": 2733
         },
         {
           "source": "src/engine/action.ts",
-          "line": 2745
+          "line": 2754
         },
         {
           "source": "src/engine/action.ts",
-          "line": 2783
+          "line": 2792
         },
         {
           "source": "src/engine/eotf-component-support.ts",
@@ -9668,11 +9668,11 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1516
+          "line": 1518
         },
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1521
+          "line": 1523
         },
         {
           "source": "src/combat/combat-components.ts",
@@ -9750,11 +9750,11 @@
       "directReads": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1516
+          "line": 1518
         },
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1521
+          "line": 1523
         },
         {
           "source": "src/combat/combat-components.ts",
@@ -10031,7 +10031,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1565
+          "line": 1567
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -10109,7 +10109,7 @@
       "directReads": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1565
+          "line": 1567
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -10172,7 +10172,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1859
+          "line": 1861
         },
         {
           "source": "src/combat/combat-calcs.ts",

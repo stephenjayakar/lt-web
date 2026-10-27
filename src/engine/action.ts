@@ -2192,7 +2192,16 @@ function refreshRegionEffects(region: RegionData | null): void {
   const game = _getGame?.();
   if (!game?.board) return;
   if (type === 'terrain') game.board.refreshTerrain?.();
-  game.refreshPositionSkills?.();
+  // Python _region_leave/_region_arrive (terrain regions only): the units on
+  // the region's tiles leave and arrive again, re-deciding their aura links.
+  const [rx, ry] = region.position ?? [0, 0];
+  const [rw, rh] = region.size ?? [1, 1];
+  const inside = type === 'terrain' && region.position
+    ? (game.getAllUnits?.() ?? []).filter((unit: any) => unit.position &&
+      unit.position[0] >= rx && unit.position[0] < rx + rw &&
+      unit.position[1] >= ry && unit.position[1] < ry + rh)
+    : [];
+  game.refreshPositionSkills?.(inside);
 }
 
 /**
@@ -4321,7 +4330,10 @@ function skillIsDisplaceable(unit: UnitObject, skill: SkillObject, incoming: boo
  * aura coverage.
  */
 function refreshAurasFor(skill: SkillObject): void {
-  if (skill.hasComponent('aura')) _getGame?.()?.refreshAuras?.();
+  // EOtF's engine re-decides only this skill's links (propagate/release).
+  if (skill.hasComponent('aura')) {
+    _getGame?.()?.refreshAuras?.({ targets: new Set(), parents: new Set([skill.uid]) });
+  }
 }
 
 /** Add an already-created skill object, avoiding duplicates, reversibly. */
@@ -5700,6 +5712,9 @@ export class ChangeTeamAction extends Action {
     if (game && typeof game.recalculateAllFow === 'function') {
       game.recalculateAllFow();
     }
+    // Python ChangeTeam leaves and re-arrives the unit: its aura links are
+    // re-decided for the new team.
+    if (this.unit.position) game?.refreshPositionSkills?.(this.unit);
   }
 
   execute(): void {

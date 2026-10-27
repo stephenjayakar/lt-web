@@ -13168,7 +13168,7 @@ export class EventState extends State {
         // Python arrives the unit when its move finishes (terrain and region
         // statuses). A refresh from another unit moving meanwhile (move_group)
         // saw this one mid-path and dropped them; re-derive now it's arrived.
-        game.refreshPositionSkills?.();
+        game.refreshPositionSkills?.(unit);
         onComplete();
       },
       // Python MovementSystem.update: a following event move puts the

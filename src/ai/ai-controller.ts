@@ -1483,7 +1483,9 @@ export class AIController {
       u, skills: u.skills, copy: u.skills.slice(),
       owners: u.skills.map((skill) => skill.ownerNid), canto: u.hasCanto,
     }));
-    refreshAuras(units, this.board, this.db, unit);
+    // Python arrive/leave with test=True: only the tested unit's received
+    // links change; its own auras stay where they were.
+    refreshAuras(units, this.board, this.db, unit, { targets: new Set([unit]), parents: new Set() });
     refreshPositionStatuses(units, this.board, this.db, game);
     return () => {
       for (const entry of saved) {

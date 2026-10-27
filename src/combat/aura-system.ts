@@ -132,6 +132,22 @@ function auraTargets(owner: UnitObject, target: UnitObject, filter: string, db: 
   return true; // 'unit'
 }
 
+/**
+ * What an aura refresh may re-decide on EOtF's engine. Python's aura links
+ * change only through game.arrive/leave (the unit that moved pulls the auras
+ * at its tile and releases/propagates its own) and through adding or
+ * removing an aura skill (propagate_aura/release_aura). A link between two
+ * units neither of which is in scope stays as it is, even if their alliance
+ * changed since (a Raging owner's enemy aura stays on an ally after Raging
+ * wears off), and none is newly made.
+ */
+export interface AuraScope {
+  /** Units that arrived or left: every aura link they receive is re-decided. */
+  targets: Set<UnitObject>;
+  /** Aura skills (uids) propagated or released: every link they give is re-decided. */
+  parents: Set<number>;
+}
+
 interface DesiredEntry {
   targetUnit: UnitObject;
   ownerNid: string;
@@ -150,8 +166,11 @@ export function refreshAuras(
   board: GameBoard | null,
   db: Database,
   frozenOwner: UnitObject | null = null,
+  scope: AuraScope | null = null,
 ): void {
   if (!board) return;
+  // The upstream port keeps its full recompute.
+  const limits = isForkEngine() ? scope : null;
 
   const allUnits = Array.from(units);
   const positionedUnits = allUnits.filter((unit) => unit.position);
@@ -168,7 +187,17 @@ export function refreshAuras(
       for (const [x, y] of positions) {
         const occupant = board.getUnit(x, y);
         if (!occupant) continue;
-        if (!auraTargets(owner, occupant, info.target, db)) continue;
+        if (limits && !limits.targets.has(occupant) && !limits.parents.has(info.parentSkill.uid)) {
+          // Out of scope: keep the link only if it is already there.
+          const linked = occupant.skills.some((skill) =>
+            isAuraSourcedSkill(skill) &&
+            skill.nid === info.childNid &&
+            skill.data.get(AURA_OWNER_NID_KEY) === owner.nid &&
+            skill.data.get(AURA_PARENT_SKILL_UID_KEY) === info.parentSkill.uid);
+          if (!linked) continue;
+        } else if (!auraTargets(owner, occupant, info.target, db)) {
+          continue;
+        }
         desired.push({
           targetUnit: occupant,
           ownerNid: owner.nid,
@@ -258,4 +287,13 @@ export function refreshAuras(
   for (const unit of allUnits) {
     unit.hasCanto = unit.skills.some(isCantoSkill);
   }
+}
+
+/** Python game.arrive/leave for `unit`: its received links and its own auras. */
+export function auraScopeForMove(moved: UnitObject | UnitObject[]): AuraScope {
+  const units = Array.isArray(moved) ? moved : [moved];
+  return {
+    targets: new Set(units),
+    parents: new Set(units.flatMap((unit) => getAuraInfos(unit).map((info) => info.parentSkill.uid))),
+  };
 }
