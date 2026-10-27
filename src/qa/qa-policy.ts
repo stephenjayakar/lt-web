@@ -40,6 +40,8 @@ export interface PolicyOptions {
   sortie: string[];
   /** Answer a choice nid at most this many times per level, then leave it. */
   repeatLimit: number;
+  /** Text entries by variable nid, typed in turn (e.g. password: [...]). */
+  texts: Record<string, string[]>;
 }
 
 export const DEFAULT_POLICY: PolicyOptions = {
@@ -51,6 +53,8 @@ export const DEFAULT_POLICY: PolicyOptions = {
   answers: {},
   sortie: [],
   repeatLimit: 4,
+  // EOtF's Hallway riddle ("Who sent you here?", force_entry).
+  texts: { answer: ['TACITA'] },
 };
 
 /** mulberry32: small deterministic PRNG for policy decisions. */

@@ -59,6 +59,8 @@ export interface JumpSpec {
    * deep floors so later content can be reached and exercised.
    */
   boost?: number;
+  /** Stop in the hub (X) after the party setup, before Run_Start. */
+  hub?: boolean;
 }
 
 export interface JumpHost {
@@ -201,6 +203,13 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   const owned = new Set<string>(['Player', ...party.map((u) => u.nid)]);
   setRecord('Available_Units', [...owned]);
   setRecord('Seen_Units', [...owned]);
+  // What unlocking a unit records (Talk_Gacha, Passwords): skill slots and
+  // the support-conversation counter the hub's Bar/Table/Reminisce read.
+  for (const nid of owned) {
+    if (nid === 'Player') continue;
+    if (!host.records.has(`${nid}_skill_slots`)) setRecord(`${nid}_skill_slots`, 1);
+    if (!host.records.has(`${nid}_convos`)) setRecord(`${nid}_convos`, 1);
+  }
   const sortie = party.map((u) => u.nid);
   // Run_Start sorties min(owned, 4 + Sortie_Slot) units.
   const slots = Math.max(0, sortie.length - 4);
@@ -246,6 +255,15 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   }
   if (spec.money) lines.push(`give_money;${Math.floor(spec.money)};Player;no_banner`);
   for (const [nid, value] of Object.entries(spec.gameVars ?? {})) lines.push(`game_var;${arg(nid)};${literal(value)}`);
+  if (spec.hub) {
+    host.note(`jump: hub, party ${party.map((u) => u.nid).join(',')}`);
+    if (lines.length > 0) {
+      host.runScript(lines, 'QA_Jump_Setup');
+      await host.waitFor(() => game.state.getCurrentState()?.name === 'free_roam'
+        && !game.eventManager?.hasActiveEvents(), 'hub (X) free roam after setup', 60_000);
+    }
+    return jumpResult(game);
+  }
   // Global_Level_End (fired by Run_Start's win_game) adds one floor and one
   // Game_Level step, so preset the values the previous floor would have had.
   const increment = gameLevelIncrement(gameSpeed, density);
@@ -296,6 +314,10 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
     }, `level ${spec.level} ready`, 120_000);
   }
 
+  return jumpResult(game);
+}
+
+function jumpResult(game: any): JumpResult {
   const partyUnits = (game.getUnitsInParty?.() ?? []) as any[];
   return {
     level: game.currentLevel?.nid ?? null,

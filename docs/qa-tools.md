@@ -73,6 +73,25 @@ Run `npm run qa:run -- --help` for every option. The main ones:
 | `--draw-every N` (16) | Render only every Nth frame. |
 | `--map-combat`, `--no-skip`, `--verbose` | Map combat instead of battle animations; keep event dialogue; keep `console.log`. |
 | `--out DIR`, `--label`, `--shots`, `--headed`, `--timeout SEC` | Reports and debugging. |
+| `--answers k=v,...` | Fixed answers by choice nid (option value or index). |
+| `--texts var=A\|B,...` | Text entries by variable nid, typed in turn (default `answer=TACITA`, the Hallway riddle). |
+| `--script "a\|b"` | Event commands to run right after the jump, e.g. `"trigger_script;Boss_Hidden Outro"`. |
+| `--hub`, `--hub-tour N`, `--hub-skip a,b`, `--hub-only a,b` | Stay in the hub (X); `--hub-tour` visits every hub NPC and event region N times (see below). |
+
+Special content:
+
+```bash
+# Hub systems: summons, upgrades, tonics, bar, desk (records, passwords,
+# Reminisce, Hetja shortcut), music, switches, skill inheritance
+npm run qa:run -- --hub-tour 4 --seed 5 --party Player,Gorbat,Pilus,Viran,Hetja   --records "Tonic_Maker=1,game_clear=1,yasukage_unlocked=1,tether_unlocked=1,Density_5_Cleared=1,SI_unlocked=1,Hetja_3=1,Essence=99999,Flame=99999,Fragments=99999,Master_Seals=999"   --texts "password=ILLUSION|PASSWORD123|HETJASHIELD|WRONG"
+
+# Act 3 boss, the Hallway (its doors need the boss keys) and Act 4
+npm run qa:run -- --level Trinity --floors 3 --boost 15 --force-win   --records "forename=1,original_name=1,loreia_defeated=1,fog_gate_opening=1,sydney_assimilation=1"
+
+# EX levels (entered like their Act 3 trigger events) and Act 4 bosses
+npm run qa:run -- --act 3 --floor 40 --level EX_1 --vars demon_quest=3 --one-level --boost 20
+npm run qa:run -- --level Boss_Hidden --one-level --party-level 35 --boost 20 --force-win
+```
 
 ## Reports
 
@@ -185,6 +204,16 @@ normal inputs and engine paths:
   the first 3 turns, then go for objective regions (Seize, Arrive, Escape,
   Defuse, Visit, Key Point, Switch) and pursue. Healers heal first. The
   units' own AI values are restored when the phase ends.
+- Story roam maps with no rooms, services or exit (the Hallway): the event
+  regions in order of distance, each once; an `interrupt_move` region fires
+  by standing in it, any other is used with SELECT.
+- Hub tour (`--hub-tour N`): every hub NPC with a talk pair and every event
+  region (desk, gacha, bar, music, switches, wardrobe) N times, in the real
+  free-roam paths, with the menus answered by policy. Keeper is skipped by
+  default (talking to him starts a run). A region whose condition fails is
+  noted as unavailable.
+- Text entry: the next `texts` entry for the variable is typed and confirmed;
+  without one the entry is left (AUX), or confirmed empty when forced.
 - Stuck detection: if the state stack, event pointer, turn and unit
   positions and HP stay unchanged for 3600 frames and 10 s, the driver presses
   BACK, then SELECT, then START, and then stops the run as `stuck`.

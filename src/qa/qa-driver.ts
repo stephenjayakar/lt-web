@@ -126,10 +126,35 @@ export interface DriverOptions {
   autoplay: boolean;
 }
 
+/**
+ * Hub tour (EOtF hub X): talk to every hub NPC and use every event region
+ * (desk, gacha, bar, music, switches, skill inheritance) `passes` times
+ * through the real free-roam paths, answering the menus by policy.
+ */
+export interface HubTourOptions {
+  passes: number;
+  /** NPC or region nids to leave out (default: Keeper, whose talk starts a run). */
+  skip: string[];
+  /** Only these NPC/region nids (default: all). */
+  only?: string[];
+}
+
+interface HubTarget {
+  kind: 'talk' | 'region';
+  nid: string;
+}
+
 export class QaDriver {
   mode: DriverMode = 'off';
   policy: Policy;
   options: DriverOptions = { skipEvents: true, maxTurns: 40, forceWin: false, autoplay: true };
+  /** Hub tour settings (null: the hub is left to jump()). */
+  hubTour: HubTourOptions | null = null;
+  /** Set once every hub tour target has been visited. */
+  hubDone = false;
+  private hubQueue: HubTarget[] | null = null;
+  private hubVisits: string[] = [];
+  private textsUsed = new Map<string, number>();
   /** Set by the controller to queue an ad-hoc script. */
   runScript: (lines: string[], nid?: string) => void = () => {};
 
@@ -313,9 +338,27 @@ export class QaDriver {
     return 'SELECT';
   }
 
+  /**
+   * TextEntryState: type the next policy text for this variable (e.g. hub
+   * passwords) and confirm it (START, then Yes); with none, leave the entry
+   * (AUX, Python's exit when the entry is not forced).
+   */
   private handleTextEntry(state: any): GameButton | null {
-    this.note('text_entry: backed out');
-    return 'BACK';
+    const nid = String(state.varNid ?? '');
+    const texts = this.policy.options.texts[nid] ?? [];
+    if (state.confirmIndex === 0) return 'SELECT';
+    if (texts.length > 0) {
+      const used = this.textsUsed.get(nid) ?? 0;
+      const text = texts[used % texts.length];
+      if (state.currentText !== text) {
+        this.textsUsed.set(nid, used + 1);
+        state.currentText = text;
+        this.note(`text_entry ${nid}: ${text}`);
+      }
+      return 'START';
+    }
+    this.note('text_entry: left');
+    return state.forceEntry ? 'START' : 'AUX';
   }
 
   // -------------------------------------------------------------------------
@@ -329,7 +372,7 @@ export class QaDriver {
     const roamUnit = roamNid ? game.getUnit(roamNid) : null;
     if (!roamUnit?.position || !roam.movementComponent) return undefined;
     const levelNid: string = game.currentLevel?.nid ?? '';
-    if (levelNid === 'X') return undefined; // the hub is driven by jump()
+    if (levelNid === 'X') return this.handleHub(roam, roamUnit);
     const talkable = (game.getAllUnits() as any[]).filter((u) =>
       u !== roamUnit && u.position && !u.isDead() && game.eventManager?.hasTalkPair?.(roamUnit.nid, u.nid));
     const rooms = talkable
@@ -363,9 +406,108 @@ export class QaDriver {
         target = talkable.find((u) => u.nid === 'exit') ?? null;
       }
     }
-    if (!target) return undefined;
+    if (!target) return this.handleStoryRoam(roam, roamUnit, levelNid);
     if (!this.placeBeside(roam, roamUnit, target)) return undefined;
     return 'SELECT';
+  }
+
+  /**
+   * Story roam maps with no rooms, services or exit (EOtF's Hallway): use
+   * the event regions in order of distance from the roam unit, each once.
+   * An interrupt_move region fires roaming_interrupt when the unit stands
+   * in it; any other region is used with SELECT (get_visit_region).
+   */
+  private handleStoryRoam(roam: any, roamUnit: any, levelNid: string): GameButton | null | undefined {
+    const game = this.game;
+    const scope = `${levelNid}|${game.gameVars.get('Floor')}|region`;
+    const [ux, uy] = roamUnit.position;
+    const regions = ((game.currentLevel?.regions ?? []) as any[])
+      .filter((r) => String(r.region_type ?? '').toLowerCase() === 'event' && r.position
+        && !this.visited.has(`${scope}|${r.nid}`))
+      .sort((a, b) => (Math.abs(a.position[0] - ux) + Math.abs(a.position[1] - uy))
+        - (Math.abs(b.position[0] - ux) + Math.abs(b.position[1] - uy)));
+    for (const region of regions) {
+      this.visited.add(`${scope}|${region.nid}`);
+      if (!this.placeOn(roam, roamUnit, region)) continue;
+      if (region.interrupt_move) {
+        this.note(`region ${region.nid} (interrupt)`);
+        return null;
+      }
+      if (roam.getVisitRegion?.()?.nid !== region.nid) continue;
+      this.note(`region ${region.nid}`);
+      return 'SELECT';
+    }
+    return undefined;
+  }
+
+  /** Hub tour step: visit the next NPC or event region, then stop. */
+  private handleHub(roam: any, roamUnit: any): GameButton | null | undefined {
+    const tour = this.hubTour;
+    if (!tour || this.hubDone) return undefined;
+    const game = this.game;
+    if (!this.hubQueue) {
+      const wanted = (nid: string) => !tour.skip.includes(nid) && (!tour.only || tour.only.includes(nid));
+      const targets: HubTarget[] = [];
+      for (const unit of game.getAllUnits() as any[]) {
+        if (unit === roamUnit || !unit.position || unit.isDead?.() || !wanted(unit.nid)) continue;
+        if (game.eventManager?.hasTalkPair?.(roamUnit.nid, unit.nid)) targets.push({ kind: 'talk', nid: unit.nid });
+      }
+      for (const region of (game.currentLevel?.regions ?? []) as any[]) {
+        if (String(region.region_type ?? '').toLowerCase() === 'event' && wanted(region.nid)) {
+          targets.push({ kind: 'region', nid: region.nid });
+        }
+      }
+      this.hubQueue = [];
+      for (let pass = 0; pass < Math.max(1, tour.passes); pass += 1) this.hubQueue.push(...targets);
+      this.note(`hub tour: ${targets.map((t) => t.nid).join(', ')} x${Math.max(1, tour.passes)}`);
+    }
+    for (;;) {
+      const target = this.hubQueue.shift();
+      if (!target) {
+        this.hubDone = true;
+        this.note(`hub tour done: ${this.hubVisits.length} visits`);
+        return undefined;
+      }
+      // Menus repeat on every visit; let each visit answer them afresh.
+      this.choiceRepeats.clear();
+      if (target.kind === 'talk') {
+        const unit = game.getUnit(target.nid);
+        if (!unit?.position || !game.eventManager?.hasTalkPair?.(roamUnit.nid, unit.nid)) continue;
+        if (!this.placeBeside(roam, roamUnit, unit)) continue;
+      } else {
+        const region = (game.currentLevel?.regions ?? []).find((r: any) => r.nid === target.nid);
+        if (!region || !this.placeOn(roam, roamUnit, region)) continue;
+        // get_visit_region: the region's own condition must hold.
+        if (roam.getVisitRegion?.()?.nid !== region.nid) {
+          this.note(`hub: region ${target.nid} unavailable`);
+          continue;
+        }
+      }
+      this.hubVisits.push(target.nid);
+      this.note(`hub: ${target.kind} ${target.nid}`);
+      return 'SELECT';
+    }
+  }
+
+  /** Put the roam unit on a free tile of `region`. */
+  private placeOn(roam: any, unit: any, region: any): boolean {
+    const game = this.game;
+    const [rx, ry] = region.position ?? [];
+    const [w, h] = region.size ?? [1, 1];
+    if (rx === undefined || ry === undefined) return false;
+    for (let y = ry; y < ry + h; y += 1) {
+      for (let x = rx; x < rx + w; x += 1) {
+        if (!game.board.inBounds(x, y)) continue;
+        const occupant = game.board.getUnit(x, y);
+        if (occupant && occupant !== unit) continue;
+        game.board.removeUnit(unit);
+        unit.position = [x, y];
+        game.board.setUnit(x, y, unit);
+        roam.movementComponent.roamPosition = { x, y };
+        return true;
+      }
+    }
+    return false;
   }
 
   private roomKind(nid: string): string {
@@ -459,7 +601,7 @@ export class QaDriver {
 
   note(text: string): void {
     const floor = this.currentFloor;
-    if (floor && floor.notes.length < 80) floor.notes.push(text);
+    if (floor && floor.notes.length < 300) floor.notes.push(text);
   }
 
   /** Start tracking (called when play starts). */
