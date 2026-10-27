@@ -2757,6 +2757,8 @@ export function dynamicAttackSpeed(
 export const ITEM_SOURCE_KEY = 'itemSource';
 export const ITEM_SOURCE_TYPE_KEY = 'itemSourceType';
 export const ITEM_SOURCE_NID_KEY = 'itemSourceNid';
+/** EOtF: how many item sources share one visible item-granted status. */
+const FORK_ITEM_REFS_KEY = '_forkItemRefs';
 
 /** True when `skill` was granted by an item's status_on_equip hook. */
 export function isItemSourcedSkill(skill: SkillObject): boolean {
@@ -2803,6 +2805,19 @@ function addItemSourcedSkill(
 ): void {
   const prefab = db?.skills?.get?.(skillNid);
   if (!prefab) return;
+  if (isForkEngine() && !prefab.components.some(([nid]: [string, unknown]) => nid === 'stack' || nid === 'stax')) {
+    // EOtF's engine keeps every instance but only the newest non-stacking
+    // one is visible (unit.skills shadows the rest), so a second source of
+    // the same status (Keyblade's hold + equip) adds no second effect.
+    // Count the extra source on the existing item instance instead.
+    const existing = unit.skills.find((candidate) => candidate.nid === skillNid);
+    if (existing) {
+      if (isItemSourcedSkill(existing)) {
+        existing.data.set(FORK_ITEM_REFS_KEY, Number(existing.data.get(FORK_ITEM_REFS_KEY) ?? 1) + 1);
+      }
+      return;
+    }
+  }
   const skill = new SkillObject(prefab);
   skill.data.set(ITEM_SOURCE_KEY, item);
   skill.data.set(ITEM_SOURCE_TYPE_KEY, 'item');
@@ -2813,6 +2828,16 @@ function addItemSourcedSkill(
 
 /** Remove exactly one item-sourced instance of `skillNid` for `item`. */
 function removeOneItemSourcedSkill(unit: UnitObject, item: ItemObject, skillNid: string): void {
+  if (isForkEngine()) {
+    // A shared instance held by several item sources loses one reference.
+    const shared = unit.skills.find((skill) => skill.nid === skillNid &&
+      skill.data.get(ITEM_SOURCE_TYPE_KEY) === 'item' &&
+      Number(skill.data.get(FORK_ITEM_REFS_KEY) ?? 1) > 1);
+    if (shared) {
+      shared.data.set(FORK_ITEM_REFS_KEY, Number(shared.data.get(FORK_ITEM_REFS_KEY)) - 1);
+      return;
+    }
+  }
   for (let i = unit.skills.length - 1; i >= 0; i--) {
     const skill = unit.skills[i];
     if (skill.nid === skillNid &&
