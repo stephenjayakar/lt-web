@@ -84,6 +84,12 @@ Each run writes `<out>/<timestamp>-<label>-p<port>[-r<i>]/` (default out:
 - `report.json`: the same data in full, plus the options and timings.
 - `jump.png`, `final.png`, and `floor-N.png` with `--shots`.
 
+`npm run qa:summary -- [DIR] [--since YYYYMMDD-HHMMSS] [--all]` aggregates a
+sweep: one line per run (result, floor span, play time, reason), then every
+warning and error deduplicated across runs with the number of runs that hit
+it and its first context (Python-equivalent evaluation warnings are hidden
+unless `--all` is given).
+
 The run result is `ok` (target reached), `defeat` (game over), `stuck`
 (turn limit, or no progress after recovery attempts), `error` (the engine
 threw on every frame) or `timeout`.
