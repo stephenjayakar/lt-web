@@ -92,9 +92,9 @@ export function hasSprite(name: string): boolean {
  * resources/custom_sprites/menu/{1..4}/<name><n>.png.
  */
 const WINDOW_SKIN_SPRITES: ReadonlySet<string> = new Set([
-  'menu_bg_base', 'menu_bg_base_opaque', 'menu_gem_small', 'menu_shimmer1', 'menu_shimmer2',
+  'menu_bg_base', 'menu_gem_small', 'menu_shimmer1', 'menu_shimmer2',
   'money_bg', 'funds_display', 'rescue_window', 'give_window', 'sound_player',
-  'tile_info_quick', 'tile_info_quick_opaque', 'tile_info_destructible', 'tile_info_destructible_opaque',
+  'tile_info_quick_opaque', 'tile_info_destructible_opaque', 'trade_window', 'Weather_Window',
 ]);
 
 let windowDisplay: () => unknown = () => 1;

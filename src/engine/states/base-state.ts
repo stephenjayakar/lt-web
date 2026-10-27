@@ -16,6 +16,7 @@ import { State, type StateResult } from '../state';
 import type { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { viewport } from '../viewport';
+import { isForkEngine } from '../engine-flavor';
 
 import { ChoiceMenu, type MenuOption } from '../../ui/menu';
 import { ACHIEVEMENTS, RECORDS, type AchievementEntry } from '../records';
@@ -883,8 +884,12 @@ export class BaseLoreState extends State {
       this.entries = sorted;
     }
     this.menu = new PrepChoice(game, [], [4, 4], 'menu_bg_brown');
-    this.menu.shimmer = 3;
-    this.menu.gem = 'brown';
+    // EOtF's engine drops the brown styling here: the list takes the window
+    // skin with its small gem and no shimmer.
+    if (!isForkEngine()) {
+      this.menu.shimmer = 3;
+      this.menu.gem = 'brown';
+    }
     this.menu.setLimit(9);
     this.menu.hardLimit = true;
     this.menu.setOptions(entries);

@@ -18122,7 +18122,11 @@ export class EventState extends State {
         for (const itemNid of shopItemNids) {
           const prefab = game.db?.items?.get(itemNid);
           if (prefab) {
-            shopItems.push(new ItemObjectClass(prefab));
+            // Python item_funcs.create_items(unit, ...): the shopper owns the
+            // stock items, so ones they cannot use are listed in grey.
+            const shopItem = new ItemObjectClass(prefab);
+            shopItem.owner = shopUnit;
+            shopItems.push(shopItem);
           } else {
             console.warn(`shop: item "${itemNid}" not found in db`);
           }
