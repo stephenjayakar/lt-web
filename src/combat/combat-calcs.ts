@@ -708,7 +708,7 @@ export function computeHit(
   game ??= _eqGameRef?.();
   // Python compute_hit: an item without a hit hook ("If left off, item will
   // always hit") has accuracy None and returns 10000, which every forecast and
-  // AI caller clamps to 100. The solver already skips the roll for it.
+  // AI caller clamps to 100. The solver still draws the hit roll for it.
   if (itemSystem.hit(attacker, attackItem, game) === null) return 100;
   const defWeapon = defender.items.find((i) => i.isWeapon()) ?? null;
   const acc = accuracy(

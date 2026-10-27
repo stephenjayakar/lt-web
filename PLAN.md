@@ -238,7 +238,7 @@ The release gate is green: build, all four audits, the full serial suite,
   combat land on the hit (items without damage deal none); splash-only
   attackers carry their own HP between phases; shove impact events join
   the strike's on_hit events in component order.
-- [x] Fork combat from source (`tests/fork-combat-{splash,extras}.spec.ts`): no-target AOE repeats, duplicate multi-target strikes, lifelink/live_to_serve zero cases, extra-damage instances, Spotlight warps, aura initiator, has_damage.
+- [x] Fork combat from source (`tests/fork-combat-{splash,extras,phase-hp}.spec.ts`): no-target AOE repeats, duplicate multi-target strikes, lifelink/live_to_serve zero cases, extra-damage instances, phase-start HP (lifelink totals, TrueMiracle, brush digits), CPython set order for AOE, Spotlight warps, aura initiator, has_damage.
 - [x] AnimationCombat's non-fading `screen_blend` flash draws at full strength.
 - [x] UI parity: help boxes type their text out through the `__default_help`
   dialog (`tests/help-typewriter.spec.ts`); the Controls settings page rebinds
@@ -272,14 +272,18 @@ The release gate is green: build, all four audits, the full serial suite,
 `npm run oracle` (`tools/oracle/README.md`) replays scenarios on upstream
 lt-maker or EOtF's engine fork and on the web. Open behaviour diffs:
 
-- [ ] Unique units get their class `learned_skills` (Canto on Paladins).
-- [ ] `WaitAction` also sets has_moved/has_traded/has_attacked.
-- [ ] Every level unit gets the level's party (Python `level_setup`).
-- [ ] Generics raise wexp to their items' requirements.
-- [ ] Generic autolevels honour `enemy_leveling` and, for promoted classes,
+- [x] Unique units get their class `learned_skills` (Canto on Paladins).
+- [x] `WaitAction` also sets has_moved/has_traded/has_attacked; WaitState also
+  waits units that died after attacking.
+- [x] Every level unit gets the level's party (Python `level_setup`).
+- [x] Generics raise wexp to their items' requirements.
+- [x] Generic autolevels honour `enemy_leveling` and, for promoted classes,
   `promoted_autolevels_fraction`.
-- [ ] Combat level-ups leave current HP alone (only bonus exp raises it).
-- [ ] Item uses and staves draw the combat RNG like Python's solver.
-- [ ] `gba_poison`; `cannot_use_items` unequips; a unit whose stun ends at
-  upkeep acts that phase.
-- [ ] EOtF fork: units on Fixed growths start with 50 growth points per stat.
+- [x] Combat level-ups leave current HP alone (only bonus exp raises it,
+  upstream only).
+- [x] Item uses and staves draw the combat RNG like Python's solver (also
+  solver strikes without a hit value; crit rolls need crits on and a crit value).
+- [x] `gba_poison`; `cannot_use_items` unequips (AddSkill/RemoveSkill
+  autoequip); a unit whose stun ends at upkeep acts that phase (live
+  `movement_left`); event-moved units keep terrain statuses.
+- [x] EOtF fork: units on Fixed growths start with 50 growth points per stat.

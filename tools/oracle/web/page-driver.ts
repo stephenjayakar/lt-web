@@ -509,7 +509,7 @@ export function snapshot(e: WebEngine): Json {
       exp: u.exp,
       klass: u.klass,
       stats: Object.fromEntries(Object.entries(u.stats).map(([k, v]) => [k, Number(v)])),
-      growth_points: nonzero(u.growthPoints),
+      growth_points: jsonable(nonzero(u.growthPoints)),
       wexp: jsonable(nonzero(u.wexp)),
       items: u.items.map(itemSnap),
       equipped_weapon: u.equippedWeapon?.nid ?? null,

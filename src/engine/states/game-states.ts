@@ -7,6 +7,7 @@
  * units, tilemap, mapView, etc.) without creating circular imports.
  */
 
+import { drawItemUseRolls } from '../../combat/item-use-rolls';
 import type { SongObject } from '../../audio/music-controller';
 import { State, MapState, type StateResult } from '../state';
 import { isForkEngine } from '../engine-flavor';
@@ -43,7 +44,7 @@ import {
   evaluateCondition,
   evaluateConditionOr,
   evaluateExpression,
-  evaluatePythonInContext,
+  evaluateExpressionOutcome,
   evaluateTextTag,
   GameEvent,
   pythonIterationValues,
@@ -51,8 +52,8 @@ import {
   pythonStr,
   type ConditionContext,
   type EventCommand,
+  type ExpressionOutcome,
 } from '../../events/event-manager';
-import { toHostValue } from '../../events/py-expr/values';
 import {
   activateCombatArt,
   deactivateCombatArts,
@@ -467,6 +468,11 @@ function isPrimitiveOrPrimitiveCollection(value: unknown): boolean {
   return false;
 }
 
+/** An evaluation's value, or `undefined` when it raised (already logged). */
+function outcomeValue(outcome: ExpressionOutcome): any {
+  return outcome.ok ? outcome.value : undefined;
+}
+
 /**
  * Choice and table rows as EOtF's engine builds them. With `expression` the
  * value is evaluated: a list gives its entries, any other value one row, and
@@ -476,14 +482,11 @@ function isPrimitiveOrPrimitiveCollection(value: unknown): boolean {
  */
 function forkChoiceRows(source: string, expression: boolean, context: () => any): string[] {
   if (expression) {
-    const outcome = evaluatePythonInContext(source, context());
-    if (!outcome.ok) {
-      console.warn(`choice/table: failed to evaluate ${source}`, outcome.error);
-      return [''];
-    }
-    const value = toHostValue(outcome.value);
+    const outcome = evaluateExpressionOutcome(source, context());
+    if (!outcome.ok) return [''];
+    const value = outcome.value;
     if (Array.isArray(value)) return value.length ? value.map((entry) => pythonStr(entry)) : [''];
-    return [pythonStr(outcome.value)];
+    return [pythonStr(value)];
   }
   return source.split(',').map((entry) => entry.trim().replaceAll('{comma}', ','));
 }
@@ -1003,14 +1006,16 @@ function getTradePartners(unit: UnitObject): UnitObject[] {
  * mark the unit finished.
  */
 function waitUnit(game: any, unit: UnitObject, activelyChosen: boolean): void {
-  if (unit.position && game.eventManager) {
+  // A unit that died in combat still waits (Python WaitState skips no dead
+  // unit); its unit_wait has no position and no region.
+  if (game.eventManager) {
     const levelNid = game.currentLevel?.nid ?? '';
-    const region = getRegionUnderPos(unit.position[0], unit.position[1]);
+    const region = unit.position ? getRegionUnderPos(unit.position[0], unit.position[1]) : null;
     const ctx = { game, unit1: unit, region, gameVars: game.gameVars, levelVars: game.levelVars };
     game.eventManager.trigger(
       {
         type: 'unit_wait', levelNid, unitNid: unit.nid, unit1: unit,
-        position: [unit.position[0], unit.position[1]],
+        position: unit.position ? [unit.position[0], unit.position[1]] : undefined,
         region: region ?? undefined,
         localArgs: new Map<string, any>([['actively_chosen', activelyChosen]]),
       },
@@ -4201,7 +4206,9 @@ export class WaitState extends State {
     const game = getGame();
     game.state.back();
     for (const unit of game.getAllUnits() as UnitObject[]) {
-      if (unit.hasAttacked && !unit.finished && !unit.isDead()) waitUnit(game, unit, false);
+      // Python iterates game.units, dead ones included: a unit killed in
+      // combat after attacking is waited (finished) too.
+      if (unit.hasAttacked && !unit.finished) waitUnit(game, unit, false);
     }
     if (game.eventManager?.hasActiveEvents()) game.state.change('event');
     return 'repeat';
@@ -4248,6 +4255,7 @@ export function applyCoreTargetedItem(
   const game = getGame();
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, [{ item, positions: [position] }]);
   const targets = effectUnits(unit, item, position);
   const hpBefore = new Map(targets.map((target) => [target, target.currentHp]));
   const canto = classChangeCanto(game, unit, item, targets[0] ?? null);
@@ -4282,6 +4290,7 @@ export function applyCoreMultiTargetedItem(
   const game = getGame();
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, [{ item, positions }]);
   let applied = false;
   const targets = new Map<string, UnitObject>();
   const hpBefore = new Map<UnitObject, number>();
@@ -4317,6 +4326,10 @@ export function applyCoreSequenceItem(
   if (!item.hasComponent('sequence_item') || item.subitems.length === 0) return false;
   const resourceStart = game.actionLog.getLength();
   applyItemStartResourceHooks(game, unit, item);
+  drawItemUseRolls(game, unit, item.subitems.map((child, childIndex) => ({
+    item: child,
+    positions: targetsByItem[childIndex] ?? [],
+  })));
   let storedUnit: UnitObject | null = null;
   let applied = false;
   const targets = new Map<string, UnitObject>();
@@ -8575,7 +8588,9 @@ export class CombatState extends State {
         if (!wasEventCombat && !hasCanto) {
           if (aiCombat) {
             game.state.change('wait');
-          } else if (!attacker.isDead() && !returnsToMenu) {
+          } else if (attacker.isDead() || !returnsToMenu) {
+            // Python checks attacker.is_dying before the menu/Canto routing:
+            // a player attacker that died also clears to free + wait.
             game.selectedUnit = null;
             game._moveOrigin = null;
             game._moveAction = null;
@@ -12720,7 +12735,8 @@ export class EventState extends State {
           // every frame so hover-driven descriptions stay current.
           const source = this.substituteEventArgs([box.rawText], game)[0] ?? box.rawText;
           const value = evaluateExpression(source, this.buildConditionContext());
-          text = value === null || value === undefined ? '' : String(value);
+          // Python str(val): None shows as 'None'.
+          text = pythonStr(value);
         } catch (error) {
           console.warn(`textbox ${box.nid}: failed to evaluate "${box.rawText}"`, error);
           continue;
@@ -13069,6 +13085,10 @@ export class EventState extends State {
         // action.Reset, so the walker is fully refreshed (a unit that had
         // already acted can act again; EOtF's engine also runs on_refresh).
         game.actionLog.doAction(new ResetAction(unit));
+        // Python arrives the unit when its move finishes (terrain and region
+        // statuses). A refresh from another unit moving meanwhile (move_group)
+        // saw this one mid-path and dropped them; re-derive now it's arrived.
+        game.refreshPositionSkills?.();
         onComplete();
       },
       // Python MovementSystem.update: a following event move puts the
@@ -14361,7 +14381,9 @@ export class EventState extends State {
         const baseItems: [string, boolean][] = templateUnit
           ? templateUnit.items.map((it: ItemObject) => [it.nid, !!it.droppable] as [string, boolean])
           : (templatePrefab.starting_items ?? []);
-        const learnedSkills = templateUnit ? [] : (templatePrefab.learned_skills ?? []);
+        // Python create_unit builds GenericUnit(..., starting_skills=[]): class
+        // skills only, whether the template is a unit or a prefab.
+        const learnedSkills: [number, string][] = [];
 
         const baseKlassDef = game.db?.classes?.get(baseKlass);
         if (!baseKlassDef) {
@@ -14394,7 +14416,7 @@ export class EventState extends State {
           affinity: '',
         };
 
-        const newUnit = game.buildUnit(syntheticPrefab, baseTeam, baseAi);
+        const newUnit = game.buildUnit(syntheticPrefab, baseTeam, baseAi, { generic: true });
         newUnit.generic = true;
         newUnit.faction = baseFaction || null;
         if (copyStats && templateUnit) {
@@ -14935,7 +14957,8 @@ export class EventState extends State {
         // arbitrary Python comprehensions.
         const rawExpr = args[0] ?? '';
         const eventName = args[1] ?? '';
-        let list: any = evaluateExpression(rawExpr, this.buildConditionContext());
+        const listOutcome = evaluateExpressionOutcome(rawExpr, this.buildConditionContext());
+        let list: any = listOutcome.ok ? listOutcome.value : undefined;
         // Fall back to treating the raw text as a comma-separated nid list when
         // the expression evaluator can't produce a string/array from it.
         if (list == null || (typeof list !== 'string' && !Array.isArray(list))) list = rawExpr;
@@ -14983,7 +15006,7 @@ export class EventState extends State {
               !['recursive', 'from_python', 'no_warn'].includes(rawValue)
             ? args.includes('from_python')
               ? parsePyevCommandValue(rawValue)
-              : evaluateExpression(rawValue, this.buildConditionContext())
+              : outcomeValue(evaluateExpressionOutcome(rawValue, this.buildConditionContext()))
             : null;
           if (value !== undefined) game.actionLog.doAction(new AddObjComponentAction(item, compNid, value));
         } else if (cmd.type === 'modify_item_component') {
@@ -14992,7 +15015,7 @@ export class EventState extends State {
           } else {
             const value = args.includes('from_python')
               ? parsePyevCommandValue(args[3] ?? '')
-              : evaluateExpression(args[3] ?? '', this.buildConditionContext());
+              : outcomeValue(evaluateExpressionOutcome(args[3] ?? '', this.buildConditionContext()));
             const property = args[4] && !['additive', 'recursive'].includes(args[4]) ? args[4] : null;
             if (value !== undefined) {
               game.actionLog.doAction(new ModifyObjComponentAction(
@@ -15028,7 +15051,7 @@ export class EventState extends State {
             const rawValue = args[3];
             const value = rawValue !== undefined &&
                 !['stack', 'from_python', 'no_warn'].includes(rawValue)
-              ? evaluateExpression(rawValue, this.buildConditionContext())
+              ? outcomeValue(evaluateExpressionOutcome(rawValue, this.buildConditionContext()))
               : null;
             if (value === undefined) break;
             game.actionLog.doAction(new AddObjComponentAction(skill, compNid, value));
@@ -15037,7 +15060,7 @@ export class EventState extends State {
               console.warn(`modify_skill_component: skill lacks component ${compNid}`);
               continue;
             }
-            const value = evaluateExpression(args[3] ?? '', this.buildConditionContext());
+            const value = outcomeValue(evaluateExpressionOutcome(args[3] ?? '', this.buildConditionContext()));
             if (value === undefined) break;
             const property = args[4] && !['additive', 'stack'].includes(args[4]) ? args[4] : null;
             game.actionLog.doAction(new ModifyObjComponentAction(
@@ -15930,7 +15953,7 @@ export class EventState extends State {
         const rawValue = args[3] ?? '';
         const value = args.includes('from_python')
           ? rawValue
-          : evaluateExpression(rawValue, this.buildConditionContext());
+          : outcomeValue(evaluateExpressionOutcome(rawValue, this.buildConditionContext()));
         if (item && key && value !== undefined) {
           game.actionLog.doAction(new SetItemDataAction(item, key, value));
         } else if (item && key) {
@@ -15942,7 +15965,7 @@ export class EventState extends State {
 
       case 'set_item_uses': {
         const item = this.findInventoryItem(args[0] ?? '', args[1] ?? '', args.includes('recursive'));
-        const requested = Number(evaluateExpression(args[2] ?? '', this.buildConditionContext()));
+        const requested = Number(outcomeValue(evaluateExpressionOutcome(args[2] ?? '', this.buildConditionContext())));
         if (item && item.maxUses > 0 && Number.isFinite(requested)) {
           const value = args.includes('additive') ? item.uses + requested : requested;
           game.actionLog.doAction(new SetItemUsesAction(item, value));
@@ -16885,7 +16908,7 @@ export class EventState extends State {
         const rawValue = args[2] ?? '';
         const value = args.includes('from_python')
           ? rawValue
-          : evaluateExpression(rawValue, this.buildConditionContext());
+          : outcomeValue(evaluateExpressionOutcome(rawValue, this.buildConditionContext()));
         if (unit && key && value !== undefined) {
           game.actionLog.doAction(new SetUnitFieldAction(unit, key, value, args.includes('increment_mode')));
         } else if (unit && key) {
@@ -17626,7 +17649,7 @@ export class EventState extends State {
             /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$/.test(typedForExpression.trim())) {
           // Python's for evaluates the expression and iterates it (a dict
           // such as unit.wexp yields its keys).
-          const evaluated = evaluateExpression(typedForExpression, this.buildConditionContext());
+          const evaluated = outcomeValue(evaluateExpressionOutcome(typedForExpression, this.buildConditionContext()));
           if (evaluated !== undefined && evaluated !== null) {
             try {
               forValues = pythonIterationValues(evaluated);
@@ -19403,7 +19426,7 @@ export class EventState extends State {
           const value = args[1] ?? 'True';
           if (nid && RECORDS) {
             // Python create_record: an expression that raises is logged and skipped.
-            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            const evaluated = outcomeValue(evaluateExpressionOutcome(value, this.buildConditionContext()));
             if (evaluated !== undefined) RECORDS.create(nid, evaluated);
           }
         } catch (e) { console.warn('create_record error:', e); }
@@ -19416,7 +19439,7 @@ export class EventState extends State {
           const value = args[1] ?? 'True';
           if (nid && RECORDS) {
             // Python update_record: an expression that raises is logged and skipped.
-            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            const evaluated = outcomeValue(evaluateExpressionOutcome(value, this.buildConditionContext()));
             if (evaluated !== undefined) RECORDS.update(nid, evaluated);
           }
         } catch (e) { console.warn('update_record error:', e); }
@@ -19429,7 +19452,7 @@ export class EventState extends State {
           const value = args[1] ?? 'True';
           if (nid && RECORDS) {
             // Python replace_record: an expression that raises is logged and skipped.
-            const evaluated = evaluateExpression(value, this.buildConditionContext());
+            const evaluated = outcomeValue(evaluateExpressionOutcome(value, this.buildConditionContext()));
             if (evaluated !== undefined) RECORDS.replace(nid, evaluated);
           }
         } catch (e) { console.warn('replace_record error:', e); }
