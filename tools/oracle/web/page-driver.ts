@@ -36,12 +36,13 @@ export interface Scenario {
   actions?: Action[];
   skip?: string;
   start_frames?: number;
+  startup_events?: boolean;
 }
 
 const REST_STATES = new Set([
   'free', 'menu', 'move', 'canto_wait', 'weapon_choice', 'spell_choice',
   'combat_targeting', 'targeting', 'item', 'item_child', 'item_targeting', 'item_use',
-  'trade', 'option_menu', 'option_child',
+  'trade', 'option_menu', 'option_child', 'free_roam',
 ]);
 
 class OracleError extends Error {}
@@ -75,8 +76,8 @@ class WebEngine {
   busy(): boolean {
     const g = this.game;
     if ((g.state as any).tempState?.length) return true;
-    if (g.movementSystem?.isMoving?.()) return true;
-    if (g.eventManager?.hasActiveEvents?.()) return true;
+    // Free roam keeps the roam unit's movement live (as in Python).
+    if (g.movementSystem?.isMoving?.() && this.top() !== 'free_roam') return true;
     return false;
   }
 
@@ -250,6 +251,7 @@ class Runner {
     e.cursor(a.to);
     e.press('SELECT');
     await e.settle();
+    if (e.top() === 'move') throw new OracleError(`${a.unit} cannot move to ${JSON.stringify(a.to)}`);
   }
 
   async do_wait(a: Action): Promise<void> {
@@ -465,6 +467,18 @@ function itemSnap(it: any): Json {
   };
 }
 
+/** The three LCG streams; the web keeps them in game vars (seed-tagged). */
+function rngSnap(g: any): Json {
+  const seed = Math.trunc(Number(g.gameVars.get('_random_seed') ?? 0)) || 0;
+  const otherSeed = Number(g.gameVars.get('_other_random_seed'));
+  const otherState = Number(g.gameVars.get('_other_random_state'));
+  return {
+    combat: getCombatRandomState(g),
+    growth: getGrowthRandomState(g) ?? seed + 1,
+    other: otherSeed === seed && Number.isInteger(otherState) ? otherState : seed + 2,
+  };
+}
+
 export function snapshot(e: WebEngine): Json {
   const g = e.game;
   const units: Record<string, Json> = {};
@@ -526,7 +540,7 @@ export function snapshot(e: WebEngine): Json {
     regions,
     events: (em?.eventQueue ?? []).map((ev: any) => ev.nid),
     already_triggered: [...(em?.getOnceTriggered?.() ?? [])].sort(),
-    rng: { combat: getCombatRandomState(g), growth: getGrowthRandomState(g) ?? Number(g.gameVars.get('_random_seed') ?? 0) + 1 },
+    rng: rngSnap(g),
   };
 }
 
@@ -545,6 +559,16 @@ export async function runScenario(scn: Scenario): Promise<Json> {
   try {
     for (const [k, v] of Object.entries({ ...DEFAULT_SETTINGS, ...(scn.settings ?? {}) })) setSetting(k, v);
     const g = e.game;
+    // main.ts queues on_startup at boot, but the harness's clean level load
+    // drains it before it runs. Run it here, before the level, as Python's
+    // title screen does (EOtF creates its persistent records there).
+    if (scn.startup_events !== false) {
+      const ctx = { game: g, gameVars: g.gameVars, levelVars: g.levelVars };
+      if (g.eventManager.trigger({ type: 'on_startup' }, ctx)) {
+        g.state.change('event');
+        await e.settle({ until: (en) => !en.game.eventManager.hasActiveEvents() && en.top() !== 'event' });
+      }
+    }
     // Python build_new: fresh game vars holding only the seed.
     g.gameVars.clear();
     g.gameVars.set('_random_seed', scn.seed ?? 0);

@@ -3,9 +3,13 @@
  * Differential oracle: run scenarios through the Python engine and the web
  * engine and print field-level differences.
  *
- *   npm run oracle -- [scenario.json | name | dir ...] [--full] [--all] [--web-only|--py-only] [-v]
+ *   npm run oracle -- [scenario.json | name | dir ...] [--full] [--all]
+ *                     [--backend=upstream|fork] [--web-only|--py-only] [-v]
  *
  * With no scenario arguments every tools/oracle/scenarios/*.json runs.
+ * The Python side runs upstream lt-maker, or a project's engine fork for
+ * fork projects (EOtF): see py_driver.py and README.md. Fork paths come from
+ * LT_FORK_ENGINE / LT_FORK_PYTHON or $LT_ORACLE_HOME/config.json.
  * Raw run outputs go to $LT_ORACLE_OUT (default E:/BigData/lt-oracle/out).
  * Exit code: 0 all match, 1 differences, 2 harness failure.
  */
@@ -22,6 +26,22 @@ const SCENARIOS = path.join(HERE, 'scenarios');
 const HOME = process.env.LT_ORACLE_HOME ?? 'E:/BigData/lt-oracle';
 const OUT = process.env.LT_ORACLE_OUT ?? path.join(HOME, 'out');
 const PYTHON = process.env.LT_ORACLE_PYTHON ?? path.join(HOME, 'venv', 'Scripts', 'python.exe');
+// Keep in sync with FORK_PROJECTS in py_driver.py.
+const FORK_PROJECTS = new Set(['eotf.ltproj']);
+
+function oracleConfig() {
+  const file = path.join(HOME, 'config.json');
+  const cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  if (process.env.LT_FORK_ENGINE) cfg.fork_engine = process.env.LT_FORK_ENGINE;
+  if (process.env.LT_FORK_PYTHON) cfg.fork_python = process.env.LT_FORK_PYTHON;
+  return cfg;
+}
+
+function pickBackend(scenario, override) {
+  if (override) return override;
+  if (scenario.engine) return scenario.engine;
+  return FORK_PROJECTS.has(scenario.project ?? 'default.ltproj') ? 'fork' : 'upstream';
+}
 
 function resolveScenarios(args) {
   if (!args.length) args = [SCENARIOS];
@@ -39,17 +59,23 @@ function resolveScenarios(args) {
   return files;
 }
 
-function runPython(file, outFile, verbose) {
-  return new Promise((resolve) => {
-    const child = spawn(PYTHON, [path.join(HERE, 'py_driver.py'), file, '-o', outFile], {
-      stdio: ['ignore', 'ignore', 'pipe'],
+function runPython(file, outFile, backend, verbose) {
+  const python = backend === 'fork' ? oracleConfig().fork_python : PYTHON;
+  if (!python) {
+    return Promise.resolve({
+      engine: 'python', backend, steps: [],
+      error: 'fork backend needs LT_FORK_PYTHON (or fork_python in $LT_ORACLE_HOME/config.json)',
     });
+  }
+  return new Promise((resolve) => {
+    const args = ['-I', path.join(HERE, 'py_driver.py'), file, '-o', outFile, '--backend', backend];
+    const child = spawn(python, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
     child.stderr.on('data', (d) => {
       err += d;
       if (verbose) process.stderr.write(d);
     });
-    child.on('error', (e) => resolve({ engine: 'python', steps: [], error: `spawn ${PYTHON}: ${e.message}` }));
+    child.on('error', (e) => resolve({ engine: 'python', backend, steps: [], error: `spawn ${python}: ${e.message}` }));
     child.on('close', () => {
       try {
         resolve(JSON.parse(fs.readFileSync(outFile, 'utf8')));
@@ -63,6 +89,7 @@ function runPython(file, outFile, verbose) {
 async function main() {
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter((a) => a.startsWith('-')));
+  const backendFlag = argv.find((a) => a.startsWith('--backend='))?.split('=')[1];
   const files = resolveScenarios(argv.filter((a) => !a.startsWith('-')));
   const verbose = flags.has('-v');
   const stop = flags.has('--py-only') ? async () => {} : await ensureServer();
@@ -72,13 +99,14 @@ async function main() {
   try {
     for (const file of files) {
       const scenario = JSON.parse(fs.readFileSync(file, 'utf8'));
-      const name = scenario.name ?? path.basename(file, '.json');
+      const backend = pickBackend(scenario, backendFlag);
+      const name = (scenario.name ?? path.basename(file, '.json')) + (backendFlag ? `@${backend}` : '');
       const dir = path.join(OUT, name);
       fs.mkdirSync(dir, { recursive: true });
       for (const f of ['py.json', 'web.json']) fs.rmSync(path.join(dir, f), { force: true });
       const pyP = flags.has('--web-only')
         ? Promise.resolve({ engine: 'python', steps: [], error: 'skipped' })
-        : runPython(path.resolve(file), path.join(dir, 'py.json'), verbose);
+        : runPython(path.resolve(file), path.join(dir, 'py.json'), backend, verbose);
       const webP = flags.has('--py-only')
         ? Promise.resolve({ engine: 'web', steps: [], error: 'skipped' })
         : runWebScenario(scenario, { browser, verbose }).catch((e) => ({ engine: 'web', steps: [], error: String(e?.stack ?? e) }));
@@ -86,7 +114,7 @@ async function main() {
       fs.writeFileSync(path.join(dir, 'web.json'), JSON.stringify(web, null, 1));
       if (!fs.existsSync(path.join(dir, 'py.json'))) fs.writeFileSync(path.join(dir, 'py.json'), JSON.stringify(py, null, 1));
       const report = diffRuns(py, web, scenario);
-      console.log(formatReport(name, report, { all: flags.has('--all'), full: flags.has('--full') }));
+      console.log(formatReport(`${name} [python:${backend} vs web]`, report, { all: flags.has('--all'), full: flags.has('--full') }));
       const harnessFail = report.errors.length > 0;
       worst = Math.max(worst, report.ok ? 0 : harnessFail ? 2 : 1);
       summary.push(`${report.ok ? 'MATCH' : harnessFail ? 'ERROR' : 'DIFF '}  ${name}`);

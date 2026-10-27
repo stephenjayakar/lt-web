@@ -1,16 +1,22 @@
-"""Differential-testing oracle: drive the real Python Lex Talionis engine headless.
+"""Differential-testing oracle: drive a real Python Lex Talionis engine headless.
 
-The engine is imported straight from ``lt-maker/`` (never copied). A scenario
-JSON (see README.md) is replayed through the engine's own states, menus and
-actions, and a canonical snapshot is dumped after every step.
+Two backends, both imported in place (never copied into this repo):
 
-    E:/BigData/lt-oracle/venv/Scripts/python tools/oracle/py_driver.py \
-        tools/oracle/scenarios/default-combat-exp.json [-o out.json]
+* ``upstream`` (default): rainlash/lt-maker from ``lt-maker/`` under the oracle
+  venv (pygame-ce 2.3.2, Python 3.12).
+* ``fork``: a project's own engine fork (EOtF ships one), from the directory in
+  ``LT_FORK_ENGINE``, run under the fork's interpreter (``LT_FORK_PYTHON``).
+
+A scenario JSON (see README.md) is replayed through the engine's own states,
+menus and actions, and a canonical snapshot is dumped after every step.
+
+    <python> tools/oracle/py_driver.py SCENARIO.json [--backend fork] [-o out.json]
 """
 from __future__ import annotations
 
 import argparse
 import builtins
+import inspect
 import json
 import os
 import shutil
@@ -22,7 +28,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 LT_MAKER = Path(os.environ.get('LT_MAKER', REPO / 'lt-maker')).resolve()
 ORACLE_HOME = Path(os.environ.get('LT_ORACLE_HOME', 'E:/BigData/lt-oracle'))
-RUN_DIR = ORACLE_HOME / 'run'
 GEN_DIR = ORACLE_HOME / 'gen'
 
 # Read-only lt-maker entries the engine opens through cwd-relative paths.
@@ -36,7 +41,7 @@ BUTTONS = ('UP', 'DOWN', 'LEFT', 'RIGHT', 'SELECT', 'BACK', 'INFO', 'AUX', 'STAR
 REST_STATES = {
     'free', 'menu', 'move', 'canto_wait', 'weapon_choice', 'spell_choice',
     'combat_targeting', 'targeting', 'item', 'item_child', 'item_targeting',
-    'trade', 'option_menu', 'option_child',
+    'trade', 'option_menu', 'option_child', 'free_roam',
 }
 
 
@@ -44,24 +49,73 @@ class OracleError(Exception):
     pass
 
 
+def oracle_config() -> dict:
+    """Machine-local settings (fork paths) kept outside the repo in
+    $LT_ORACLE_HOME/config.json; environment variables win."""
+    cfg = {}
+    path = ORACLE_HOME / 'config.json'
+    if path.exists():
+        cfg = json.loads(path.read_text(encoding='utf-8'))
+    for key, env in (('fork_engine', 'LT_FORK_ENGINE'), ('fork_python', 'LT_FORK_PYTHON')):
+        if os.environ.get(env):
+            cfg[key] = os.environ[env]
+    return cfg
+
+
 # --------------------------------------------------------------------------
 # Bootstrap
 # --------------------------------------------------------------------------
 
-def _prepare_run_dir() -> None:
+def _junction(link: Path, target: Path) -> None:
+    if not os.path.lexists(link):
+        subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(target)],
+                       check=True, capture_output=True)
+
+
+def _acquire_run_dir(base: str) -> Path:
+    """One run dir per concurrent driver process (slot + lock file), so
+    parallel runs never share saves/. A lock left by a crash is reclaimed
+    after an hour."""
+    import atexit
+    import time
+    for n in range(16):
+        run_dir = ORACLE_HOME / ('%s-%d' % (base, n))
+        run_dir.mkdir(parents=True, exist_ok=True)
+        lock = run_dir / '.lock'
+        if lock.exists() and time.time() - lock.stat().st_mtime > 3600:
+            lock.unlink()
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            continue
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        atexit.register(lambda: lock.exists() and lock.unlink())
+        return run_dir
+    raise OracleError('no free oracle run dir under %s' % ORACLE_HOME)
+
+
+def _prepare_run_dir(run_dir: Path, engine_dir: Path, linked=None, copied=None) -> None:
     """The engine reads sprites/, resources/ ... and writes saves/ relative to
     cwd. Run it from a scratch dir on E: whose read-only entries are junctions
-    into lt-maker, so nothing is ever written into the shared lt-maker tree."""
-    (RUN_DIR / 'saves').mkdir(parents=True, exist_ok=True)
-    for name in _LINKED:
-        link = RUN_DIR / name
-        if not link.exists():
-            subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(LT_MAKER / name)],
-                           check=True, capture_output=True)
-    for name in _COPIED:
-        dst = RUN_DIR / name
-        if not dst.exists() and (LT_MAKER / name).exists():
-            shutil.copyfile(LT_MAKER / name, dst)
+    into the engine tree, so nothing is ever written there. saves/ starts
+    empty every run: persistent records (RECORDS) and configs live there and
+    would otherwise leak from one scenario into the next."""
+    saves = run_dir / 'saves'
+    saves.mkdir(parents=True, exist_ok=True)
+    for f in saves.iterdir():
+        if f.is_file():
+            f.unlink()
+    if linked is None:  # everything except saves and bundled projects
+        linked = [n for n in os.listdir(engine_dir)
+                  if (engine_dir / n).is_dir() and n != 'saves' and not n.endswith('.ltproj')]
+        copied = [n for n in os.listdir(engine_dir) if (engine_dir / n).is_file()]
+    for name in linked:
+        _junction(run_dir / name, engine_dir / name)
+    for name in copied or []:
+        dst = run_dir / name
+        if not dst.exists() and (engine_dir / name).exists():
+            shutil.copyfile(engine_dir / name, dst)
 
 
 def _codegen_overlay() -> None:
@@ -98,15 +152,39 @@ def _codegen_overlay() -> None:
         builtins.open = real_open
 
 
-def bootstrap() -> None:
+def bootstrap(backend: str) -> None:
     os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
     os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
     os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
-    sys.pycache_prefix = str(ORACLE_HOME / 'pycache')
-    _prepare_run_dir()
-    os.chdir(RUN_DIR)
-    sys.path.insert(0, str(LT_MAKER))
-    _codegen_overlay()
+    sys.pycache_prefix = str(ORACLE_HOME / ('pycache-' + backend))
+    if backend == 'upstream':
+        run_dir = _acquire_run_dir('run-upstream')
+        _prepare_run_dir(run_dir, LT_MAKER, _LINKED, _COPIED)
+        os.chdir(run_dir)
+        sys.path.insert(0, str(LT_MAKER))
+        _codegen_overlay()
+    elif backend == 'fork':
+        engine_dir = oracle_config().get('fork_engine')
+        if not engine_dir:
+            raise OracleError('fork backend needs LT_FORK_ENGINE (or fork_engine in '
+                              '$LT_ORACLE_HOME/config.json) pointing at the fork engine dir')
+        # The fork ships its generated item/skill systems; never regenerate.
+        run_dir = _acquire_run_dir('run-fork')
+        _prepare_run_dir(run_dir, Path(engine_dir).resolve())
+        os.chdir(run_dir)
+        sys.path.insert(0, str(run_dir))
+    else:
+        raise OracleError('unknown backend %s' % backend)
+
+
+def _call_load(fn, path: str) -> None:
+    """Upstream load()s take a serialization version; the fork's predate it."""
+    params = list(inspect.signature(fn).parameters)
+    if len(params) >= 2 and params[1] != 'specific':
+        from app.data.serialization.versions import CURRENT_SERIALIZATION_VERSION
+        fn(path, CURRENT_SERIALIZATION_VERSION)
+    else:
+        fn(path)
 
 
 # --------------------------------------------------------------------------
@@ -141,15 +219,16 @@ def _pos(p):
 # --------------------------------------------------------------------------
 
 class Engine:
-    def __init__(self, project: str):
+    def __init__(self, project: str, backend: str = 'upstream'):
         self.project = project
+        self.backend = backend
         self.frame = 0
         self.game = None
         self.log = []
 
     # -- boot --------------------------------------------------------------
     def boot(self, settings: dict | None = None) -> None:
-        bootstrap()
+        bootstrap(self.backend)
         import logging
         logging.basicConfig(level=logging.ERROR, stream=sys.stderr)
         from app.engine import engine
@@ -157,15 +236,20 @@ class Engine:
         self._patch_clock(engine)
         from app.data.resources.resources import RESOURCES
         from app.data.database.database import DB
-        from app.data.serialization.versions import CURRENT_SERIALIZATION_VERSION
         from app.engine import config as cf
         self.DB = DB
         self.cf = cf
-        proj = str(LT_MAKER / self.project)
+        # Both backends load the same project data the web port serves
+        # (lt-maker/<project>) unless LT_ORACLE_PROJECT_DIR overrides it.
+        proj = os.environ.get('LT_ORACLE_PROJECT_DIR') or str(LT_MAKER / self.project)
         if not os.path.exists(os.path.join(proj, 'metadata.json')):
             raise OracleError('project not found: %s' % proj)
-        RESOURCES.load(proj, CURRENT_SERIALIZATION_VERSION)
-        DB.load(proj, CURRENT_SERIALIZATION_VERSION)
+        self.shims = []
+        if self.backend == 'upstream':
+            proj = self._shim_resources(proj)
+        self.project_dir = proj
+        _call_load(RESOURCES.load, proj)
+        _call_load(DB.load, proj)
         # debug=0 like a shipped build: event conditions read
         # cf.SETTINGS['debug'] (default.ltproj's "Global Debug Setup") and the
         # web has no debug mode. Engine exceptions still propagate because
@@ -184,6 +268,48 @@ class Engine:
         from app.engine.input_manager import get_input_manager
         self.inp = get_input_manager()
 
+    def _shim_resources(self, proj: str) -> str:
+        """Upstream refuses to load a project missing any resource folder or
+        data catalog it knows (fork projects such as EOtF lack
+        resources/fonts, which their engine bundles, and game_data/credit).
+        Build a shim project on E: (junctions, plus copies of the small
+        game_data files) that borrows the missing pieces from default.ltproj,
+        and record what was borrowed."""
+        from app.data.resources.resources import Resources
+        from app.data.database.database import Database
+        src = Path(proj)
+        default = LT_MAKER / 'default.ltproj'
+
+        def present(d: Path, key: str) -> bool:
+            return (d / key).exists() or (d / (key + '.json')).exists()
+        miss_res = [k for k in Resources.save_data_types if not (src / 'resources' / k).exists()]
+        miss_data = [k for k in Database.save_data_types if not present(src / 'game_data', k)]
+        if not miss_res and not miss_data:
+            return proj
+        shim = ORACLE_HOME / 'shim' / src.name
+        (shim / 'resources').mkdir(parents=True, exist_ok=True)
+        (shim / 'game_data').mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src / 'metadata.json', shim / 'metadata.json')
+        for entry in os.listdir(src / 'resources'):
+            _junction(shim / 'resources' / entry, src / 'resources' / entry)
+        for k in miss_res:
+            _junction(shim / 'resources' / k, default / 'resources' / k)
+
+        def mirror(s: Path, d: Path) -> None:
+            if s.is_dir():
+                _junction(d, s)
+            elif not d.exists() or d.stat().st_size != s.stat().st_size or d.stat().st_mtime < s.stat().st_mtime:
+                shutil.copy2(s, d)
+        for entry in os.listdir(src / 'game_data'):
+            mirror(src / 'game_data' / entry, shim / 'game_data' / entry)
+        for k in miss_data:
+            for name in (k, k + '.json', k + '.category.json'):
+                if (default / 'game_data' / name).exists():
+                    mirror(default / 'game_data' / name, shim / 'game_data' / name)
+        self.shims = (['resources/%s from default.ltproj' % k for k in miss_res] +
+                      ['game_data/%s from default.ltproj' % k for k in miss_data])
+        return str(shim)
+
     def _patch_clock(self, engine) -> None:
         """Replace wall-clock ticks with a frame counter: every frame is
         exactly 1000/60 ms, so timed states are deterministic."""
@@ -198,6 +324,16 @@ class Engine:
         engine.get_true_time = lambda: engine.constants['current_time']
 
     # -- level -------------------------------------------------------------
+    def run_startup(self) -> None:
+        """Boot to the title like the real game, which fires on_startup there
+        (EOtF creates its persistent records in that event), and wait until
+        the title screen idles. New Game then rebuilds the game state."""
+        from app.engine import game_state
+        from app.utilities import static_random
+        self.static_random = static_random
+        self.game = game_state.start_game()
+        self.settle(until=lambda en: en.top() == 'title_start', max_frames=6000)
+
     def start_level(self, level_nid: str, seed: int, events: bool,
                     rng_mode: str | None = None, growths: str | None = None) -> None:
         from app.engine import game_state
@@ -275,14 +411,14 @@ class Engine:
         return [s.name for s in self.game.state.state]
 
     def busy(self) -> bool:
-        """True while the state machine has queued changes, units are moving,
-        events are pending, or the camera is still travelling."""
+        """True while the state machine has queued changes or units are
+        moving. Queued events are not checked: a running event is always the
+        top state, and the fork leaves dormant entries in event_stack."""
         g = self.game
         if g.state.temp_state:
             return True
-        if len(g.movement) > 0:
-            return True
-        if g.events.event_stack:
+        # Free roam keeps a standing movement component for the roam unit.
+        if g.movement is not None and len(g.movement) > 0 and self.top() != 'free_roam':
             return True
         return False
 
@@ -314,7 +450,9 @@ class Engine:
                 self.press('SELECT')
             else:
                 self.step(None)
-        raise OracleError('settle timed out; stack=%s' % self.stack())
+        g = self.game
+        raise OracleError('settle timed out; stack=%s temp_state=%s moving=%s' % (
+            self.stack(), g.state.temp_state, len(g.movement) if g.movement is not None else 0))
 
     # -- UI primitives -----------------------------------------------------
     def cursor(self, pos) -> None:
@@ -325,7 +463,8 @@ class Engine:
         if self.top() == 'move' and cur.cur_unit:
             # Python updates the movement arrow path while the cursor walks;
             # a teleport has to rebuild it as a mouse click would.
-            if g.highlight.check_in_all_move(pos):
+            in_move = getattr(g.highlight, 'check_in_all_move', None) or g.highlight.check_in_move  # fork: older API
+            if in_move(pos):
                 cur._last_valid_position = pos
             cur.path = []
             cur.path = cur._get_path()
@@ -472,6 +611,8 @@ class Runner:
         e.cursor(a['to'])
         e.press('SELECT')
         e.settle()
+        if e.top() == 'move':
+            raise OracleError('%s cannot move to %s' % (a['unit'], a['to']))
 
     def do_wait(self, a) -> None:
         e = self.e
@@ -703,7 +844,8 @@ def snapshot(e: Engine) -> dict:
         'regions': regions,
         'events': events,
         'already_triggered': sorted(g.already_triggered_events),
-        'rng': {'combat': sr.combat_random.state, 'growth': sr.growth_random.state},
+        'rng': {'combat': sr.combat_random.state, 'growth': sr.growth_random.state,
+                'other': sr.other_random.state},
     }
 
 
@@ -711,13 +853,31 @@ def snapshot(e: Engine) -> dict:
 # CLI
 # --------------------------------------------------------------------------
 
-def run_scenario(scn: dict) -> dict:
-    out = {'engine': 'python', 'scenario': scn.get('name'), 'steps': [], 'error': None}
+# Projects whose players run a forked engine rather than upstream lt-maker.
+FORK_PROJECTS = {'eotf.ltproj'}
+
+
+def pick_backend(scn: dict, override: str | None = None) -> str:
+    """CLI override, else the scenario's "engine", else fork for fork projects."""
+    if override:
+        return override
+    if scn.get('engine'):
+        return scn['engine']
+    return 'fork' if scn.get('project', 'default.ltproj') in FORK_PROJECTS else 'upstream'
+
+
+def run_scenario(scn: dict, backend: str = 'upstream') -> dict:
+    out = {'engine': 'python', 'backend': backend, 'scenario': scn.get('name'),
+           'steps': [], 'error': None}
     real_stdout = sys.stdout
     sys.stdout = sys.stderr  # the engine prints chatter; keep stdout for JSON
     try:
-        e = Engine(scn.get('project', 'default.ltproj'))
+        e = Engine(scn.get('project', 'default.ltproj'), backend)
         e.boot(scn.get('settings'))
+        if e.shims:
+            out['shims'] = e.shims
+        if scn.get('startup_events', True):
+            e.run_startup()
         e.start_level(str(scn['level']), scn.get('seed', 0), scn.get('events', True),
                       scn.get('rng_mode', 'True Hit'), scn.get('growths', 'Fixed'))
         e.settle(skip=scn.get('skip', 'SELECT'), max_frames=scn.get('start_frames', 20000))
@@ -746,9 +906,10 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('scenario')
     ap.add_argument('-o', '--out')
+    ap.add_argument('--backend', choices=['upstream', 'fork'])
     args = ap.parse_args(argv)
     scn = json.loads(Path(args.scenario).read_text(encoding='utf-8'))
-    result = run_scenario(scn)
+    result = run_scenario(scn, pick_backend(scn, args.backend))
     text = json.dumps(result, indent=1, sort_keys=True)
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
