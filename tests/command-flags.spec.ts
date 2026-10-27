@@ -678,6 +678,14 @@ test.describe('Event layer actions', () => {
     await page.goto('/?harness=true&level=3&clean=true&bundle=false');
     await waitForHarness(page);
     await stepFrames(page, 5);
+    // Python TileMapObject.from_prefab: only the base layer starts visible.
+    const atLoad = await page.evaluate(() => {
+      const game = (window as any).__gameRef;
+      return game.tilemap.layers.filter((layer: any) => layer.visible).map((layer: any) => layer.nid);
+    });
+    expect(atLoad).toEqual(['base']);
+    // Open the chest first, so hide_layer below has a shown layer to hide.
+    await installAndRunEvent(page, 'test_layer_setup', ['show_layer;Chest1;immediate'], 3);
     const before = await page.evaluate(() => {
       const game = (window as any).__gameRef;
       const door = game.tilemap.layers.find((layer: any) => layer.nid === 'Door1');
