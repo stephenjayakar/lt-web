@@ -27,6 +27,7 @@
     "audit:eotf:write": "node scripts/eotf-audit.mjs --write",
     "audit:states": "node scripts/state-parity.mjs --check",
     "audit:states:write": "node scripts/state-parity.mjs --write",
+    "oracle": "node tools/oracle/run.mjs",
     "bundle": "node scripts/bundle-assets.mjs",
     "stage:engine-assets": "node scripts/stage-engine-assets.mjs",
     "generate-icons": "node scripts/generate-icons.mjs",
