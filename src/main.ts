@@ -95,6 +95,7 @@ import {
   PromotionState,
   setPromotionGameRef,
 } from './engine/states/promotion-state';
+import { ExpState, setExpStateGameRef } from './engine/states/exp-state';
 import {
   PrepMainState,
   PrepPickUnitsState,
@@ -711,6 +712,7 @@ async function main(): Promise<void> {
   setInfoMenuGameRef(gameState);
   setDexMenuGameRef(gameState);
   setPromotionGameRef(gameState);
+  setExpStateGameRef(gameState);
   setHelpMenuGameRef(gameState);
   setMenuAudioManager(audioManager);
   setBannerAudio(audioManager);
@@ -769,6 +771,7 @@ async function main(): Promise<void> {
     new ClassChangeChoiceState(),
     new PromotionState(),
     new ClassChangeState(),
+    new ExpState(),
     new TradeState(),
     new WeaponChoiceState(),
     new UnlockSelectState(),

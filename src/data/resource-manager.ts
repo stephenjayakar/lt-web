@@ -78,6 +78,11 @@ export class ResourceManager {
     return promise;
   }
 
+  /** An image loadImage has already finished loading, else null (no request). */
+  getLoadedImage(path: string): HTMLImageElement | null {
+    return this.images.get(this.resolveUrl(path)) ?? null;
+  }
+
   /**
    * Try to load an image, returning null on failure instead of throwing.
    */

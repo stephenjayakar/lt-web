@@ -2656,15 +2656,19 @@ export class ApplyStatChangesAction extends Action {
   private afterStats: Record<string, number> | null = null;
   private afterHp: number = 0;
   private applied: Record<string, number> = {};
+  /** Python increase_current_stats: a higher max HP raises current HP too. */
+  private increaseCurrentStats: boolean;
 
   constructor(
     unit: UnitObject,
     requested: Record<string, number>,
     capUnit: UnitObject = unit,
+    increaseCurrentStats: boolean = true,
   ) {
     super();
     this.unit = unit;
     this.capUnit = capUnit;
+    this.increaseCurrentStats = increaseCurrentStats;
     this.requested = { ...requested };
     this.beforeStats = { ...unit.stats };
     this.beforeHp = unit.currentHp;
@@ -2687,7 +2691,7 @@ export class ApplyStatChangesAction extends Action {
       this.unit.stats[stat] = current + amount;
       this.applied[stat] = amount;
     }
-    const maxHpIncrease = Math.max(0, this.unit.maxHp - oldMaxHp);
+    const maxHpIncrease = this.increaseCurrentStats ? Math.max(0, this.unit.maxHp - oldMaxHp) : 0;
     this.unit.currentHp = Math.max(0, Math.min(this.unit.maxHp, this.unit.currentHp + maxHpIncrease));
     this.afterStats = { ...this.unit.stats };
     this.afterHp = this.unit.currentHp;
@@ -4195,6 +4199,28 @@ export class SetUnitLevelAction extends Action {
 
   reverse(): void {
     this.unit.level = this.oldLevel;
+  }
+}
+
+/** Python GrowthPointChange: replace a unit's growth points (level-up rolls). */
+export class GrowthPointChangeAction extends Action {
+  private unit: UnitObject;
+  private oldGrowthPoints: Record<string, number>;
+  private newGrowthPoints: Record<string, number>;
+
+  constructor(unit: UnitObject, oldGrowthPoints: Record<string, number>, newGrowthPoints: Record<string, number>) {
+    super();
+    this.unit = unit;
+    this.oldGrowthPoints = { ...oldGrowthPoints };
+    this.newGrowthPoints = { ...newGrowthPoints };
+  }
+
+  execute(): void {
+    this.unit.growthPoints = { ...this.newGrowthPoints };
+  }
+
+  reverse(): void {
+    this.unit.growthPoints = { ...this.oldGrowthPoints };
   }
 }
 

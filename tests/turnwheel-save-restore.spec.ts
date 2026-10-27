@@ -31,7 +31,7 @@ const stackNames = (page: Page) =>
 async function settleToFree(page: Page, pressSelect = true): Promise<void> {
   await stepFrames(page, 3);
   // The level-up screen runs on wall-clock time, so let real time pass too.
-  for (let i = 0; i < 200 && (await stackNames(page)).at(-1) !== 'free'; i++) {
+  for (let i = 0; i < 400 && (await stackNames(page)).at(-1) !== 'free'; i++) {
     if (pressSelect && i % 2 === 0) await press(page, 'SELECT');
     await stepFrames(page, 10);
     await page.waitForTimeout(40);
@@ -432,7 +432,7 @@ test.describe('turnwheel history across save/load: action coverage', () => {
       };
     }, saved);
     expect(result).toMatchObject({ ok: true, dropped: 0, same: true });
-    for (const type of ['AddSkillAction', 'RemoveSkillAction', 'GainExpAction', 'ChangeTeamAction',
+    for (const type of ['AddSkillAction', 'RemoveSkillAction', 'SetUnitExpAction', 'ChangeTeamAction',
       'AddRegionAction', 'RemoveRegionAction', 'DeathAction', 'ResurrectAction', 'ClassChangeAction',
       'PutItemInConvoy', 'RemoveItemFromUnitAction', 'SetItemUsesAction']) {
       expect(result.types).toContain(type);

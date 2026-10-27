@@ -959,7 +959,12 @@ test.describe('Event command flag matching: progression', () => {
       'game_var;give_exp_blocking;done',
     ], 2);
     expect(await getGameVar(page, 'give_exp_blocking')).toBeUndefined();
-    await stepFrames(page, 55);
+    // ExpState (bar wait, fill, close) runs on the frame clock (wall time here).
+    expect(await page.evaluate(() => (window as any).__gameRef.state.getStackNames().includes('exp'))).toBe(true);
+    for (let i = 0; i < 100 && (await getGameVar(page, 'give_exp_blocking')) === undefined; i++) {
+      await stepFrames(page, 10);
+      await page.waitForTimeout(40);
+    }
     expect(await getGameVar(page, 'give_exp_blocking')).toBe('done');
 
     await page.goto('/?harness=true&level=DEBUG&bundle=false');

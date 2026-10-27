@@ -201,6 +201,7 @@ import { DifficultyModeObject, rngOptionDisplay } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
+import { requestExp } from './exp-state';
 import { SelectionHelper } from '../selection-helper';
 import { drawCarryPreview, drawTradePreview } from '../../ui/hud';
 import { currentWindowSkin, getSprite, preloadSprites, skinnedSpriteNameFor, startupSkinnedSpriteName } from '../../ui/sprites';
@@ -1020,7 +1021,16 @@ export function createPixelAnimation(nid: string, x: number, y: number, hold = f
   const prefab = game.db.mapAnimations?.get(nid);
   if (!prefab) return null;
   const anim = new MapAnimation(prefab, 0, 0, { hold });
-  void game.resources.loadImage(`resources/animations/${nid}.png`).then((img: HTMLImageElement) => {
+  const path = `resources/animations/${nid}.png`;
+  // Python has every resource loaded already: a loaded sheet starts now.
+  const loaded = game.resources.getLoadedImage?.(path);
+  if (loaded) {
+    anim.setImage(loaded);
+    anim.x = x;
+    anim.y = y;
+    return anim;
+  }
+  void game.resources.loadImage(path).then((img: HTMLImageElement) => {
     anim.setImage(img);
     anim.x = x;
     anim.y = y;
@@ -16266,19 +16276,19 @@ export class EventState extends State {
           this.advancePointer();
           return queueMarker >= 0 && this.runEventsQueuedSince(queueMarker, game);
         }
-        if (unit) {
-          const exp = Math.max(-100, Math.min(100, parseInt(args[1], 10) || 0));
-          game.actionLog.doAction(
-            new GainExpAction(unit, exp, game.currentMode?.growths ?? 'random'),
-          );
-        }
-        if (!silent && !this.skipMode) {
-          this.waiting = true;
-          this.waitTimer = 750;
-          return true;
-        }
         this.advancePointer();
-        return false;
+        if (!unit) {
+          console.warn(`give_exp: Couldn't find unit with nid ${unitNid}`);
+          return false;
+        }
+        // Python: the exp goes through ExpState (bar, level screen, promotion)
+        // and the event pauses until it is done.
+        requestExp(game, {
+          unit,
+          exp: Math.max(-100, Math.min(100, parseInt(args[1], 10) || 0)),
+          startingState: 'init',
+        });
+        return true;
       }
 
       case 'give_wexp': {

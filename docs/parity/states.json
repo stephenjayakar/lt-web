@@ -2,10 +2,10 @@
   "generatedBy": "scripts/state-parity.mjs",
   "summary": {
     "python": 113,
-    "exact": 72,
-    "merged": 41,
+    "exact": 73,
+    "merged": 40,
     "open": 0,
-    "web": 88
+    "web": 89
   },
   "rows": [
     {
@@ -252,9 +252,9 @@
       "name": "exp",
       "className": "ExpState",
       "source": "lt-maker/app/engine/level_up.py",
-      "status": "merged",
-      "webState": "combat",
-      "webSource": "src/engine/states/game-states.ts"
+      "status": "exact",
+      "webState": "exp",
+      "webSource": "src/engine/states/exp-state.ts"
     },
     {
       "name": "feat_choice",

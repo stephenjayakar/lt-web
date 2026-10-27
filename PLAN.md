@@ -200,7 +200,10 @@ The release gate is green: build, all four audits, the full serial suite,
   and translucency, item panel, unit sprite poses and base Records follow the
   fork oracle's screens.
 - [ ] Option menu 'Unit' (unit_menu chart) is not ported.
-- [ ] Event `give_exp` (non-silent) skips Python's EXP bar and level screen.
+- [x] Event `give_exp` (non-silent) runs level_up.py's ExpState
+  (`src/engine/states/exp-state.ts`): bar fill and sound, LevelUpMap logo,
+  level screen, level-down, auto-promotion, new skills, triggers
+  (`tests/event-give-exp.spec.ts`; oracle shots match frame for frame).
 - [ ] Enemy phase and map combat run on different frame timings than the
   fork (oracle screenshots at equal frames diverge).
 - [x] Promotion items and non-silent event `promote`/`change_class` play
