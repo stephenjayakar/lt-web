@@ -173,6 +173,11 @@ git diff --check
 
 ### Programmatic EOtF control
 
+For automated EOtF playtests, use the QA tools first (`npm run qa:run`,
+docs/qa-tools.md): they jump to any Act/floor/boss in seconds and auto-play
+under turbo frames. The keyboard-driven control mode below is for checking
+real input paths by hand.
+
 For a real playthrough, build once, run one static server, and keep one browser
 tab:
 
