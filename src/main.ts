@@ -30,7 +30,7 @@ import {
 import { setActionGameRef } from './engine/action';
 import { setUnitGameRef } from './objects/unit';
 import { initIcons } from './ui/icons';
-import { initSprites } from './ui/sprites';
+import { freezeStartupWindowSkin, initSprites } from './ui/sprites';
 import { isForkEngine, metadataUsesForkEngine, setForkEngine } from './engine/engine-flavor';
 import { setBannerAudio } from './ui/banner';
 import { initBaseSurf } from './ui/base-surf';
@@ -716,6 +716,7 @@ async function main(): Promise<void> {
   setBaseGameRef(gameState);
   setSettingsGameRef(gameState);
   applyStoredSettings(gameState);
+  freezeStartupWindowSkin();
   setTextEntryGameRef(gameState);
   setMinimapGameRef(gameState);
   setVictoryGameRef(gameState);

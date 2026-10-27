@@ -519,4 +519,38 @@ test.describe('EOtF fork prep, shop, title and settings', () => {
     expect(result.length).toBeGreaterThan(0);
     expect(result.every((call) => call.endsWith(':white'))).toBe(true);
   });
+
+  test('windows the engine skins at startup or New Game keep that skin', async ({ page }) => {
+    await bootEotf(page);
+    const result = await page.evaluate(async () => {
+      const game = (window as any).__gameRef;
+      const harness = (window as any).__harness;
+      const sprites = await import('/src/ui/sprites.ts');
+      const { setSetting } = await import('/src/engine/states/settings-state.ts');
+      const { EventState } = await import('/src/engine/states/game-states.ts');
+      setSetting('window_display', 2);
+      sprites.freezeStartupWindowSkin();
+      game.speakStyleSkin = 2;
+      setSetting('window_display', 3);
+      const narration = () => (new EventState() as any).resolveSpeakStyle(game, 'narration', null, {}).background;
+      const out: Record<string, unknown> = {
+        startup: sprites.startupSkinnedSpriteName('menu_bg_base'),
+        live: sprites.skinnedSpriteName('menu_bg_base'),
+        narration: narration(),
+      };
+      // The New-Game skin is saved with the game.
+      const snapshot = await harness.saveSnapshot();
+      game.speakStyleSkin = 4;
+      out.changed = narration();
+      await harness.loadSnapshot(snapshot);
+      out.loaded = narration();
+      setSetting('window_display', 1);
+      sprites.freezeStartupWindowSkin();
+      return out;
+    });
+    expect(result).toEqual({
+      startup: 'menu_bg_base2', live: 'menu_bg_base3', narration: 'menu_bg_base2',
+      changed: 'menu_bg_base4', loaded: 'menu_bg_base2',
+    });
+  });
 });
