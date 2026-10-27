@@ -46,6 +46,7 @@ What to play:
   --floors N           play N floors (default 1); --to-floor N; --one-level
   --no-play            only jump, then report
   --max-turns N        per battle map (default 40); --force-win at the limit
+  --forgive N          forgive N battle losses: Global_Loss runs win_game instead
   --rooms LIST         random (default) or preference: combat,event,shop,respite,elite
   --choices random|first   unknown event choices (default random)
   --services all|none|a,b  sub-room NPCs to visit (default all)
@@ -164,6 +165,7 @@ const playOptions = {
   oneLevel: !!args.oneLevel,
   maxTurns: num(args.maxTurns, 40),
   forceWin: !!args.forceWin,
+  forgive: num(args.forgive, 0),
   maxRealMs: timeoutMs,
   autoplay: !args.noAutoplay,
   policy: {

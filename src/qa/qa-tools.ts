@@ -20,7 +20,7 @@
  */
 
 import type { GameButton } from '../engine/input';
-import { GameEvent } from '../events/event-manager';
+import { EventManager, GameEvent } from '../events/event-manager';
 import { RECORDS } from '../engine/records';
 import { qaSettingOverrides, setSetting } from '../engine/states/settings-state';
 import { FRAMETIME, updateAnimationCounters } from '../engine/constants';
@@ -68,6 +68,8 @@ export interface PlayOptions {
   maxTurns?: number;
   /** At the turn limit, force a win (win_game) instead of stopping. */
   forceWin?: boolean;
+  /** Forgive this many battle losses (Global_Loss runs win_game instead). */
+  forgive?: number;
   /** Real-time budget in ms (default 30 min). */
   maxRealMs?: number;
   policy?: Partial<PolicyOptions>;
@@ -145,6 +147,7 @@ class QaController {
   start(): void {
     installVirtualClock();
     registerQaAiPresets(this.game);
+    this.installForgive();
     this.lastPump = realNow();
     this.fpsWindow = { real: realNow(), frames: 0 };
     this.schedule(0);
@@ -301,6 +304,28 @@ class QaController {
   // -------------------------------------------------------------------------
 
   /** Queue an ad-hoc event script (event-command lines) to run now. */
+  /**
+   * --forgive: EOtF routes every defeat through `trigger_script;Global
+   * Global_Loss` (the only event with lose_game). While the driver has
+   * forgiveness left, that event is replaced by clearing game_over and
+   * win_game, so the run continues past the battle.
+   */
+  private installForgive(): void {
+    const proto = EventManager.prototype as any;
+    if (proto.__qaForgive) return;
+    const original = proto.triggerSpecific;
+    const controller = this;
+    proto.triggerSpecific = function (this: any, nid: string, trigger: unknown, force?: boolean): boolean {
+      if (nid === 'Global Global_Loss' && controller.driver.forgiveLoss()) {
+        controller.log.print('[QA] loss forgiven: win_game instead of Global_Loss');
+        controller.runScript(['game_var;game_over;0', 'win_game'], 'QA_Forgive_Loss');
+        return true;
+      }
+      return original.call(this, nid, trigger, force);
+    };
+    proto.__qaForgive = true;
+  }
+
   runScript(lines: string[], nid?: string): void {
     const game = this.game;
     this.scriptCounter += 1;
@@ -348,6 +373,7 @@ class QaController {
       maxTurns: options.maxTurns ?? 40,
       forceWin: options.forceWin ?? false,
       autoplay: options.autoplay ?? true,
+      forgive: options.forgive ?? 0,
     };
     this.result = null;
     this.reason = null;

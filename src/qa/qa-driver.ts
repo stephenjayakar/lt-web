@@ -124,12 +124,16 @@ export interface DriverOptions {
   maxTurns: number;
   forceWin: boolean;
   autoplay: boolean;
+  /** Losses to forgive: a battle's Global_Loss becomes win_game instead. */
+  forgive: number;
 }
 
 export class QaDriver {
   mode: DriverMode = 'off';
   policy: Policy;
-  options: DriverOptions = { skipEvents: true, maxTurns: 40, forceWin: false, autoplay: true };
+  options: DriverOptions = { skipEvents: true, maxTurns: 40, forceWin: false, autoplay: true, forgive: 0 };
+  /** Losses forgiven so far in this play. */
+  forgiven = 0;
   /** Set by the controller to queue an ad-hoc script. */
   runScript: (lines: string[], nid?: string) => void = () => {};
 
@@ -465,6 +469,7 @@ export class QaDriver {
   /** Start tracking (called when play starts). */
   beginTracking(): void {
     this.floors = [];
+    this.forgiven = 0;
     this.currentFloor = null;
     this.currentLevel = null;
     this.stopReason = null;
@@ -580,6 +585,20 @@ export class QaDriver {
     level.realMs = Math.round(realNow() - this.levelStartReal);
     level.frames = this.frame - this.levelStartFrame;
     this.currentLevel = null;
+  }
+
+  /**
+   * --forgive: called when the game queues Global_Loss. In a battle level with
+   * budget left, the loss is recorded and the caller runs win_game instead,
+   * so a weak policy still reaches the content after it.
+   */
+  forgiveLoss(): boolean {
+    if (this.mode !== 'play' || this.forgiven >= this.options.forgive) return false;
+    if (!this.currentLevel || this.currentLevel.kind !== 'battle') return false;
+    this.forgiven += 1;
+    this.currentLevel.result = 'lost (forgiven)';
+    this.note(`loss forgiven (${this.forgiven}/${this.options.forgive}): win_game`);
+    return true;
   }
 
   /** Mark the open battle as lost (game over). */
