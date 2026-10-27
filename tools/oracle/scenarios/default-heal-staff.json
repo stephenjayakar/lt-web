@@ -1,0 +1,14 @@
+{
+  "name": "default-heal-staff",
+  "description": "Moulder heals a wounded, adjacent Vanessa with Heal: staff uses, healing amount and staff exp.",
+  "project": "default.ltproj",
+  "level": "DEBUG",
+  "events": false,
+  "seed": 0,
+  "setup": [
+    {"unit": "Vanessa", "hp": 5}
+  ],
+  "actions": [
+    {"do": "spell", "unit": "Moulder", "target": "Vanessa", "item": "Heal"}
+  ]
+}

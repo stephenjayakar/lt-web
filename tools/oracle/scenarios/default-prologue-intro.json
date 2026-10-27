@@ -1,0 +1,12 @@
+{
+  "name": "default-prologue-intro",
+  "description": "Prologue with its level_start events (dialog advanced with SELECT), then a first move.",
+  "project": "default.ltproj",
+  "level": "0",
+  "events": true,
+  "seed": 0,
+  "actions": [
+    {"do": "move", "unit": "Eirika", "to": [5, 5]},
+    {"do": "wait"}
+  ]
+}
