@@ -38,9 +38,13 @@ export interface JumpSpec {
   level?: string;
   /** next_reward for `level` (default by level tags). */
   reward?: string;
+  /**
+   * Fog Density: sets the difficulty modifier levels (<mod>_level records)
+   * that sum to it, since the hub recomputes current_density from them.
+   */
+  density?: number;
   /** Game_Speed record: 1 = long (15 floors per Act), 2 = short (10). */
   gameSpeed?: 1 | 2;
-  density?: number;
   party?: (string | UnitSpec)[];
   /** Party level when a unit spec has none (default: by floor). */
   partyLevel?: number;
@@ -204,6 +208,22 @@ export async function jumpEotf(host: JumpHost, spec: JumpSpec): Promise<JumpResu
   if (spec.tutorials !== true) for (const nid of TUTORIAL_RECORDS) setRecord(nid, 1);
   setRecord('Progress', 3);
   setRecord('Game_Speed', gameSpeed);
+  // Fog Density is not a stored setting: the hub's y. Legacy_Support sets
+  // current_density to the sum of the Standard/Special difficulty modifier
+  // levels (<mod>_level records) at every level start. Raise modifiers in
+  // table order up to their max_level until the sum is `density`
+  // (25 = every modifier, as Boss_Hidden's room requires).
+  if (spec.density !== undefined) {
+    let remaining = Math.max(0, Math.floor(density));
+    const modifiers: any[] = [...(game.db.rawData?.get?.('Difficulty_Modifiers') ?? [])];
+    for (const modifier of modifiers) {
+      if (modifier?.diff_type !== 'Standard' && modifier?.diff_type !== 'Special') continue;
+      const level = Math.min(remaining, Math.max(0, Number(modifier.max_level ?? 1)));
+      setRecord(`${modifier.nid}_level`, level);
+      remaining -= level;
+    }
+    if (remaining > 0) host.note(`jump: density ${density} exceeds the modifier total; current_density will be ${density - remaining}`);
+  }
   setRecord('current_density', density);
   setRecord('highest_density', Math.max(density, Number(host.records.get('highest_density') ?? 0)));
   const owned = new Set<string>(['Player', ...party.map((u) => u.nid)]);

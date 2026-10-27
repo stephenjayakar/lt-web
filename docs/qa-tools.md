@@ -93,7 +93,17 @@ npm run qa:run -- --level Trinity --floors 3 --boost 15 --force-win   --records 
 # EX levels (entered like their Act 3 trigger events) and Act 4 bosses
 npm run qa:run -- --act 3 --floor 40 --level EX_1 --vars demon_quest=3 --one-level --boost 20
 npm run qa:run -- --level Boss_Hidden --one-level --party-level 35 --boost 20 --force-win
+
+# Boss_Hidden's room the way the game offers it: Fog Density 25 (every
+# difficulty modifier) after the Extra ending; --rooms picks it over Libra
+npm run qa:run -- --act 4 --floor 50 --one-level --density 25 --records Extra_Ending_Cleared=1   --rooms UE --boost 30 --passive-enemies --force-win --max-turns 14
 ```
+
+`--density N` sets the difficulty modifier levels (`<mod>_level` records,
+Standard and Special modifiers in table order) that sum to N: the hub
+recomputes `current_density` from them at every level start. `--rooms`
+also chooses between special rooms (Libra, Horologium, UE, a trial or a
+boss) when a floor offers several.
 
 ## Reports
 
