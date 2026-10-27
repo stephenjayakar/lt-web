@@ -1285,7 +1285,12 @@ function buildEvalScope(ctx: ConditionContext): Record<string, any> {
       return getAllUnits(onlyOnField);
     },
     get_tile_units() {
-      return getAllUnits(true);
+      // EOtF's engine: the on-map, living units that DO carry the Tile tag
+      // (own, class or skill tags), the complement of get_all_units().
+      return (Array.from(game.units?.values?.() ?? []) as any[])
+        .filter((unit) =>
+          !!unit.position && !isDeadOrDying(unit) && unitHasTag(unit, 'Tile', game))
+        .map(wrapUnit);
     },
     get_money() { return game.getMoney?.() ?? 0; },
     get_data(nid: string) {

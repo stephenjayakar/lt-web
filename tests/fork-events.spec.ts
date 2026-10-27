@@ -171,3 +171,92 @@ test.describe('EOtF fork event commands', () => {
     expect(result.killer).toBeNull();
   });
 });
+
+// Values below were recorded from EOtF's own engine running the same event
+// lines from the hub (level X).
+test.describe('EOtF fork event commands (engine-checked)', () => {
+  test('heal adds HP scaled by received-heal hooks, plus healer bonuses with Unit2', async ({ page }) => {
+    await bootEotf(page);
+    const hp = "game_var;{0};game.get_unit('Player').get_hp()";
+    const cap = (name: string) => hp.replace('{0}', name);
+    await runEvent(page, 'QaForkHeal', [
+      'set_current_hp;Player;1', 'heal;Player;10', cap('qa_plain'),
+      'set_current_hp;Player;1', 'heal;Player;99', cap('qa_clamped'),
+      'set_current_hp;Player;1', 'give_skill;Player;Mending_Circle_Child;no_banner', 'heal;Player;3', cap('qa_received'),
+      'set_current_hp;Player;1', 'give_skill;Keeper;HaveFaith;no_banner', 'heal;Player;3;Keeper', cap('qa_healer'),
+      'set_current_hp;Player;1', 'give_skill;Player;HaveFaith;no_banner', 'heal;Player;3', cap('qa_self_no_unit2'),
+      'set_current_hp;Player;1', 'heal;Player;3;Nobody', cap('qa_missing_healer'),
+      'remove_skill;Player;Mending_Circle_Child;no_banner', 'remove_skill;Player;HaveFaith;no_banner',
+      'set_current_hp;Player;1', 'give_skill;Player;Blight;no_banner', 'heal;Player;4', cap('qa_blight'),
+      'set_current_hp;Player;1', 'give_skill;Player;Self_Neglect;no_banner', 'heal;Player;10', cap('qa_neglect'),
+      'set_current_hp;Player;1', 'heal;Player;10;Keeper', cap('qa_neglect_healer'),
+    ], 60);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      const names = ['plain', 'clamped', 'received', 'healer', 'self_no_unit2',
+        'missing_healer', 'blight', 'neglect', 'neglect_healer'];
+      return {
+        maxHp: g.units.get('Player').maxHp,
+        ...Object.fromEntries(names.map((name) => [name, g.gameVars.get(`qa_${name}`) ?? null])),
+      };
+    });
+    expect(result).toEqual({
+      maxHp: result.maxHp,
+      plain: 11, clamped: result.maxHp, received: 6, healer: 9, self_no_unit2: 6,
+      missing_healer: 1, blight: 5, neglect: 1, neglect_healer: 1,
+    });
+  });
+  test('get_tile_units lists the on-map Tile units that get_all_units leaves out', async ({ page }) => {
+    await bootEotf(page);
+    await runEvent(page, 'QaForkTiles', [
+      'game_var;qa_tiles_before;[u.nid for u in game.get_tile_units()]',
+      'add_tag;Keeper;Tile',
+      'game_var;qa_tiles;[u.nid for u in game.get_tile_units()]',
+      "game_var;qa_all;'Keeper' in [u.nid for u in game.get_all_units()]",
+    ]);
+    const result = await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      return {
+        before: g.gameVars.get('qa_tiles_before'),
+        tiles: g.gameVars.get('qa_tiles'),
+        all: g.gameVars.get('qa_all'),
+      };
+    });
+    expect(result).toEqual({ before: [], tiles: ['Keeper'], all: false });
+  });
+
+  test('change_objective_* bakes braces when the command runs', async ({ page }) => {
+    await bootEotf(page);
+    await page.evaluate(() => {
+      const g = (window as any).__gameRef;
+      g.levelVars.set('win_con', 2);
+      g.levelVars.set('all_turn_count', 5);
+    });
+    await runEvent(page, 'QaForkObjective', [
+      'change_objective_simple;Extinguish {v:win_con} / 4,Defeat Boss',
+      'game_var;qa_obj_plain;game.level.objective.get("simple")',
+      "lvar;obj_simple;'Defeat Grigol,Defeat Bosses {v:win_con} / 4'",
+      "change_objective_simple;{e:'{v:obj_simple}' + ', <purple>{v:all_turn_count} turns</>'}",
+      'change_objective_win;Seize {v:win_con} / 2,Defend Tower',
+    ]);
+    const result = await page.evaluate(async () => {
+      const { evaluateText } = await import('/src/ui/hud.ts');
+      const g = (window as any).__gameRef;
+      const stored = {
+        plain: g.gameVars.get('qa_obj_plain'),
+        lvar: g.levelVars.get('obj_simple'),
+        nested: g.currentLevel.objective.simple,
+        win: g.currentLevel.objective.win,
+      };
+      g.levelVars.set('win_con', 3);
+      return { ...stored, drawn: evaluateText(g.currentLevel.objective.simple, g) };
+    });
+    expect(result).toEqual({
+      plain: 'Extinguish 2 / 4,Defeat Boss',
+      lvar: 'Defeat Grigol,Defeat Bosses 2 / 4',
+      nested: 'Defeat Grigol,Defeat Bosses 2 / 4, <purple>5 turns</>',
+      win: 'Seize 2 / 2,Defend Tower',
+      drawn: 'Defeat Grigol,Defeat Bosses 2 / 4, <purple>5 turns</>',
+    });
+  });
+});

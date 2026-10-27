@@ -15682,7 +15682,20 @@ export class EventState extends State {
         const unitNid = args[0] ?? '';
         const amount = Math.trunc(Number(args[1] ?? 0));
         const unit = this.findUnit(unitNid);
-        if (unit && Number.isFinite(amount)) {
+        if (unit && Number.isFinite(amount) && isForkEngine()) {
+          // As EOtF's engine does: add HP scaled by the target's received-heal
+          // hooks (against itself when no healer is named), plus the healer's
+          // empower_heal and multiplier when Unit2 is given; a named healer
+          // that can't be found heals nothing.
+          const healerNid = (args[2] ?? '').trim();
+          const healer = healerNid ? this.findUnit(healerNid) ?? null : null;
+          if (healerNid && !healer) {
+            console.warn(`heal: couldn't find healer ${healerNid}`);
+          } else {
+            const healed = modifiedHealAmount(amount, unit, healer, game);
+            game.actionLog.doAction(new SetCurrentHpAction(unit, unit.currentHp + healed));
+          }
+        } else if (unit && Number.isFinite(amount)) {
           game.actionLog.doAction(new HealAction(unit, amount));
         }
         this.advancePointer();
@@ -16279,8 +16292,11 @@ export class EventState extends State {
       case 'change_objective_simple':
       case 'change_objective': {
         // EvaluableString (can_preprocess = False): stored raw and evaluated
-        // at draw time, unlike ordinary arguments.
-        const newObj = rawArgs[0] ?? '';
+        // at draw time, unlike ordinary arguments. EOtF's engine has no such
+        // exemption: braces are evaluated when the command runs, and the draw
+        // re-evaluates only what survived that pass.
+        const objectiveArgs = isForkEngine() ? args : rawArgs;
+        const newObj = objectiveArgs[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.simple = newObj;
         }
@@ -16289,7 +16305,7 @@ export class EventState extends State {
       }
 
       case 'change_objective_win': {
-        const newWin = rawArgs[0] ?? '';
+        const newWin = (isForkEngine() ? args : rawArgs)[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.win = newWin;
         }
@@ -16298,7 +16314,7 @@ export class EventState extends State {
       }
 
       case 'change_objective_loss': {
-        const newLoss = rawArgs[0] ?? '';
+        const newLoss = (isForkEngine() ? args : rawArgs)[0] ?? '';
         if (game.currentLevel?.objective) {
           game.currentLevel.objective.loss = newLoss;
         }
