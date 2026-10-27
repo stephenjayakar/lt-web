@@ -47,7 +47,7 @@ import {
 import { isForkEngine } from '../engine/engine-flavor';
 import { EquipItemAction } from '../engine/action';
 import { getSkillAbilityOptions } from '../combat/skill-abilities';
-import { pySetOrder } from '../engine/py-set-order';
+import { PyPairSet, pySetOrder } from '../engine/py-set-order';
 import { refreshAuras } from '../combat/aura-system';
 import { refreshPositionStatuses } from '../engine/position-status-system';
 import { evaluateCondition } from '../events/event-manager';
@@ -868,7 +868,10 @@ export class AIController {
     // Python PrimaryAI tests the inventory and then the unit's extra
     // abilities (skill-granted items such as Self Destruct or Rush Pulse).
     for (const item of [...this.allItems(unit), ...this.abilityItems(unit)]) {
-      if (!item.isWeapon() && !item.isSpell()) continue;
+      // Python tests every available item, not only weapons and spells (a
+      // usable damaging item such as a thrown bomb counts too); items that
+      // reach no behaviour target simply score nothing.
+      if (!isForkEngine() && !item.isWeapon() && !item.isSpell()) continue;
       if (item.hasComponent('sequence_item')) continue;
       if (itemAvailable(unit, item, this.db, this.gameRef)) variants.push({ weapon: item });
     }
@@ -990,8 +993,60 @@ export class AIController {
     }
     if (!pyOrder) return result;
     const byKey = new Map(result.map((entry) => [`${entry[0][0]},${entry[0][1]}`, entry] as const));
-    return pySetOrder(result.map(([target]) => target))
+    return this.pyAiTargetOrder(unit, item, positions, moveList, minRange, maxRange, restriction, byKey)
       .map(([x, y]) => byKey.get(`${x},${y}`)!);
+  }
+
+  /**
+   * The order of Python get_ai_targets(unit, valid_moves, [item]):
+   * `valid_targets & attackable` where attackable is built move by move from
+   * the cached Manhattan sphere of the item's ranges (each a set
+   * comprehension), and CPython's intersection walks the smaller set.
+   */
+  private pyAiTargetOrder(
+    unit: UnitObject,
+    item: ItemObject,
+    componentTargets: [number, number][],
+    moveList: [number, number][],
+    minRange: number,
+    maxRange: number,
+    restriction: Set<string> | null,
+    reachable: Map<string, unknown>,
+  ): [number, number][] {
+    const fallback = () => pySetOrder([...reachable.keys()].map((key) => key.split(',').map(Number) as [number, number]));
+    if (maxRange >= 99 || maxRange - minRange > 30) return fallback();
+    const base: [number, number][] = [];
+    for (let r = minRange; r <= maxRange; r++) {
+      for (let i = -r; i <= r; i++) {
+        const dy = r - Math.abs(i);
+        base.push([i, dy], [i, -dy]);
+      }
+    }
+    const baseOrder = pySetOrder(base);
+    const bounds = this.board.bounds;
+    const attackable = new PyPairSet();
+    const noMove = itemNoAttackAfterMove(unit, item) ||
+      skillNoAttackAfterMove(unit, { game: this.gameRef, item });
+    const from: [number, number][] = noMove && unit.position ? [[unit.position[0], unit.position[1]]] : moveList;
+    for (const [mx, my] of from) {
+      const sphere = pySetOrder(baseOrder
+        .filter(([a, b]) => !restriction || restriction.has(`${a},${b}`))
+        .map(([a, b]) => [a + mx, b + my] as [number, number]));
+      for (const position of sphere) {
+        if (position[0] < bounds[0] || position[0] > bounds[2] ||
+            position[1] < bounds[1] || position[1] > bounds[3]) continue;
+        attackable.add(position);
+      }
+    }
+    const attackableOrder = attackable.values();
+    const possibleOrder = pySetOrder(componentTargets);
+    const attackableKeys = new Set(attackableOrder.map(([x, y]) => `${x},${y}`));
+    const possibleKeys = new Set(possibleOrder.map(([x, y]) => `${x},${y}`));
+    const walk = possibleOrder.length > attackableOrder.length ? attackableOrder : possibleOrder;
+    const other = walk === attackableOrder ? possibleKeys : attackableKeys;
+    const intersection = pySetOrder(walk.filter(([x, y]) => other.has(`${x},${y}`)));
+    const ordered = intersection.filter(([x, y]) => reachable.has(`${x},${y}`));
+    return ordered.length === reachable.size ? ordered : fallback();
   }
 
   /** Targets the item can legally hit from `move` (range, restrictions, splash). */

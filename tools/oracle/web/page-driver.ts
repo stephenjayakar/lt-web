@@ -608,6 +608,8 @@ function installAiTrace(g: any): void {
     aiTrace.push({ unit: unit.nid, canto: goal });
     return action;
   };
+  if (g.__oracleTracedGroups) return;
+  g.__oracleTracedGroups = true;
   const trigger = g.triggerAiGroup.bind(g);
   g.triggerAiGroup = (groupId: string, unitNid: string) => {
     const ok = trigger(groupId, unitNid);
@@ -914,6 +916,7 @@ export async function runScenario(scn: Scenario): Promise<Json> {
         try {
           RECORDS.restore(baseline);
           await startLevel(e, scn, String(level));
+          installAiTrace(e.game);
           new Runner(e).setup(scn.setup ?? []);
         } catch (err: any) {
           console.error(err);
