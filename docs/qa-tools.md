@@ -63,7 +63,7 @@ Run `npm run qa:run -- --help` for every option. The main ones:
 | `--floors N` / `--to-floor N` / `--one-level` / `--no-play` | What to play. |
 | `--max-turns N` (40), `--force-win` | Turn limit per battle map; `--force-win` runs `win_game` at the limit instead of stopping. |
 | `--rooms random\|combat,event,shop,respite,elite` | Room policy. Boss and trial rooms are always taken. |
-| `--choices random\|first`, `--services all\|none\|a,b`, `--policy-seed N` | Policy for event choices and sub-room NPCs. |
+| `--choices random\|first`, `--services all\|none\|a,b`, `--shop buy\|leave`, `--policy-seed N` | Policy for event choices, sub-room NPCs and shop screens (default: buy one random item per shop). |
 | `--fast N` (0) | Frames per real frame. 0 = as fast as possible, 1 = normal speed. |
 | `--draw-every N` (16) | Render only every Nth frame. |
 | `--map-combat`, `--no-skip`, `--verbose` | Map combat instead of battle animations; keep event dialogue; keep `console.log`. |
@@ -156,7 +156,9 @@ normal inputs and engine paths:
   rewards), picks one by policy, places the roam unit next to that room's NPC
   and presses SELECT. This is the real `on_talk`; only the walk is skipped.
 - Shop and camp sub-rooms, and Act 4's service floors: it talks to each NPC
-  once (shop screens are backed out of without buying), then takes the exit.
+  once, then takes the exit. In a shop screen the `buy` policy opens Buy,
+  presses SELECT on one random item (a purchase that fails for lack of money
+  or space is fine) and leaves. The `leave` policy backs straight out.
 - Choices: fixed `answers` by choice nid first, then the sortie plan. "Yes"
   for begin, enter, proceed, heal and similar prompts; "No" or BACK for
   abandon or quit prompts. Anything else is picked at random from the seeded

@@ -32,6 +32,8 @@ export interface PolicyOptions {
   rooms: 'random' | string[];
   /** Sub-room services to talk to before leaving: 'all', 'none' or NPC nids. */
   services: 'all' | 'none' | string[];
+  /** In a shop screen: 'buy' one random item per visit (default), or 'leave'. */
+  shop: 'buy' | 'leave';
   /** Fixed answers by choice nid: option value/label, or an index. */
   answers: Record<string, string | number>;
   /** Sortie unit nids for EOtF's New_Party choice, in order. */
@@ -45,6 +47,7 @@ export const DEFAULT_POLICY: PolicyOptions = {
   choices: 'random',
   rooms: 'random',
   services: 'all',
+  shop: 'buy',
   answers: {},
   sortie: [],
   repeatLimit: 4,

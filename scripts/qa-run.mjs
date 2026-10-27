@@ -49,6 +49,7 @@ What to play:
   --rooms LIST         random (default) or preference: combat,event,shop,respite,elite
   --choices random|first   unknown event choices (default random)
   --services all|none|a,b  sub-room NPCs to visit (default all)
+  --shop buy|leave     in shop screens buy one random item (default) or leave
   --policy-seed N      seed for the policy's own RNG (default = --seed or 1)
   --no-autoplay        do not play the player phase (inspect only)
 
@@ -169,6 +170,7 @@ const playOptions = {
     rooms: listOrMode(args.rooms, ['random']) ?? 'random',
     choices: args.choices === 'first' ? 'first' : 'random',
     services: listOrMode(args.services, ['all', 'none']) ?? 'all',
+    shop: args.shop === 'leave' ? 'leave' : 'buy',
   },
 };
 const fast = {
@@ -360,9 +362,19 @@ function renderMarkdown(summary) {
     lines.push('## Warnings and errors');
     for (const e of summary.pageErrors) lines.push(`- [pageerror] ${e.split('\n')[0]}`);
     const order = { error: 0, pageerror: 0, rejection: 0, qa: 1, warn: 2 };
-    for (const e of [...log].sort((a, b) => (order[a.kind] - order[b.kind]) || (b.count - a.count))) {
+    // Python logs these too (the port marks them): listed last, apart.
+    const pythonEquivalent = (e) => e.kind === 'warn' && e.message.includes('(Python-equivalent)');
+    const line = (e) => {
       const c = e.first;
-      lines.push(`- [${e.kind} x${e.count}] ${e.message.split('\n')[0].slice(0, 300)} — floor ${c.floor} level ${c.level} T${c.turn} ${c.phase} ${c.stack}${c.event ? ` event ${c.event}` : ''}`);
+      return `- [${e.kind} x${e.count}] ${e.message.split(/\r?\n/)[0].slice(0, 300)} — floor ${c.floor} level ${c.level} T${c.turn} ${c.phase} ${c.stack}${c.event ? ` event ${c.event}` : ''}`;
+    };
+    const sorted = [...log].sort((a, b) => (order[a.kind] - order[b.kind]) || (b.count - a.count));
+    for (const e of sorted.filter((x) => !pythonEquivalent(x))) lines.push(line(e));
+    const expected = sorted.filter(pythonEquivalent);
+    if (expected.length) {
+      lines.push('');
+      lines.push(`### Python-equivalent evaluation warnings (${expected.length}; Python logs these too)`);
+      for (const e of expected) lines.push(line(e));
     }
   }
   return lines.join('\n') + '\n';

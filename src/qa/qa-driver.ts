@@ -105,7 +105,7 @@ export function registerQaAiPresets(game: any): void {
 
 /** States the driver backs out of (leaf screens a policy has no use for). */
 const BACK_OUT = new Set([
-  'shop', 'info_menu', 'base_info_menu', 'option_menu', 'objective_menu', 'minimap', 'dialog_log',
+  'info_menu', 'base_info_menu', 'option_menu', 'objective_menu', 'minimap', 'dialog_log',
   'settings_menu', 'trade', 'prep_trade', 'prep_trade_select', 'prep_items', 'supply_items',
   'prep_manage_select', 'base_manage', 'party_transfer', 'optimize_all_choice', 'prep_formation',
   'prep_formation_select', 'prep_market', 'prep_restock', 'base_codex', 'base_records', 'base_supports',
@@ -144,6 +144,8 @@ export class QaDriver {
   private savedAi = new Map<any, string>();
   private choiceRepeats = new Map<string, number>();
   private visited = new Set<string>();
+  /** Shop stock lists already bought from (one purchase per shop visit). */
+  private shopsBought = new WeakSet<object>();
   private lastTop: any = null;
   private currentFloor: FloorRecord | null = null;
   private currentLevel: LevelRecord | null = null;
@@ -218,6 +220,7 @@ export class QaDriver {
   private decide(top: any, name: string): GameButton | null | undefined {
     if (!top) return undefined;
     if (name === 'event') return this.handleEvent(top);
+    if (name === 'shop') return this.handleShop(top);
     if (BACK_OUT.has(name)) return 'BACK';
     if (PRESS_SELECT.has(name)) return 'SELECT';
     if (name === 'text_entry') return this.handleTextEntry(top);
@@ -271,6 +274,35 @@ export class QaDriver {
     const chosen = ctx.options[decision.index];
     if (nid !== 'New_Party') this.note(`choice ${nid ?? '?'}${ctx.title ? ` "${ctx.title.slice(0, 40)}"` : ''}: ${chosen?.value ?? decision.index}`);
     return 'SELECT';
+  }
+
+  /**
+   * ShopState (Python ShopState): with the 'buy' policy, open Buy, pick one
+   * random item and press SELECT once (a failed purchase — no money, full
+   * inventory — is fine), then back out and leave.
+   */
+  private handleShop(shop: any): GameButton | null | undefined {
+    const wantsBuy = this.policy.options.shop === 'buy' && !this.shopsBought.has(shop.shopItems) &&
+      (shop.shopItems?.length ?? 0) > 0;
+    if (shop.phase === 'open') return 'SELECT';
+    if (shop.phase === 'choice' && wantsBuy) {
+      const options: string[] = (shop.choiceMenu?.options ?? []).map((o: any) => o?.entry?.text ?? '');
+      const buy = options.indexOf('Buy');
+      if (buy >= 0 && shop.choiceMenu) {
+        shop.choiceMenu.currentIndex = buy;
+        return 'SELECT';
+      }
+    }
+    if (shop.phase === 'buy' && wantsBuy && shop.buyMenu) {
+      const count = shop.shopItems.length;
+      shop.buyMenu.currentIndex = Math.floor(this.policy.random() * count);
+      const item = shop.buyMenu.getCurrentItem?.();
+      this.shopsBought.add(shop.shopItems);
+      this.note(`shop: buy ${item?.nid ?? '?'}`);
+      return 'SELECT';
+    }
+    if (shop.phase === 'close') return 'SELECT';
+    return 'BACK';
   }
 
   private handlePrep(prep: any): GameButton | null | undefined {
