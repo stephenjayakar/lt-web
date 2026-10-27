@@ -197,12 +197,14 @@ import { DifficultyModeObject, rngOptionDisplay } from '../difficulty';
 export { InfoMenuState, setInfoMenuGameRef } from './info-menu-state';
 import { dexOptionUnit } from './dex-menu-state';
 import { requestPromotion } from './promotion-state';
+import { SelectionHelper } from '../selection-helper';
+import { drawCarryPreview, drawTradePreview } from '../../ui/hud';
 import { currentWindowSkin, getSprite, preloadSprites, skinnedSpriteNameFor, startupSkinnedSpriteName } from '../../ui/sprites';
 import { roamVisualOffset } from '../../movement/roam-movement';
 import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, skillIcon, stoleItemText, weaponIcon } from '../../ui/banner';
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
-import { MenuBackground, MenuScene, PanoramaFrames, loadPanoramaFrames, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
+import { Pennant, MenuBackground, MenuScene, PanoramaFrames, loadPanoramaFrames, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
 import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackgroundNid } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
@@ -3495,10 +3497,13 @@ export class MenuState extends State {
         this.menu = null;
         game.memory.set('weapon_choice_mode', 'spells');
         game.state.change('weapon_choice');
-      } else if (value === 'take' || value === 'give') {
+      } else if (value in TARGET_ABILITY_BY_VALUE) {
+        // Python MenuState: every other ability goes through TargetingState
+        // (map cursor over its valid positions, pennant, previews).
         this.menu = null;
-        game.memory.set('traveler_transfer_mode', value);
-        game.state.change('traveler_transfer');
+        game.highlight.clear();
+        game.memory.set('ability', value);
+        game.state.change('targeting');
       } else if (value === 'item') {
         this.menu = null;
         game.state.change('item');
@@ -3518,15 +3523,6 @@ export class MenuState extends State {
         game.memory.set('item_use_item', ability.item);
         this.menu = null;
         game.state.change('item_targeting');
-      } else if (value === 'trade') {
-        this.menu = null;
-        game.state.change('trade');
-      } else if (value === 'rescue' || value === 'pair_up') {
-        this.menu = null;
-        game.state.change('rescue');
-      } else if (value === 'drop' || value === 'separate') {
-        this.menu = null;
-        game.state.change('drop');
       } else if (value === 'switch') {
         const follower = unit.rescuing;
         if (follower && unit.position && canUnitStandAt(follower, unit.position[0], unit.position[1])) {
@@ -3616,107 +3612,6 @@ export class MenuState extends State {
             console.warn('VICTORY — seize condition met');
           }
         }
-        if (game.eventManager?.hasActiveEvents()) {
-          game.state.change('event');
-        } else {
-          game.state.back();
-        }
-      } else if (value === 'talk') {
-        // Trigger talk event using 'on_talk' trigger type (matches LT Python)
-        const adjacentTalkTargets = getAdjacentUnits(
-          unit.position![0],
-          unit.position![1],
-        ).filter((other) => {
-          if (other === unit) return false;
-          if (game.eventManager) {
-            const ctx = { game, unit1: unit, unit2: other, gameVars: game.gameVars, levelVars: game.levelVars };
-            const levelNid = game.currentLevel?.nid ?? '';
-            const events = game.eventManager.getEventsForTrigger({
-              type: 'on_talk',
-              levelNid,
-              unitA: unit.nid,
-              unitB: other.nid,
-              unit1: unit,
-              unit2: other,
-            }, ctx);
-            return events.length > 0;
-          }
-          return false;
-        });
-        if (adjacentTalkTargets.length > 0 && game.eventManager) {
-          const target = adjacentTalkTargets[0];
-          const talkLevelNid = game.currentLevel?.nid ?? '';
-          const ctx = { game, unit1: unit, unit2: target, gameVars: game.gameVars, levelVars: game.levelVars };
-          game.eventManager.trigger(
-            {
-              type: 'on_talk',
-              levelNid: talkLevelNid,
-              unitA: unit.nid,
-              unitB: target.nid,
-              unit1: unit,
-              unit2: target,
-            },
-            ctx,
-          );
-        }
-        if (unit) game.actionLog.doAction(new WaitAction(unit));
-        this.menu = null;
-        if (game.eventManager?.hasActiveEvents()) {
-          game.state.change('event');
-        } else {
-          game.state.back();
-        }
-      } else if (value === 'support') {
-        // Trigger support event using 'on_support' trigger type (matches LT Python)
-        const adjacentSupportTargets = getAdjacentUnits(
-          unit.position![0],
-          unit.position![1],
-        ).filter((other) => {
-          if (other === unit) return false;
-          const pair = game.supports?.getPair(unit.nid, other.nid);
-          if (!pair) return false;
-          return game.supports.canSupport(pair, game);
-        });
-        if (adjacentSupportTargets.length > 0 && game.supports && game.eventManager) {
-          const target = adjacentSupportTargets[0];
-          const pair = game.supports.getPair(unit.nid, target.nid);
-          if (pair && pair.lockedRanks.length > 0) {
-            const rank = pair.lockedRanks[0];
-            // Match Python flow: back, HasTraded, trigger, unlock
-            game.state.back();
-            game.actionLog.doAction(new HasTradedAction(unit));
-            const supportLevelNid = game.currentLevel?.nid ?? '';
-            const ctx = {
-              game,
-              unit1: unit,
-              unit2: target,
-              gameVars: game.gameVars,
-              levelVars: game.levelVars,
-            };
-            game.eventManager.trigger(
-              {
-                type: 'on_support',
-                levelNid: supportLevelNid,
-                unit1: unit,
-                unit2: target,
-                position: unit.position,
-                support_rank_nid: rank,
-                is_replay: false,
-              },
-              ctx,
-            );
-            // Mark the rank as viewed (unlock it)
-            game.actionLog.doAction(new UnlockSupportRankAction(pair, rank));
-            this.menu = null;
-            if (game.eventManager?.hasActiveEvents()) {
-              game.state.change('event');
-            }
-            return;
-          }
-        }
-        // Should not reach here if menu option is properly gated
-        if (unit) game.actionLog.doAction(new WaitAction(unit));
-        this.menu = null;
         if (game.eventManager?.hasActiveEvents()) {
           game.state.change('event');
         } else {
@@ -5303,6 +5198,7 @@ export class ItemTargetingState extends MapState {
   private pendingTarget: [number, number] | null = null;
   private selectableTargetItems: ItemObject[] = [];
   private targetItemMode: 'repair' | 'steal' | 'trace' | null = null;
+  private selection: SelectionHelper | null = null;
 
   /** Kept as a read-only runtime alias for repair-menu diagnostics/tests. */
   private get repairableItems(): ItemObject[] {
@@ -5359,12 +5255,39 @@ export class ItemTargetingState extends MapState {
       const used = new Set(this.selectedTargets.flat().map((position) => `${position[0]},${position[1]}`));
       targets = targets.filter((position: [number, number]) => !used.has(`${position[0]},${position[1]}`));
     }
-    this.targets = targets;
-    this.targetIndex = 0;
+    // Python CombatTargetingState: SelectionHelper over the target set, the
+    // cursor starting on the most wounded unit for healing items, else on
+    // the target closest to the cursor.
+    this.selection = new SelectionHelper(targets);
+    this.targets = this.selection.posList;
+    const cursor = game.cursor.getPosition() as [number, number];
+    let start: [number, number] | null;
+    if (activeItem.hasComponent('heal') || activeItem.hasComponent('magic_heal')) {
+      const ratio = (pos: [number, number]): number => {
+        const target: UnitObject | null = game.board.getUnit(pos[0], pos[1]);
+        return target ? target.currentHp / Math.max(1, target.maxHp) : 9999;
+      };
+      start = this.targets.reduce<[number, number] | null>((best, pos) => (!best || ratio(pos) < ratio(best) ? pos : best), null);
+    } else {
+      start = this.selection.getClosest([cursor[0], cursor[1]]);
+    }
+    this.targetIndex = start ? Math.max(0, this.targets.indexOf(start)) : 0;
     game.highlight.clear();
     game.highlight.setAttackHighlights(this.targets);
     if (this.targets.length > 0) this.focusTarget();
     return this.targets.length > 0;
+  }
+
+  /** Move to the target position `next` picks from the current one. */
+  private moveSelection(next: (pos: [number, number]) => [number, number] | null): void {
+    const current = this.targets[this.targetIndex];
+    if (!current) return;
+    const pos = next(current);
+    if (!pos) return;
+    const idx = this.targets.findIndex((t) => t[0] === pos[0] && t[1] === pos[1]);
+    if (idx < 0) return;
+    this.targetIndex = idx;
+    this.focusTarget();
   }
 
   private focusTarget(): void {
@@ -5686,12 +5609,12 @@ export class ItemTargetingState extends MapState {
       return;
     }
     if (event === null) return;
-    if (event === 'UP' || event === 'LEFT') {
-      this.targetIndex = (this.targetIndex - 1 + this.targets.length) % this.targets.length;
-      this.focusTarget();
-    } else if (event === 'DOWN' || event === 'RIGHT') {
-      this.targetIndex = (this.targetIndex + 1) % this.targets.length;
-      this.focusTarget();
+    if (event === 'UP' || event === 'LEFT' || event === 'DOWN' || event === 'RIGHT') {
+      const direction: string = event;
+      this.moveSelection((pos) => this.selection?.step(direction, pos) ?? null);
+    } else if (event === 'AUX') {
+      game.audioManager?.playSfx?.('Select 6');
+      this.moveSelection((pos) => this.selection?.getNext(pos) ?? null);
     } else if (event === 'SELECT') {
       this.selectTarget(this.targetIndex);
     } else if (event === 'START') {
@@ -5712,8 +5635,26 @@ export class ItemTargetingState extends MapState {
     game.highlight.update();
     const result = drawMap(surf, true);
     this.drawSpellForecast(result);
+    this.drawTargetItemsPreview(result);
     this.targetItemMenu?.draw(result);
     return result;
+  }
+
+  /**
+   * Python CombatTargetingState.draw for items that target items (steal):
+   * the trade preview of the unit under the cursor, items it can't take
+   * greyed (item_restrict).
+   */
+  private drawTargetItemsPreview(surf: Surface): void {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    const item = this.activeItem();
+    if (!unit || !item || this.targetItemMenu || !isStealItem(item)) return;
+    const [cx, cy] = game.cursor.getPosition();
+    const target: UnitObject | null = game.board?.getUnit?.(cx, cy) ?? null;
+    if (!target) return;
+    const ignore = target.items.map((candidate: ItemObject) => !stealItemRestrict(unit, item, target, candidate, game.db));
+    drawTradePreview(surf, game, target, ignore);
   }
 
   private spellForecastCursor = '';
@@ -5727,7 +5668,7 @@ export class ItemTargetingState extends MapState {
     const game = getGame();
     const unit: UnitObject | null = game.selectedUnit;
     const item = this.activeItem();
-    if (!unit || !item || this.targetItemMenu) return;
+    if (!unit || !item || this.targetItemMenu || isStealItem(item)) return;
     const [cx, cy] = game.cursor.getPosition();
     const key = `${cx},${cy}`;
     if (key !== this.spellForecastCursor) {
@@ -6171,6 +6112,360 @@ export class DropState extends MapState {
 }
 
 // ============================================================================
+// 4g. AbilityTargetingState — Python general_states.TargetingState
+// ============================================================================
+
+/** Map abilities Python's MenuState sends through its TargetingState. */
+export type TargetAbility =
+  'Talk' | 'Support' | 'Drop' | 'Rescue' | 'Take' | 'Give' | 'Pair Up' | 'Separate' | 'Transfer' | 'Trade';
+
+/** MenuState option values that open the targeting state. */
+export const TARGET_ABILITY_BY_VALUE: Record<string, TargetAbility> = {
+  talk: 'Talk', support: 'Support', drop: 'Drop', rescue: 'Rescue', take: 'Take', give: 'Give',
+  pair_up: 'Pair Up', separate: 'Separate', transfer: 'Transfer', trade: 'Trade',
+};
+
+/** Python equations RESCUE_AID / RESCUE_WEIGHT (0 when the project lacks one). */
+function rescueEquation(game: any, name: 'RESCUE_AID' | 'RESCUE_WEIGHT', unit: UnitObject): number {
+  const expr = game.db.getEquation?.(name);
+  if (!expr) return 0;
+  try {
+    return Number(evaluateEquation(expr, unit, { db: game.db })) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Adjacent units with an on_talk event for this pair that is not hidden. */
+function talkTargets(game: any, unit: UnitObject): UnitObject[] {
+  if (!unit.position || !game.eventManager) return [];
+  return getAdjacentUnits(unit.position[0], unit.position[1]).filter((other) => {
+    if (other === unit) return false;
+    const ctx = { game, unit1: unit, unit2: other, gameVars: game.gameVars, levelVars: game.levelVars };
+    const events = game.eventManager.getEventsForTrigger({
+      type: 'on_talk',
+      levelNid: game.currentLevel?.nid ?? '',
+      unitA: unit.nid,
+      unitB: other.nid,
+      unit1: unit,
+      unit2: other,
+    }, ctx);
+    return events.length > 0 && !game.eventManager.isTalkHidden?.(unit.nid, other.nid);
+  });
+}
+
+/** Adjacent units whose support pair can rank up now (Python SupportAbility). */
+function supportTargets(game: any, unit: UnitObject): UnitObject[] {
+  if (!unit.position || !game.gameVars.get('_supports') || !game.db.supportConstants?.get?.('combat_convos')) return [];
+  return getAdjacentUnits(unit.position[0], unit.position[1]).filter((other) => {
+    if (other === unit) return false;
+    const pair = game.supports?.getPair(unit.nid, other.nid);
+    return !!pair && game.supports.canSupport(pair, game);
+  });
+}
+
+/** Python <Ability>.targets(unit): the positions the targeting cursor visits. */
+export function abilityTargetPositions(game: any, unit: UnitObject, ability: TargetAbility): [number, number][] {
+  if (!unit.position) return [];
+  const [ux, uy] = unit.position;
+  const pairUp = !!game.db.getConstant('pairup', false);
+  const positions = (units: UnitObject[]): [number, number][] => units
+    .filter((u) => !!u.position)
+    .map((u) => [u.position![0], u.position![1]]);
+  switch (ability) {
+    case 'Talk':
+      return positions(talkTargets(game, unit));
+    case 'Support':
+      return positions(supportTargets(game, unit));
+    case 'Drop':
+      if (pairUp || !unit.isRescuing() || !unit.rescuing || unit.hasAttacked || unit.hasRescued) return [];
+      return getAdjacentEmptyTiles(ux, uy, unit.rescuing);
+    case 'Rescue':
+      if (pairUp || unit.isRescuing() || unit.hasAttacked || unit.hasGiven || unit.hasDropped) return [];
+      return positions(getAdjacentAllies(unit, ux, uy).filter((ally) =>
+        !ally.isRescuing() && !ally.isRescued() && canCarry(unit, ally, game)));
+    case 'Take':
+      if (pairUp || unit.isRescuing() || unit.hasAttacked || unit.hasGiven || unit.hasDropped) return [];
+      return positions(getAdjacentAllies(unit, ux, uy).filter((ally) =>
+        ally.isRescuing() && !!ally.rescuing && canCarry(unit, ally.rescuing, game)));
+    case 'Give':
+      if (pairUp || !unit.isRescuing() || !unit.rescuing || unit.hasAttacked || unit.hasRescued ||
+          (unit.hasTaken && !game.db.getConstant('give_and_take', false))) return [];
+      return positions(getAdjacentAllies(unit, ux, uy).filter((ally) =>
+        !ally.isRescuing() && !ally.isRescued() && canCarry(ally, unit.rescuing!, game)));
+    case 'Pair Up':
+      if (!pairUp || game.db.getConstant('attack_stance_only', false) || unit.isRescuing() || unit.isRescued()) return [];
+      return positions(getAdjacentAllies(unit, ux, uy).filter((ally) =>
+        !ally.isRescued() && !ally.isRescuing() && ally.team === unit.team));
+    case 'Separate':
+      if (!pairUp || !unit.isRescuing() || !unit.leadUnit || unit.hasAttacked || !unit.rescuing) return [];
+      return getAdjacentEmptyTiles(ux, uy, unit.rescuing);
+    case 'Transfer':
+      if (!pairUp || unit.hasGiven) return [];
+      return positions(getAdjacentAllies(unit, ux, uy).filter((ally) => !!ally.traveler || !!unit.traveler));
+    case 'Trade': {
+      const partners = getTradePartners(unit);
+      const out = positions(partners);
+      // A traveler the unit can trade with is reached on the unit's own tile.
+      if (partners.some((partner) => !partner.position)) out.push([ux, uy]);
+      return out;
+    }
+  }
+}
+
+/**
+ * Python TargetingState: the map cursor jumps between an ability's valid
+ * positions (SelectionHelper: arrows pick the nearest position that way, AUX
+ * the next one), a pennant scrolls the ability's `_desc` text, and Rescue,
+ * Take, Give and Trade preview the units involved. SELECT runs the ability's
+ * `do`; BACK returns to the action menu.
+ */
+export class AbilityTargetingState extends MapState {
+  readonly name = 'targeting';
+
+  ability: TargetAbility | null = null;
+  selection: SelectionHelper | null = null;
+  /** Trade: target the traveler a hovered unit carries instead of the unit. */
+  travelerMode = false;
+  private pennant: Pennant | null = null;
+
+  override start(): StateResult {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    const value = String(game.memory.get('ability') ?? '');
+    const names = Object.values(TARGET_ABILITY_BY_VALUE) as string[];
+    this.ability = TARGET_ABILITY_BY_VALUE[value] ?? (names.includes(value) ? value as TargetAbility : null);
+    this.travelerMode = false;
+    this.selection = null;
+    this.pennant = null;
+    if (!unit?.position || !this.ability) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.selection = new SelectionHelper(abilityTargetPositions(game, unit, this.ability));
+    const closest = this.selection.getClosest([unit.position[0], unit.position[1]]);
+    if (!closest) {
+      game.state.back();
+      return 'repeat';
+    }
+    this.setCursor(closest);
+    const key = `${this.ability}_desc`;
+    this.pennant = new Pennant(game.db.translate ? game.db.translate(key) : key);
+  }
+
+  override begin(): StateResult {
+    const game = getGame();
+    game.cursor.combatShow?.();
+    game.cursor.visible = true;
+  }
+
+  private setCursor(pos: [number, number] | null): void {
+    if (!pos) return;
+    const game = getGame();
+    game.cursor.setPos(pos[0], pos[1]);
+    if (isSmallScreen()) game.camera.focusTile(pos[0], pos[1]);
+  }
+
+  private cursorPos(): [number, number] {
+    const pos = getGame().cursor.getHover();
+    return [pos.x, pos.y];
+  }
+
+  /** Python _handle_direction (Trade toggles onto a hovered unit's traveler first). */
+  private handleDirection(next: (pos: [number, number]) => [number, number] | null): void {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    if (this.ability === 'Trade' && unit) {
+      const [x, y] = this.cursorPos();
+      const target: UnitObject | null = game.board.getUnit(x, y);
+      if (target && target !== unit && target.traveler) {
+        const traveler: UnitObject | null = game.getUnit(target.traveler);
+        if (traveler && traveler.team === unit.team) this.travelerMode = !this.travelerMode;
+      }
+    }
+    if (!this.travelerMode) this.setCursor(next(this.cursorPos()));
+  }
+
+  override takeInput(event: InputEvent): StateResult {
+    const game = getGame();
+    const selection = this.selection;
+    if (!selection) return;
+    const sfx = (name: string): void => game.audioManager?.playSfx?.(name);
+    if (game.input?.mouseMoved || game.input?.mouseClick === 'SELECT') {
+      const hovered = selection.handleMouse(getMouseTile());
+      if (hovered) this.setCursor(hovered);
+    }
+    if (game.input?.mouseClick === 'BACK') event = 'BACK';
+    else if (game.input?.mouseClick === 'SELECT' && selection.handleMouse(getMouseTile())) event = 'SELECT';
+    if (event === 'UP' || event === 'DOWN' || event === 'LEFT' || event === 'RIGHT') {
+      const direction: string = event;
+      sfx('Select 6');
+      this.handleDirection((pos) => selection.step(direction, pos));
+    } else if (event === 'AUX') {
+      sfx('Select 6');
+      this.handleDirection((pos) => selection.getNext(pos));
+    } else if (event === 'BACK') {
+      sfx('Select 4');
+      game.state.back();
+    } else if (event === 'SELECT') {
+      sfx('Select 1');
+      this.confirm();
+    }
+  }
+
+  /** The unit the ability acts on at the cursor (Python TargetingState SELECT). */
+  private selectedPartner(unit: UnitObject): UnitObject | null {
+    const game = getGame();
+    const [x, y] = this.cursorPos();
+    const hovered: UnitObject = game.board.getUnit(x, y) ?? unit;
+    const travelerOf = (u: UnitObject): UnitObject | null => (u.traveler ? game.getUnit(u.traveler) ?? null : null);
+    if (this.travelerMode) return travelerOf(hovered) ?? hovered;
+    if (hovered === unit && unit.traveler && this.ability === 'Trade') return travelerOf(unit);
+    return hovered;
+  }
+
+  /** Python <Ability>.do(unit). */
+  private confirm(): void {
+    const game = getGame();
+    const unit: UnitObject | null = game.selectedUnit;
+    const ability = this.ability;
+    if (!unit || !ability) return;
+    const [x, y] = this.cursorPos();
+    const target: UnitObject | null = game.board.getUnit(x, y);
+    const levelNid = game.currentLevel?.nid ?? '';
+    switch (ability) {
+      case 'Trade': {
+        const partner = this.selectedPartner(unit);
+        if (!partner || partner === unit) return;
+        game.memory.set('trade_partner', partner);
+        game.state.back();
+        game.state.change('trade');
+        return;
+      }
+      case 'Talk': {
+        if (!target) return;
+        // Python TalkAbility.do: back to the menu, HasTraded, fire on_talk.
+        game.state.back();
+        game.actionLog.doAction(new HasTradedAction(unit));
+        const ctx = { game, unit1: unit, unit2: target, gameVars: game.gameVars, levelVars: game.levelVars };
+        game.eventManager?.trigger({
+          type: 'on_talk', levelNid, unitA: unit.nid, unitB: target.nid, unit1: unit, unit2: target,
+        }, ctx);
+        if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+        return;
+      }
+      case 'Support': {
+        const pair = target ? game.supports?.getPair(unit.nid, target.nid) : null;
+        if (!target || !pair || pair.lockedRanks.length === 0) return;
+        const rank = pair.lockedRanks[0];
+        game.state.back();
+        game.actionLog.doAction(new HasTradedAction(unit));
+        const ctx = { game, unit1: unit, unit2: target, gameVars: game.gameVars, levelVars: game.levelVars };
+        game.eventManager?.trigger({
+          type: 'on_support', levelNid, unit1: unit, unit2: target, position: unit.position,
+          support_rank_nid: rank, is_replay: false,
+        }, ctx);
+        game.actionLog.doAction(new UnlockSupportRankAction(pair, rank));
+        if (game.eventManager?.hasActiveEvents()) game.state.change('event');
+        return;
+      }
+      case 'Drop': {
+        const traveler = unit.rescuing;
+        if (!traveler) return;
+        game.actionLog.doAction(new DropAction(unit, traveler, game.board, [x, y]));
+        // EOtF's engine (abilities.DropAbility.do): a Canto unit marks
+        // HasTraded and returns to the action menu instead of waiting.
+        if (isForkEngine() && unitHasCanto(unit, traveler, game)) game.actionLog.doAction(new HasTradedAction(unit));
+        else game.actionLog.doAction(new WaitAction(unit));
+        break;
+      }
+      case 'Separate': {
+        const traveler = unit.rescuing;
+        if (!traveler) return;
+        game.actionLog.doAction(new SeparatePairUpAction(unit, traveler, game.board, game.db, [x, y], true));
+        game.actionLog.doAction(new WaitAction(unit));
+        break;
+      }
+      case 'Rescue': {
+        if (!target) return;
+        game.actionLog.doAction(new RescueAction(unit, target, game.board));
+        if (isForkEngine() && unitHasCanto(unit, target, game)) game.actionLog.doAction(new HasTradedAction(unit));
+        else game.actionLog.doAction(new WaitAction(unit));
+        break;
+      }
+      case 'Pair Up': {
+        if (!target) return;
+        game.actionLog.doAction(new PairUpAction(unit, target, game.board, game.db));
+        break;
+      }
+      case 'Take': {
+        if (!target?.rescuing) return;
+        // Neither Take nor Give is the major action: back to the menu.
+        game.actionLog.doAction(new HasTradedAction(unit));
+        game.actionLog.doAction(new TransferTravelerAction(target, unit, target.rescuing, 'take'));
+        break;
+      }
+      case 'Give': {
+        if (!target || !unit.rescuing) return;
+        game.actionLog.doAction(new HasTradedAction(unit));
+        game.actionLog.doAction(new TransferTravelerAction(unit, target, unit.rescuing, 'give'));
+        break;
+      }
+      case 'Transfer': {
+        if (!target) return;
+        game.actionLog.doAction(new HasTradedAction(unit));
+        game.actionLog.doAction(new TransferPairUpAction(unit, target, game.db));
+        break;
+      }
+    }
+    game.state.back();
+  }
+
+  override draw(surf: Surface): Surface {
+    const game = getGame();
+    surf = drawMap(surf, true);
+    const unit: UnitObject | null = game.selectedUnit;
+    if (unit && this.ability) {
+      const [x, y] = this.cursorPos();
+      const hovered: UnitObject | null = game.board.getUnit(x, y);
+      const travelerOf = (u: UnitObject | null): UnitObject | null =>
+        (u?.traveler ? game.getUnit(u.traveler) ?? null : null);
+      if (this.ability === 'Rescue' && hovered) {
+        drawCarryPreview(surf, game, 'rescue', unit, hovered,
+          rescueEquation(game, 'RESCUE_AID', unit), rescueEquation(game, 'RESCUE_WEIGHT', hovered));
+      } else if (this.ability === 'Take') {
+        const traveler = travelerOf(hovered);
+        if (traveler) {
+          drawCarryPreview(surf, game, 'rescue', unit, traveler,
+            rescueEquation(game, 'RESCUE_AID', unit), rescueEquation(game, 'RESCUE_WEIGHT', traveler));
+        }
+      } else if (this.ability === 'Give') {
+        const traveler = travelerOf(unit);
+        if (hovered && traveler) {
+          drawCarryPreview(surf, game, 'give', traveler, hovered,
+            rescueEquation(game, 'RESCUE_WEIGHT', traveler), rescueEquation(game, 'RESCUE_AID', hovered));
+        }
+      } else if (this.ability === 'Trade') {
+        const target = hovered ?? unit;
+        if (target !== unit) {
+          const shown = this.travelerMode ? travelerOf(target) : target;
+          if (shown) drawTradePreview(surf, game, shown);
+        } else {
+          const traveler = travelerOf(unit);
+          if (traveler) drawTradePreview(surf, game, traveler);
+        }
+      }
+    }
+    if (this.pennant) {
+      const tilemap = game.tilemap;
+      const drawOnTop = !!tilemap && this.cursorPos()[1] >= tilemap.height - 1;
+      this.pennant.draw(surf, drawOnTop);
+    }
+    return surf;
+  }
+}
+
+// ============================================================================
 // 5a. CombatArtChoiceState — Activate a child skill for the next attack
 // ============================================================================
 
@@ -6430,7 +6725,7 @@ export class WeaponChoiceState extends State {
       }
       game.highlight.clear();
       this.menu = null;
-      game.state.change('targeting');
+      game.state.change('combat_targeting');
     }
   }
 
@@ -6530,10 +6825,11 @@ export class UnlockSelectState extends State {
 // ============================================================================
 
 export class TargetingState extends MapState {
-  readonly name = 'targeting';
+  readonly name = 'combat_targeting';
 
   private targets: UnitObject[] = [];
   private targetIndex: number = 0;
+  private selection: SelectionHelper | null = null;
   private attackerAssist: UnitObject | null = null;
   private defenderAssist: UnitObject | null = null;
   /** Fork multi_target weapons: positions chosen so far. */
@@ -6569,6 +6865,16 @@ export class TargetingState extends MapState {
       game.state.back();
       return;
     }
+    // Python SelectionHelper over the target-position set: start on the
+    // target closest to the cursor (the unit); arrows move by direction.
+    this.selection = new SelectionHelper(this.targets
+      .filter((target) => !!target.position)
+      .map((target) => [target.position![0], target.position![1]] as [number, number]));
+    const byPos = (pos: [number, number] | null): UnitObject | undefined =>
+      pos ? this.targets.find((t) => t.position?.[0] === pos[0] && t.position?.[1] === pos[1]) : undefined;
+    this.targets = this.selection.posList.map((pos) => byPos(pos)).filter((t): t is UnitObject => !!t);
+    const closest = byPos(this.selection.getClosest([unit.position[0], unit.position[1]]));
+    this.targetIndex = closest ? Math.max(0, this.targets.indexOf(closest)) : 0;
 
     // Show attack range highlights
     game.highlight.clear();
@@ -6598,6 +6904,18 @@ export class TargetingState extends MapState {
     game.cursor.combatShow?.();
     // Position cursor on first target
     game.hud.prepareAttackInfo();
+    this.focusTarget();
+  }
+
+  /** Move to the target at the position `next` picks from the current one. */
+  private moveSelection(next: (pos: [number, number]) => [number, number] | null): void {
+    const current = this.targets[this.targetIndex]?.position;
+    if (!current) return;
+    const pos = next([current[0], current[1]]);
+    if (!pos) return;
+    const idx = this.targets.findIndex((t) => t.position?.[0] === pos[0] && t.position?.[1] === pos[1]);
+    if (idx < 0) return;
+    this.targetIndex = idx;
     this.focusTarget();
   }
 
@@ -6654,9 +6972,16 @@ export class TargetingState extends MapState {
     if (wanted > 1 && weapon && target.position) {
       this.chosenPositions.push([target.position[0], target.position[1]]);
       const sameTarget = allowSameTarget(unit, weapon);
-      if (!sameTarget) this.targets = this.targets.filter((candidate) => candidate !== target);
+      const pos: [number, number] = [target.position[0], target.position[1]];
+      if (!sameTarget) {
+        this.targets = this.targets.filter((candidate) => candidate !== target);
+        this.selection?.removeTarget(pos);
+      }
       if (this.chosenPositions.length < wanted && this.targets.length > 0) {
-        this.targetIndex = Math.min(this.targetIndex, this.targets.length - 1);
+        // Python _get_next_target: the cursor moves to the closest remaining target.
+        const closest = this.selection?.getClosest(pos);
+        const idx = closest ? this.targets.findIndex((t) => t.position?.[0] === closest[0] && t.position?.[1] === closest[1]) : -1;
+        this.targetIndex = idx >= 0 ? idx : Math.min(this.targetIndex, this.targets.length - 1);
         this.focusTarget();
         return;
       }
@@ -6716,25 +7041,19 @@ export class TargetingState extends MapState {
     switch (event) {
       case 'UP':
       case 'LEFT':
-        // Cycle to previous target
-        if (this.targets.length > 0) {
-          this.targetIndex =
-            (this.targetIndex - 1 + this.targets.length) % this.targets.length;
-          this.focusTarget();
-        }
-        break;
-
       case 'DOWN':
       case 'RIGHT':
-        // Cycle to next target
-        if (this.targets.length > 0) {
-          this.targetIndex =
-            (this.targetIndex + 1) % this.targets.length;
-          this.focusTarget();
-        }
+        // Python CombatTargetingState: SelectionHelper.get_<direction>.
+        this.moveSelection((pos) => this.selection?.step(event, pos) ?? null);
         break;
 
       case 'AUX': {
+        // Without pair up, AUX steps to the next target (get_next).
+        if (!game.db.getConstant('pairup', false)) {
+          this.moveSelection((pos) => this.selection?.getNext(pos) ?? null);
+          game.audioManager?.playSfx?.('Select 6');
+          break;
+        }
         const unit: UnitObject | null = game.selectedUnit;
         const target = this.targets[this.targetIndex];
         if (!unit || !target || !game.targetSystem?.getStrikePartnerCandidates) break;

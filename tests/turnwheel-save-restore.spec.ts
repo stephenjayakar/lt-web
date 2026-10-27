@@ -171,6 +171,8 @@ test.describe('turnwheel history across save/load', () => {
     // Trade: Vanessa swaps an item with Moulder, then waits.
     await openUnitMenu(page, 'Vanessa');
     await chooseMenuLabel(page, 'Trade');
+    await press(page, 'SELECT'); // targeting: confirm the partner
+    await stepFrames(page, 2);
     await press(page, 'SELECT');
     await press(page, 'SELECT');
     await stepFrames(page, 2);

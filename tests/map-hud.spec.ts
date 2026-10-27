@@ -112,11 +112,11 @@ test('attack forecast slides in at the Python corner', async ({ page }, testInfo
     unit.finished = false;
     game.selectedUnit = unit;
     game.cursor.setPos(6, 6);
-    game.state.change('targeting');
+    game.state.change('combat_targeting');
     harness.stepFrames(2, null);
     return game.state.getCurrentState()?.name;
   });
-  expect(state).toBe('targeting');
+  expect(state).toBe('combat_targeting');
   // Cursor on the target at x=7 (> TILEX // 2 - 1): window at x = -19 - offset.
   let boxes = await layout(page);
   expect(boxes.attack[0]).toBeLessThan(-19);
