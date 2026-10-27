@@ -5465,7 +5465,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1762
+          "line": 1817
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -5606,7 +5606,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1762
+          "line": 1817
         },
         {
           "source": "src/combat/combat-calcs.ts",
@@ -5731,7 +5731,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1468
+          "line": 1523
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -5809,7 +5809,7 @@
       "directReads": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1468
+          "line": 1523
         },
         {
           "source": "src/combat/combat-solver.ts",
@@ -6003,7 +6003,7 @@
       "webReferences": [
         {
           "source": "src/ai/ai-controller.ts",
-          "line": 1092
+          "line": 1147
         },
         {
           "source": "src/combat/animation-combat.ts",
