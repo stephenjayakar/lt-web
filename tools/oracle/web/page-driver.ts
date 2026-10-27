@@ -215,7 +215,7 @@ class Runner {
           else if (u.position) log.doAction(new WarpUnitAction(u, [op.position[0], op.position[1]], g.board));
           else log.doAction(new ArriveOnMapAction(g, u, [op.position[0], op.position[1]]));
         }
-        if ('stats' in op && !('hp' in op)) u.currentHp = u.stats.HP;
+        if ('stats' in op && !('hp' in op)) u.currentHp = u.maxHp;
         if ('hp' in op) log.doAction(new SetCurrentHpAction(u, Number(op.hp)));
         g.refreshAuras?.();
       } else if ('game_var' in op) {
@@ -507,7 +507,7 @@ export function snapshot(e: WebEngine): Json {
       position: pos(u.position),
       dead: !!u.dead,
       hp: u.currentHp,
-      max_hp: u.getMaxHp ? u.getMaxHp() : u.stats.HP,
+      max_hp: u.maxHp,
       level: u.level,
       exp: u.exp,
       klass: u.klass,

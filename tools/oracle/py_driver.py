@@ -570,7 +570,10 @@ class Runner:
                     action.do(action.RemoveSkill(u, nid))
                 if 'position' in op:
                     if op['position'] is None:
-                        action.do(action.RemoveFromMap(u))
+                        # LeaveMap: RemoveFromMap alone clears unit.position
+                        # but leaves the unit on the board grid.
+                        if u.position:
+                            action.do(action.LeaveMap(u))
                     elif u.position:
                         action.do(action.Teleport(u, tuple(op['position'])))
                     else:

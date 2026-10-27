@@ -16,7 +16,16 @@
     "units.*.skill_data.*.sourceType": "Web-only: the web stores a skill's source in skill.data; Python keeps it in the unit's skill source list.",
     "units.*.skill_data.*.sourceNid": "Web-only, see sourceType.",
     "units.*.skill_data.*.ability_item_uid": "Python stores the uid of a skill's ability item (engine-specific uid counter).",
-    "units.*.skill_data.*.abilityItemKey:ability": "Web-only registry key of a skill's ability item (see ability_item_uid)."
+    "units.*.skill_data.*.abilityItemKey:ability": "Web-only registry key of a skill's ability item (see ability_item_uid).",
+    "units.*.skill_data.*.auraSourceType": "Web-only bookkeeping on aura child skills (Python tracks auras in game.boundary / the aura registry).",
+    "units.*.skill_data.*.auraOwnerNid": "Web-only aura bookkeeping, see auraSourceType.",
+    "units.*.skill_data.*.auraParentSkillUid": "Web-only aura bookkeeping (engine-specific uid), see auraSourceType.",
+    "units.*.skill_data.*.itemSource": "Web-only: the item granting a status_on_equip/hold skill (Python keeps it in the unit's skill source list).",
+    "units.*.skill_data.*.itemSourceNid": "Web-only, see itemSource.",
+    "units.*.skill_data.*.itemSourceType": "Web-only, see itemSource."
+  },
+  "false_equals_missing": {
+    "units.*.skill_data.*.active": "Python's CombatArt.init stores active=False on every combat-art skill; the web only sets it while the art is active."
   },
   "zero_equals_missing": {
     "units.*.stats.*": "Python keeps one entry per DB stat; the web may add class-only stats (e.g. LEAD) at 0.",
