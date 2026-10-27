@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * Level-start differential: start every level of a project from one captured
- * run state on both engines, settle to the first player phase, and diff the
- * snapshots level by level.
+ * Level differential: start every level of a project from one captured
+ * run state on both engines, settle to the first player phase, run the
+ * scenario's "level_actions" (e.g. end the turn) on every turn-based level,
+ * and diff the snapshots level by level and step by step.
  *
  *   node tools/oracle/level-sweep.mjs [scenario.json] [--levels=0,1,Act_1]
  *        [--chunk=10] [--workers=3] [--report=FILE] [-v]
  *
- * The scenario (default scenarios/eotf-level-sweep.json) holds the project,
+ * The scenario (default sweeps/eotf-level-sweep.json) holds the project,
  * the run state (capture_run_state.py output, see README "Run states"),
  * seed, mode and known diffs; its "levels" may be "all" (every level in the
  * project except DEBUG). Levels run in chunks: one Python process and one
@@ -131,15 +132,26 @@ async function main() {
           .catch((e) => ({ engine: 'web', steps: [], error: String(e?.stack ?? e) })),
       ]);
       fs.writeFileSync(path.join(dir, `chunk-${idx}.web.json`), JSON.stringify(web, null, 1));
-      chunks[idx].forEach((level, i) => {
-        const report = diffRuns(
-          { ...py, error: py.error, steps: py.steps?.[i] ? [py.steps[i]] : [] },
-          { ...web, error: web.error, steps: web.steps?.[i] ? [web.steps[i]] : [] },
-          base,
-        );
-        report.snaps = [py.steps?.[i]?.snapshot, web.steps?.[i]?.snapshot];
+      // Group each side's steps by level (a level contributes its start
+      // snapshot plus one per level action that ran).
+      const byLevel = (run) => {
+        const m = new Map();
+        for (const st of run.steps ?? []) {
+          const l = st.action?.level;
+          if (!m.has(l)) m.set(l, []);
+          m.get(l).push(st);
+        }
+        return m;
+      };
+      const pySteps = byLevel(py);
+      const webSteps = byLevel(web);
+      for (const level of chunks[idx]) {
+        const ps = pySteps.get(level) ?? [];
+        const ws = webSteps.get(level) ?? [];
+        const report = diffRuns({ ...py, steps: ps }, { ...web, steps: ws }, base);
+        report.snaps = report.steps.map((_, i) => [ps[i]?.snapshot, ws[i]?.snapshot]);
         results.set(level, report);
-      });
+      }
       process.stderr.write(`chunk ${idx + 1}/${chunks.length} done (${Math.round((Date.now() - started) / 1000)}s)\n`);
     }
   }
@@ -150,38 +162,56 @@ async function main() {
     await stop();
   }
 
-  const lines = [`# Level-start differential: ${name}`, '',
-    `Project ${project}, python:${backend} vs web, seed ${base.seed ?? 0}, run state ${typeof base.run_state === 'string' ? base.run_state : 'inline'}.`, '',
-    '| Level | Result | Diffs | Unit setup | Known | Main differences |', '|---|---|---|---|---|---|'];
+  const actions = (base.level_actions ?? []).map((a) => a.do);
+  const lines = [`# Level differential: ${name}`, '',
+    `Project ${project}, python:${backend} vs web, seed ${base.seed ?? 0}, run state ${typeof base.run_state === 'string' ? base.run_state : 'inline'}, ` +
+    `steps per turn-based level: start${actions.map((a) => `, ${a}`).join('')}.`, '',
+    'Per step: MATCH, SETUP (only generic unit setup differs) or DIFF n (+k new since the previous step). ' +
+    'Main differences list the new diff categories of the last step that has any.', '',
+    `| Level | start | ${actions.join(' | ')}${actions.length ? ' | ' : ''}Main differences |`,
+    `|---|---|${actions.map(() => '---|').join('')}---|`];
   let worst = 0;
-  const tally = { MATCH: 0, SETUP: 0, DIFF: 0, ERROR: 0 };
+  const tally = new Map();
   const allCats = new Map();
   for (const level of levels) {
     const r = results.get(level);
-    const step = r?.steps?.[0];
-    const errs = [...(r?.errors ?? []), ...(step?.errors ?? [])];
-    const all = step?.diffs ?? [];
-    const setup = all.filter((d) => isUnitSetup(d, ...(r?.snaps ?? [])));
-    const diffs = all.filter((d) => !setup.includes(d));
-    const result = errs.length ? 'ERROR' : diffs.length ? 'DIFF' : setup.length ? 'SETUP' : 'MATCH';
-    tally[result]++;
-    worst = Math.max(worst, result === 'ERROR' ? 2 : result === 'MATCH' ? 0 : 1);
-    const cats = categories(diffs);
-    for (const [k, n] of cats) allCats.set(k, (allCats.get(k) ?? 0) + n);
-    const main = errs.length
-      ? errs.map((e) => e.split('\n')[0].slice(0, 120)).join('; ')
-      : cats.slice(0, 4).map(([k, n]) => `${k} (${n})`).join(', ');
-    lines.push(`| ${level} | ${result} | ${diffs.length} | ${setup.length} | ${step?.known?.length ?? 0} | ${main.replace(/\|/g, '/')} |`);
+    const cells = [];
+    let main = '';
+    let prevPaths = new Set();
+    const n = Math.max(1, 1 + actions.length);
+    for (let i = 0; i < n; i++) {
+      const step = r?.steps?.[i];
+      if (!step) {
+        cells.push(i === 0 ? 'ERROR' : '-');
+        continue;
+      }
+      const errs = [...(i === 0 ? r?.errors ?? [] : []), ...(step.errors ?? [])];
+      const setup = step.diffs.filter((d) => isUnitSetup(d, ...(r.snaps[i] ?? [])));
+      const diffs = step.diffs.filter((d) => !setup.includes(d));
+      const fresh = diffs.filter((d) => !prevPaths.has(d.path));
+      prevPaths = new Set(step.diffs.map((d) => d.path));
+      const result = errs.length ? 'ERROR' : diffs.length ? 'DIFF' : setup.length ? 'SETUP' : 'MATCH';
+      const key = `${i === 0 ? 'start' : actions[i - 1]}:${result}`;
+      tally.set(key, (tally.get(key) ?? 0) + 1);
+      worst = Math.max(worst, result === 'ERROR' ? 2 : result === 'MATCH' ? 0 : 1);
+      cells.push(result === 'DIFF' ? `DIFF ${diffs.length}${i ? ` (+${fresh.length})` : ''}` : result);
+      if (errs.length) main = errs.map((e) => e.split('\n')[0].slice(0, 120)).join('; ');
+      else if (fresh.length) {
+        const cats = categories(fresh);
+        for (const [k, c] of cats) allCats.set(k, (allCats.get(k) ?? 0) + c);
+        main = cats.slice(0, 4).map(([k, c]) => `${k} (${c})`).join(', ');
+      }
+    }
+    lines.push(`| ${level} | ${cells.join(' | ')} | ${main.replace(/\|/g, '/')} |`);
   }
-  lines.push('', `Totals: ${tally.MATCH} match, ${tally.SETUP} differ only in generic unit setup, ${tally.DIFF} differ, ${tally.ERROR} error (${levels.length} levels).`, '');
-  lines.push('Diff categories over all levels (generic unit setup excluded):', '');
-  for (const [k, n] of [...allCats.entries()].sort((a, b) => b[1] - a[1])) lines.push(`- ${k}: ${n}`);
+  lines.push('', `Totals (${levels.length} levels): ${[...tally.entries()].map(([k, v]) => `${k} ${v}`).join(', ')}.`, '');
+  lines.push('New diff categories over all levels and steps (generic unit setup excluded):', '');
+  for (const [k, c] of [...allCats.entries()].sort((a, b) => b[1] - a[1])) lines.push(`- ${k}: ${c}`);
   const reportFile = opt('report', path.join(dir, 'report.md'));
   fs.writeFileSync(reportFile, lines.join('\n') + '\n');
-  // Full per-level diffs for follow-up work.
+  // Full per-level diffs (every step, unit setup included) for follow-up work.
   fs.writeFileSync(path.join(dir, 'diffs.json'), JSON.stringify(Object.fromEntries(
-    levels.map((l) => [l, results.get(l)?.steps?.[0] ?? { errors: results.get(l)?.errors }])), null, 1));
-  // (diffs.json keeps every diff, unit setup included.)
+    levels.map((l) => [l, results.get(l) ? { errors: results.get(l).errors, steps: results.get(l).steps } : null])), null, 1));
   console.log(lines.join('\n'));
   console.log(`(report ${reportFile}; raw runs and diffs.json in ${dir})`);
   process.exit(worst);

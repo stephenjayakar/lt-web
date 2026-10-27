@@ -830,14 +830,18 @@ class Runner:
         e.press('SELECT')
         e.settle(until=lambda en: en.top() == 'option_menu')
         e.choose('End')
-        # Back in a player phase, or the level ended into free roam (a hub).
-        e.settle(until=lambda en: (en.top() == 'free' and en.game.phase.get_current() == 'player') or en.top() == 'free_roam',
-                 max_frames=a.get('max_frames', 20000))
+        # Back to the player phase, or a level whose turn ended in free roam
+        # or a game over (stop there rather than pressing on into the title).
+        e.settle(until=lambda en: (en.top() in ('free', 'free_roam') and en.game.phase.get_current() == 'player')
+                 or en.top() == 'game_over', max_frames=a.get('max_frames', 20000))
 
     def _empty_tile(self):
+        """First unoccupied tile inside the board's movement bounds (the
+        cursor cannot leave them, so a tile outside could land on a unit)."""
         g = self.e.game
-        for y in range(g.tilemap.height):
-            for x in range(g.tilemap.width):
+        min_x, min_y, max_x, max_y = g.board.bounds
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
                 if not g.board.get_unit((x, y)):
                     return (x, y)
         raise OracleError('no empty tile')
@@ -864,6 +868,32 @@ class Runner:
             e.settle(skip=a.get('skip', 'SELECT'), max_frames=a.get('max_frames', 6000))
         finally:
             e._suppress_events = was
+
+    def do_attack_or_wait(self, a) -> None:
+        """A simple scripted player move: ``unit`` (default Player) attacks
+        with its first weapon the nearest valid target (Manhattan distance,
+        then x, then y) if its menu offers Attack, else waits in place."""
+        e = self.e
+        nid = a.get('unit', 'Player')
+        u = e.game.get_unit(nid)
+        if not u or not u.position or u.finished or u.team != 'player':
+            return
+        self.in_menu_for(nid)
+        _, values = e.menu_values()
+        if 'Attack' in [str(v) for v in values]:
+            e.choose('Attack')
+            e.settle()
+            if e.top() == 'weapon_choice':
+                e.press('SELECT')
+                e.settle()
+            e.expect('combat_targeting')
+            st = e.game.state.current_state()
+            ux, uy = u.position
+            pos = min(st.selection.pos_list, key=lambda p: (abs(p[0] - ux) + abs(p[1] - uy), p[0], p[1]))
+            self._target_and_fire(list(pos))
+        else:
+            e.choose('Wait')
+            e.settle()
 
     def do_choose(self, a) -> None:
         """Pick a named option in whatever menu the top state shows."""
@@ -1098,6 +1128,24 @@ def run_scenario(scn: dict, backend: str = 'upstream', base: Path | None = None)
             except Exception as exc:
                 step.setdefault('error', 'snapshot failed: %s' % exc)
             out['steps'].append(step)
+            # Sweep: the same actions on every level that settled into a
+            # turn-based phase (free roam levels have no turns to end).
+            if sweep and not step.get('error') and e.top() != 'free_roam':
+                r = Runner(e, scn)
+                for a in scn.get('level_actions', []):
+                    act = {'action': dict(a, level=str(level))}
+                    try:
+                        r.run_action(a)
+                    except Exception as exc:
+                        traceback.print_exc()
+                        act['error'] = '%s: %s' % (type(exc).__name__, exc)
+                    try:
+                        act['snapshot'] = snapshot(e)
+                    except Exception as exc:
+                        act.setdefault('error', 'snapshot failed: %s' % exc)
+                    out['steps'].append(act)
+                    if act.get('error'):
+                        break
         if sweep:
             failed = [s['action']['level'] for s in out['steps'] if s.get('error')]
             if failed:

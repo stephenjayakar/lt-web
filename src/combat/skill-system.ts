@@ -232,6 +232,23 @@ export function initializeSkillData(
   skill.data.set('stat_changes', changes);
 }
 
+/**
+ * Python UnitObject.remove_skill: a RemoveSkill with no source (an expiring
+ * status, the remove_skill event command) only removes an instance whose source type is removable
+ * (class, personal, fatigue, default). One granted by an item, terrain,
+ * region, aura, rescue or the game stays on (at 0 turns) until its own
+ * source takes it away.
+ */
+export function sourceAllowsPlainRemoval(skill: SkillObject): boolean {
+  const data = skill.data;
+  const types = [
+    data.get('sourceType'), data.get('itemSourceType'), data.get('positionStatusSourceType'),
+    data.get('auraSourceType'), data.get('rescueSourceType'),
+  ];
+  return !types.some((type) => typeof type === 'string' &&
+    ['item', 'terrain', 'region', 'aura', 'traveler', 'global'].includes(type));
+}
+
 /** Python skill_system.additional_tags, including EotF RedirectDamage. */
 export function additionalTags(unit: UnitObject, game?: any): Set<string> {
   const tags = new Set<string>();
@@ -1180,114 +1197,122 @@ export function statChange(unit: UnitObject, statNid: string, game?: any): numbe
     activeStats.add(statNid);
     evaluatingStatChanges.set(unit, activeStats);
   }
-  let total = 0;
-  for (const skill of unit.skills) {
-    const contributesToStat =
-      skill.hasComponent('stat_change') ||
-      skill.hasComponent('subtle_stat_change') ||
-      skill.hasComponent('upkeep_stat_change') ||
-      skill.hasComponent('stat_change_expression') ||
-      skill.hasComponent('stat_multiplier') ||
-      skill.data.has('stat_changes') ||
-      skill.data.has('_dynamic_stat_changes');
-    if (!contributesToStat || !skillMayChangeStat(skill, statNid)) continue;
-    // DynamicStatChange freezes only after all condition/combat/charge gates
-    // pass. Its prepared map is therefore also the active snapshot needed by
-    // subsequent getStatValue calls, which do not carry target context.
-    const hasPreparedDynamic = skill.data.has('_dynamic_stat_changes');
-    const needsActiveGate =
-      skill.hasComponent('condition') ||
-      skill.hasComponent('is_terrain') ||
-      skill.hasComponent('combat_condition') ||
-      skill.hasComponent('build_charge') ||
-      hasDrainingCharge(skill) ||
-      skill.hasComponent('self_nihil') ||
-      skill.data.get('multiSkillSource') instanceof SkillObject;
-    const active = reentrant || hasPreparedDynamic || !needsActiveGate || evaluatedSkillActive(
-      skill,
-      unit,
-      { game, item: unit.equippedWeapon },
-      new Map<string, unknown>([
-        ['item', unit.equippedWeapon ?? null],
-        ['skill', skill],
-      ]),
-    );
-    if (!active) continue;
-    const changes = skill.getComponent<any>('stat_change');
-    if (Array.isArray(changes)) {
-      for (const entry of changes) {
-        if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
-          total += entry[1];
-        }
-      }
-    }
-    const subtleChanges = skill.getComponent<any>('subtle_stat_change');
-    if (Array.isArray(subtleChanges)) {
-      for (const entry of subtleChanges) {
-        if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
-          total += entry[1];
-        }
-      }
-    }
-    const upkeepChanges = skill.getComponent<any>('upkeep_stat_change');
-    const counter = Number(skill.data.get('counter') ?? 0);
-    if (Array.isArray(upkeepChanges) && Number.isFinite(counter)) {
-      for (const entry of upkeepChanges) {
-        if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
-          total += entry[1] * counter;
-        }
-      }
-    }
-    const frozenChanges = skill.data.get('stat_changes');
-    if (frozenChanges instanceof Map) {
-      const value = Number(frozenChanges.get(statNid) ?? 0);
-      if (Number.isFinite(value)) total += value;
-    } else if (frozenChanges && typeof frozenChanges === 'object') {
-      const value = Number((frozenChanges as Record<string, unknown>)[statNid] ?? 0);
-      if (Number.isFinite(value)) total += value;
-    }
-    const dynamicChanges = skill.data.get('_dynamic_stat_changes');
-    if (dynamicChanges instanceof Map) {
-      const value = Number(dynamicChanges.get(statNid) ?? 0);
-      if (Number.isFinite(value)) total += value;
-    } else if (dynamicChanges && typeof dynamicChanges === 'object') {
-      const value = Number(
-        (dynamicChanges as Record<string, unknown>)[statNid] ?? 0,
+  // Always release the re-entrancy mark: if an evaluation threw, every
+  // later read of the stat would skip its multipliers.
+  try {
+    let total = 0;
+    for (const skill of unit.skills) {
+      const contributesToStat =
+        skill.hasComponent('stat_change') ||
+        skill.hasComponent('subtle_stat_change') ||
+        skill.hasComponent('upkeep_stat_change') ||
+        skill.hasComponent('stat_change_expression') ||
+        skill.hasComponent('stat_multiplier') ||
+        skill.data.has('stat_changes') ||
+        skill.data.has('_dynamic_stat_changes');
+      if (!contributesToStat || !skillMayChangeStat(skill, statNid)) continue;
+      // DynamicStatChange freezes only after all condition/combat/charge gates
+      // pass. Its prepared map is therefore also the active snapshot needed by
+      // subsequent getStatValue calls, which do not carry target context.
+      const hasPreparedDynamic = skill.data.has('_dynamic_stat_changes');
+      const needsActiveGate =
+        skill.hasComponent('condition') ||
+        skill.hasComponent('is_terrain') ||
+        skill.hasComponent('combat_condition') ||
+        skill.hasComponent('build_charge') ||
+        hasDrainingCharge(skill) ||
+        skill.hasComponent('self_nihil') ||
+        skill.data.get('multiSkillSource') instanceof SkillObject;
+      const active = reentrant || hasPreparedDynamic || !needsActiveGate || evaluatedSkillActive(
+        skill,
+        unit,
+        { game, item: unit.equippedWeapon },
+        new Map<string, unknown>([
+          ['item', unit.equippedWeapon ?? null],
+          ['skill', skill],
+        ]),
       );
-      if (Number.isFinite(value)) total += value;
-    }
-    const expressionChanges = skill.getComponent<unknown>('stat_change_expression');
-    if (!reentrant && Array.isArray(expressionChanges) &&
-        skillConditionActive(skill, unit, { game })) {
-      // Python StatChangeExpression.stat_change: every entry is evaluated
-      // as evaluate(expr, unit) inside one try; any failure zeroes all.
-      if (expressionChanges.some((entry) => Array.isArray(entry) && entry[0] === statNid)) {
-        const changes = evaluateIntPairs(expressionChanges, {
-          game,
-          unit1: unit,
-          gameVars: game?.gameVars,
-          levelVars: game?.levelVars,
-        });
-        total += changes[statNid] ?? 0;
+      if (!active) continue;
+      const changes = skill.getComponent<any>('stat_change');
+      if (Array.isArray(changes)) {
+        for (const entry of changes) {
+          if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
+            total += entry[1];
+          }
+        }
       }
-    }
-    const multipliers = skill.getComponent<unknown>('stat_multiplier');
-    if (!reentrant && Array.isArray(multipliers) &&
-        skillConditionActive(skill, unit, { game })) {
-      for (const entry of multipliers) {
-        if (!Array.isArray(entry) || entry[0] !== statNid) continue;
-        const multiplier = Number(entry[1]);
-        if (Number.isFinite(multiplier)) {
-          total += Math.trunc((multiplier - 1) * Number(unit.stats[statNid] ?? 0));
+      const subtleChanges = skill.getComponent<any>('subtle_stat_change');
+      if (Array.isArray(subtleChanges)) {
+        for (const entry of subtleChanges) {
+          if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
+            total += entry[1];
+          }
+        }
+      }
+      const upkeepChanges = skill.getComponent<any>('upkeep_stat_change');
+      const counter = Number(skill.data.get('counter') ?? 0);
+      if (Array.isArray(upkeepChanges) && Number.isFinite(counter)) {
+        for (const entry of upkeepChanges) {
+          if (Array.isArray(entry) && entry[0] === statNid && typeof entry[1] === 'number') {
+            total += entry[1] * counter;
+          }
+        }
+      }
+      const frozenChanges = skill.data.get('stat_changes');
+      if (frozenChanges instanceof Map) {
+        const value = Number(frozenChanges.get(statNid) ?? 0);
+        if (Number.isFinite(value)) total += value;
+      } else if (frozenChanges && typeof frozenChanges === 'object') {
+        const value = Number((frozenChanges as Record<string, unknown>)[statNid] ?? 0);
+        if (Number.isFinite(value)) total += value;
+      }
+      const dynamicChanges = skill.data.get('_dynamic_stat_changes');
+      if (dynamicChanges instanceof Map) {
+        const value = Number(dynamicChanges.get(statNid) ?? 0);
+        if (Number.isFinite(value)) total += value;
+      } else if (dynamicChanges && typeof dynamicChanges === 'object') {
+        const value = Number(
+          (dynamicChanges as Record<string, unknown>)[statNid] ?? 0,
+        );
+        if (Number.isFinite(value)) total += value;
+      }
+      const expressionChanges = skill.getComponent<unknown>('stat_change_expression');
+      if (!reentrant && Array.isArray(expressionChanges) &&
+          skillConditionActive(skill, unit, { game })) {
+        // Python StatChangeExpression.stat_change: every entry is evaluated
+        // as evaluate(expr, unit) inside one try; any failure zeroes all.
+        if (expressionChanges.some((entry) => Array.isArray(entry) && entry[0] === statNid)) {
+          const changes = evaluateIntPairs(expressionChanges, {
+            game,
+            unit1: unit,
+            gameVars: game?.gameVars,
+            levelVars: game?.levelVars,
+          });
+          total += changes[statNid] ?? 0;
+        }
+      }
+      const multipliers = skill.getComponent<unknown>('stat_multiplier');
+      // A multiplier reads the raw stat only, so it is safe (and needed: max
+      // HP read mid-evaluation must keep HP_Double) on a re-entrant pass, where
+      // conditions are taken as active like the other components above.
+      if (Array.isArray(multipliers) &&
+          (reentrant || skillConditionActive(skill, unit, { game }))) {
+        for (const entry of multipliers) {
+          if (!Array.isArray(entry) || entry[0] !== statNid) continue;
+          const multiplier = Number(entry[1]);
+          if (Number.isFinite(multiplier)) {
+            total += Math.trunc((multiplier - 1) * Number(unit.stats[statNid] ?? 0));
+          }
         }
       }
     }
+    return total;
+  } finally {
+    if (!reentrant) {
+      activeStats.delete(statNid);
+      if (activeStats.size === 0) evaluatingStatChanges.delete(unit);
+    }
   }
-  if (!reentrant) {
-    activeStats.delete(statNid);
-    if (activeStats.size === 0) evaluatingStatChanges.delete(unit);
-  }
-  return total;
 }
 
 /** Freeze EotF DynamicStatChange expressions for one combat encounter. */

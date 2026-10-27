@@ -1662,6 +1662,20 @@ export class CombatPhaseSolver {
     const result: CombatStrike[] = [];
     let propagatedAttacks = 0;
 
+    // EOtF's engine runs cleanup_combat (Miracle and its kin) for the
+    // attacker, the main defender and every splash unit; coreGen covers the
+    // attacker and main defender when it ran unscripted.
+    const forkMiracleCleanup = (includeAttacker: boolean): void => {
+      if (!fork) return;
+      if (includeAttacker) {
+        const attackerRefs = this.simHps.get(attacker);
+        const attackerRef = attackerRefs?.[attackerRefs.length - 1];
+        if (attackerRef) this.applyMiracleCleanup(attacker, attackerRef);
+      }
+      for (const [unit, hpRef] of splashHp) {
+        if (unit !== attacker) this.applyMiracleCleanup(unit, hpRef);
+      }
+    };
     const appendSplash = (
       forcedToken?: string,
       sourceStrike?: CombatStrike,
@@ -1732,6 +1746,8 @@ export class CombatPhaseSolver {
           if (appended.length > 0) yield appended;
         }
       }
+      forkMiracleCleanup(true);
+      if (fork && mainDefender) this.applyMiracleCleanup(mainDefender, defenderHp);
       this.strikes = result;
       return;
     }
@@ -1767,19 +1783,7 @@ export class CombatPhaseSolver {
       }
     }
 
-    if (fork) {
-      // EOtF's engine runs cleanup_combat (Miracle and its kin) for the
-      // attacker, the main defender and every splash unit. coreGen already
-      // covered the attacker and main defender.
-      if (!mainDefender) {
-        const attackerRefs = this.simHps.get(attacker);
-        const attackerRef = attackerRefs?.[attackerRefs.length - 1];
-        if (attackerRef) this.applyMiracleCleanup(attacker, attackerRef);
-      }
-      for (const [unit, hpRef] of splashHp) {
-        if (unit !== attacker) this.applyMiracleCleanup(unit, hpRef);
-      }
-    }
+    forkMiracleCleanup(!mainDefender);
     this.strikes = result;
   }
 

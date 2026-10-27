@@ -47,6 +47,8 @@ export interface Scenario {
   levels?: string[];
   /** Press Fight when a level settles in preparations. */
   through_prep?: boolean;
+  /** Sweep: actions run on every turn-based level after it starts. */
+  level_actions?: Action[];
   /** Captured run state (capture_run_state.py), inlined by web-driver.mjs. */
   run_state?: RunState;
 }
@@ -433,17 +435,21 @@ class Runner {
     e.press('SELECT');
     await e.settle({ until: (en) => en.top() === 'option_menu' });
     e.choose('End');
+    // Back to the player phase, or a level whose turn ended in free roam or
+    // a game over (stop there rather than pressing on into the title).
     await e.settle({
-      // Back in a player phase, or the level ended into free roam (a hub).
-      until: (en) => (en.top() === 'free' && en.game.phase.getCurrent() === 'player') || en.top() === 'free_roam',
+      until: (en) => (['free', 'free_roam'].includes(en.top() ?? '') && en.game.phase.getCurrent() === 'player') ||
+        en.top() === 'game_over',
       maxFrames: a.max_frames ?? 20000,
     });
   }
 
+  /** First unoccupied tile inside the board's movement bounds (py_driver). */
   private emptyTile(): [number, number] {
     const g = this.e.game;
-    for (let y = 0; y < g.tilemap.height; y++) {
-      for (let x = 0; x < g.tilemap.width; x++) {
+    const [minX, minY, maxX, maxY] = g.board.bounds ?? [0, 0, g.tilemap.width - 1, g.tilemap.height - 1];
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
         if (!g.board.getUnit(x, y)) return [x, y];
       }
     }
@@ -481,6 +487,42 @@ class Runner {
       await e.settle({ skip: a.skip, maxFrames: a.max_frames });
     } finally {
       e.suppressEvents = was;
+    }
+  }
+
+  /**
+   * py_driver do_attack_or_wait: `unit` (default Player) attacks with its
+   * first weapon the nearest valid target (Manhattan distance, then x, then
+   * y) if its menu offers Attack, else waits in place.
+   */
+  async do_attack_or_wait(a: Action): Promise<void> {
+    const e = this.e;
+    const nid = a.unit ?? 'Player';
+    const u = e.game.units.get(nid);
+    if (!u || !u.position || u.finished || u.team !== 'player') return;
+    await this.inMenuFor(nid);
+    const { menu } = e.activeMenu();
+    const labels: string[] = menu.options.map((o: any) => String(o.label ?? o.entry?.text ?? ''));
+    if (labels.includes('Attack')) {
+      e.choose('Attack');
+      await e.settle();
+      if (e.top() === 'weapon_choice') {
+        e.press('SELECT');
+        await e.settle();
+      }
+      e.expect('targeting', 'combat_targeting');
+      const st: any = e.game.state.getCurrentState();
+      const [ux, uy] = u.position;
+      const positions: [number, number][] = (st.targets ?? []).map((t: any) => t?.position ?? t)
+        .filter((p: any) => Array.isArray(p));
+      positions.sort((p, q) =>
+        (Math.abs(p[0] - ux) + Math.abs(p[1] - uy)) - (Math.abs(q[0] - ux) + Math.abs(q[1] - uy)) ||
+        p[0] - q[0] || p[1] - q[1]);
+      if (!positions.length) throw new OracleError('Attack offered but no targets');
+      await this.targetAndFire(positions[0]);
+    } else {
+      e.choose('Wait');
+      await e.settle();
     }
   }
 
@@ -647,10 +689,12 @@ export function snapshot(e: WebEngine): Json {
       equipped_weapon: u.equippedWeapon?.nid ?? null,
       skills: u.skills.map((s: any) => s.nid),
       skill_data: skillData,
+      // Python's has_* are derived properties: finished implies attacked,
+      // attacked implies traded, traded implies moved.
       finished: !!u.finished,
-      has_attacked: !!u.hasAttacked,
-      has_traded: !!u.hasTraded,
-      has_moved: !!u.hasMoved,
+      has_attacked: !!(u.finished || u.hasAttacked),
+      has_traded: !!(u.finished || u.hasAttacked || u.hasTraded),
+      has_moved: !!(u.finished || u.hasAttacked || u.hasTraded || u.hasMoved),
       ai: u.ai ?? null,
       ai_group: u.aiGroup ?? null,
       traveler: u.traveler ?? null,
@@ -911,6 +955,27 @@ export async function runScenario(scn: Scenario): Promise<Json> {
           step.error ??= `snapshot failed: ${err?.message ?? err}`;
         }
         out.steps.push(step);
+        // The same actions on every level that settled into a turn-based
+        // phase (free roam levels have no turns to end), as py_driver does.
+        if (!step.error && e.top() !== 'free_roam') {
+          const runner = new Runner(e);
+          for (const a of scn.level_actions ?? []) {
+            const act: any = { action: { ...a, level: String(level) } };
+            try {
+              await runner.run(a);
+            } catch (err: any) {
+              console.error(err);
+              act.error = `${err?.name ?? 'Error'}: ${err?.message ?? err}`;
+            }
+            try {
+              act.snapshot = snapshot(e);
+            } catch (err: any) {
+              act.error ??= `snapshot failed: ${err?.message ?? err}`;
+            }
+            out.steps.push(act);
+            if (act.error) break;
+          }
+        }
       }
       const failed = out.steps.filter((st: any) => st.error).map((st: any) => st.action.level);
       if (failed.length) out.level_errors = failed;

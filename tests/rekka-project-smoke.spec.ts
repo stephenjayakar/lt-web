@@ -66,7 +66,9 @@ test.skip(!rekkaInstalled, 'lt-maker/rekka.ltproj is not installed');
 
 test.describe('Rekka all-level compatibility', () => {
   test('all levels clean boot without runtime failures @milestone', async ({ page }) => {
-    test.setTimeout(10 * 60_000);
+    // One full page boot per level (5 min for all 48 under a loaded gate):
+    // budget per level, like the EOtF sweep.
+    test.setTimeout(Math.max(10 * 60_000, (levels.length + 1) * 15_000));
     const failures: string[] = [];
     let currentLevel = 'startup';
     page.on('pageerror', (error) => {
@@ -97,7 +99,9 @@ test.describe('Rekka all-level compatibility', () => {
   });
 
   test('all playable level-start event queues settle @milestone', async ({ page }) => {
-    test.setTimeout(8 * 60_000);
+    // A page boot plus 1200 settle frames per level: the fixed 8 min ran out
+    // under a loaded release gate, so budget per level.
+    test.setTimeout(Math.max(8 * 60_000, levels.length * 20_000));
     const failures: string[] = [];
     let currentLevel = 'startup';
     page.on('pageerror', (error) => {
