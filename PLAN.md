@@ -228,6 +228,9 @@ The release gate is green: build, all four audits, the full serial suite,
   cursor back on the unit (menu after trade); boss/rescue/droppable icons at
   (left - 8, top - 8). Remaining differences are absolute-clock phases (map
   sprite passive frame, menu background scroll, info flash, game over fog).
+- [ ] Fork screen pass leftovers: the absolute-clock phases (map sprite
+  passive frame, menu background scroll, info flash, game over fog) still
+  differ from the fork oracle shots.
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in
