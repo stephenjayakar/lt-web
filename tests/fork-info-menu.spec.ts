@@ -49,7 +49,8 @@ async function openEotfInfo(page: Page): Promise<void> {
     g.memory.set('info_menu_state', 'personal_data');
     g.state.change('info_menu');
   });
-  await step(page, 4);
+  // info_menu starts under transition_in (8 frames).
+  await step(page, 12);
 }
 
 const input = async (page: Page, event: string): Promise<void> => {
@@ -213,7 +214,8 @@ test('default project keeps the upstream info menu, level screen and ExpBar', as
     g.memory.set('info_menu_state', 'personal_data');
     g.state.change('info_menu');
   });
-  await step(page, 4);
+  // info_menu starts under transition_in (8 frames).
+  await step(page, 12);
   const personal = await registry(page, 'personal_data');
   expect(personal.some((bb) => bb.text.includes('typings'))).toBe(false);
   await input(page, 'RIGHT');

@@ -177,6 +177,9 @@ abstract class ConvoyItemsState extends State {
     }
     this.mode = 'free';
     this.subMenu = null;
+    // Python PrepItemsState.start: fade in.
+    game.state.change('transition_in');
+    return 'repeat';
   }
 
   override begin(): StateResult {
@@ -261,7 +264,8 @@ abstract class ConvoyItemsState extends State {
       if (this.mode === 'free') {
         sfx('Select 4');
         game.memory.delete('supply_unit');
-        game.state.back();
+        // Python: transition_pop.
+        game.state.change('transition_pop');
       } else if (this.mode === 'owner_item' || this.mode === 'convoy_item') {
         this.subMenu = null;
         this.mode = 'free';

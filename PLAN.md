@@ -220,6 +220,14 @@ The release gate is green: build, all four audits, the full serial suite,
   the frame's states update; same-frame 'repeat' hand-offs (event pauses
   and ends, combat clean-up, dying, AI phase end); PhaseIn timed from its
   begin frame.
+- [x] Fork oracle screen pass over the info menu, trade, supply, turnwheel,
+  game over and objective menu (`tests/fork-ui-screens.spec.ts`): info menu
+  and map Supply open through transition_to and fade in, BACK leaves through
+  transition_pop; the fork's info portrait has no smile; the fork objective
+  menu's leader sprite (x 124) and name (42 px in); MenuState.begin puts the
+  cursor back on the unit (menu after trade); boss/rescue/droppable icons at
+  (left - 8, top - 8). Remaining differences are absolute-clock phases (map
+  sprite passive frame, menu background scroll, info flash, game over fog).
 - [x] Promotion items and non-silent event `promote`/`change_class` play
   promotion.py's choice, animation, and level screens.
 - [x] Act 2 HUD "glyph": map content under the 75%-opaque unit panel, as in

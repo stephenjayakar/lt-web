@@ -2888,9 +2888,12 @@ export class FreeState extends MapState {
             this.showAllEnemyThreat(game);
           }
         } else {
-          // Any unit: open info menu
+          // Python _handle_info: Select 1, next_state 'info_menu', transition_to.
+          game.audioManager?.playSfx?.('Select 1');
           game.infoMenuUnit = unit;
-          game.state.change('info_menu');
+          game.memory.set('current_unit', unit);
+          game.memory.set('next_state', 'info_menu');
+          game.state.change('transition_to');
         }
         break;
       }
@@ -3363,8 +3366,10 @@ export class CantoWaitState extends State {
     }
     game.highlight.clear();
     if (result.selected === 'supply') {
+      // Python MenuState 'Supply': next_state = 'supply_items'; transition_to.
       if (unit) game.memory.set('supply_unit', unit);
-      game.state.change('supply_items');
+      game.memory.set('next_state', 'supply_items');
+      game.state.change('transition_to');
       return;
     }
     this.menu = null;
@@ -3418,6 +3423,11 @@ export class MenuState extends State {
 
     const ux = unit.position[0];
     const uy = unit.position[1];
+    // Python MenuState.begin: cursor.set_pos(cur_unit.position) (the camera's
+    // set_xy follows), so a menu reopened after trading or targeting is
+    // placed against the unit again.
+    game.cursor.setPos(ux, uy);
+    game.camera?.trackTile?.(ux, uy);
 
     // --- Python MenuState.start option order ---------------------------
     // PRIMARY_ABILITIES (Attack, Spells, Talk), then event regions, then
@@ -3734,9 +3744,11 @@ export class MenuState extends State {
           return this.begin();
         }
       } else if (value === 'supply') {
+        // Python MenuState 'Supply': next_state = 'supply_items'; transition_to.
         game.memory.set('supply_unit', unit);
         this.menu = null;
-        game.state.change('supply_items');
+        game.memory.set('next_state', 'supply_items');
+        game.state.change('transition_to');
       } else if (value.startsWith('region_')) {
         // Region interaction — triggered by sub_nid (Visit, Seize, Shop, Armory, Chest, etc.)
         const regionNid = value.slice('region_'.length);

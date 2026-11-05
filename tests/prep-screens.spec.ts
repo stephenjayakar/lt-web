@@ -210,12 +210,13 @@ test.describe('Preparation screens (Python prep.py parity)', () => {
 
     // INFO opens the info menu for the hovered unit, BACK restores the cursor.
     await step(page, 1, 'INFO');
-    await step(page, 3);
+    // transition_to (8 frames), then info_menu fades in (8 more).
+    await step(page, 18);
     expect((await stack(page)).at(-1)).toBe('info_menu');
     // Python passes scroll_units = the whole party (benched units too).
     expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()['scrollUnits'].length)).toBe(8);
     await step(page, 1, 'BACK');
-    await step(page, 3);
+    await step(page, 20);
     const current = await page.evaluate(() => (window as any).__gameRef.state.getCurrentState().menu.getCurrentUnit().nid);
     expect(current).toBe(blocked);
     await step(page, 1, 'BACK');

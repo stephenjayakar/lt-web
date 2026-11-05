@@ -41,7 +41,8 @@ test('info-menu help text types out after the dialog transition and retypes afte
     g.memory.set('info_menu_state', 'personal_data');
     g.state.change('info_menu');
   });
-  await step(page, 4);
+  // info_menu starts under transition_in (8 frames).
+  await step(page, 12);
   await step(page, 1, 'INFO');
   // Dialog TRANSITION_IN (10 frames) shows no text.
   await step(page, 8);

@@ -66,12 +66,13 @@ test.describe('Supply/convoy and item_discard states', () => {
       menu.moveTo(menu.options.findIndex((o: any) => o.entry?.text === 'Items'));
     });
     await stepFrames(page, 1, 'SELECT');
-    await stepFrames(page, 2);
+    // PrepItemsState fades in (transition_in).
+    await stepFrames(page, 12);
     expect((await getState(page)).currentStateName).toBe('prep_items');
 
-    // Cancel unwinds Supply -> manage select -> unit table -> prep.
+    // Cancel unwinds Supply (transition_pop) -> manage select -> unit table -> prep.
     await stepFrames(page, 1, 'BACK');
-    await stepFrames(page, 2);
+    await stepFrames(page, 12);
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
     await stepFrames(page, 1, 'BACK');
@@ -105,11 +106,12 @@ test.describe('Supply/convoy and item_discard states', () => {
       menu.moveTo(menu.options.findIndex((o: any) => o.entry?.text === 'Items'));
     });
     await stepFrames(page, 1, 'SELECT');
-    await stepFrames(page, 2);
+    // PrepItemsState fades in (transition_in).
+    await stepFrames(page, 12);
     expect((await getState(page)).currentStateName).toBe('prep_items');
 
     await stepFrames(page, 1, 'BACK');
-    await stepFrames(page, 2);
+    await stepFrames(page, 12);
     await stepFrames(page, 1, 'BACK');
     await stepFrames(page, 2);
     await stepFrames(page, 1, 'BACK');
@@ -150,7 +152,8 @@ test.describe('Supply/convoy and item_discard states', () => {
     });
     expect(setup).not.toBeNull();
 
-    await stepFrames(page, 2);
+    // PrepItemsState fades in (transition_in).
+    await stepFrames(page, 10);
     expect((await getState(page)).currentStateName).toBe('supply_items');
 
     // Python PrepItemsState: inventory item -> Store/Trade sub menu -> Store.
@@ -229,7 +232,8 @@ test.describe('Supply/convoy and item_discard states', () => {
     });
     expect(setup).not.toBeNull();
 
-    await stepFrames(page, 2);
+    // PrepItemsState fades in (transition_in).
+    await stepFrames(page, 10);
     expect((await getState(page)).currentStateName).toBe('supply_items');
 
     // Python: with a full inventory, selecting a convoy item switches to

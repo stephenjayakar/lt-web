@@ -172,7 +172,8 @@ test('open_convoy opens supply_items even without the _convoy game var', async (
   await boot(page);
   await page.evaluate(() => (window as any).__gameRef.gameVars.delete('_convoy'));
   await startEvent(page, 'TestConvoyNoVar', ['open_convoy;Eirika']);
-  await step(page, 5);
+  // PrepItemsState fades in (transition_in).
+  await step(page, 12);
   expect(await page.evaluate(() => (window as any).__gameRef.state.getCurrentState()?.name)).toBe('supply_items');
 });
 

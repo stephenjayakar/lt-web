@@ -450,10 +450,11 @@ export class MapView {
 
       // Rescue/status overlay icons (see unit-markers.ts).
       if (markers && markers.loaded && (unit.specialTag || unit.travelerCombatColor || unit.droppable)) {
+        // Python draw_hp blits them at (left - 8, top - 8) of the tile.
         markers.draw(
           surf,
-          px + 8,
-          py + 8,
+          px,
+          py,
           {
             specialTag: unit.specialTag ?? null,
             travelerCombatColor: unit.travelerCombatColor ?? null,

@@ -10,6 +10,7 @@ import { Surface } from '../surface';
 import type { InputEvent } from '../input';
 import { WINHEIGHT, WINWIDTH } from '../constants';
 import { viewport } from '../viewport';
+import { isForkEngine } from '../engine-flavor';
 import { drawStyledText } from '../../ui/styled-text';
 import {
   MenuBackground,
@@ -251,7 +252,8 @@ export class ObjectiveMenuState extends State {
     const unit = this.partyLeader();
     if (unit) {
       drawChibi(s, game.resources, unit.portraitNid, WINWIDTH - 44 + 7, 111 + 8);
-      blitTextRight(s, 'text-white', String(unit.name ?? ''), WINWIDTH - 40 - 1, 104);
+      // The EOtF fork right-aligns the name 42 px in (upstream 40).
+      blitTextRight(s, 'text-white', String(unit.name ?? ''), WINWIDTH - (isForkEngine() ? 42 : 40) - 1, 104);
       blitSub(s, golden, 0, 48, 16, 24, 140, 122);
       blitTextRight(s, 'text-blue', String(unit.level ?? 1), WINWIDTH - 42 - 1, 120);
       blitSub(s, golden, 16, 48, 20, 24, 140, 136);
@@ -260,7 +262,8 @@ export class ObjectiveMenuState extends State {
       const hpW = textWidth('text-blue', hp) + 20;
       blitText(s, 'text-blue', `${hp}/${maxHp}`, WINWIDTH - 42 - hpW, 134);
       const frame = passiveFrame(unit.sprite);
-      if (frame) s.blit(frame, 116, 82);
+      // The fork draws the map sprite at x 124 (upstream 116).
+      if (frame) s.blit(frame, isForkEngine() ? 124 : 116, 82);
     }
 
     blitTextRight(s, 'text-blue', formatPlaytime(Number(game.playtime ?? 0)), WINWIDTH - 8, 38);

@@ -535,6 +535,9 @@ export class InfoMenuState extends State {
     this.resetGraph();
     this.infoFlag = false;
     this.lastBB = null;
+    // Python InfoMenuState.start: fade in.
+    game.state.change('transition_in');
+    return 'repeat';
   }
 
   /** InfoGraph.clear (new unit): boxes rebuild as pages are drawn again. */
@@ -705,7 +708,8 @@ export class InfoMenuState extends State {
     game.memory?.set?.('current_unit', this.unit);
     game.infoMenuUnit = this.unit;
     if (this.unit?.position && !game.roamInfo?.roam) game.cursor?.setPos?.(this.unit.position[0], this.unit.position[1]);
-    game.state.back();
+    // Python back(): transition_pop.
+    game.state.change('transition_pop');
   }
 
   private moveHorizontal(dir: 1 | -1): void {
@@ -910,13 +914,17 @@ export class InfoMenuState extends State {
     if (sheet) {
       const face = new Surface(96, 80);
       face.blitImage(sheet, 0, 0, 96, 80, 0, 0);
-      if (constant('info_menu_blink') && this.blinkCount > 0) {
-        const blinkY = this.blinkCount === 1 ? 48 : 64;
-        const off = meta?.blinking_offset ?? [24, 32];
-        face.blitImage(sheet, PORTRAIT_WIDTH - 32, blinkY, 32, 16, off[0], off[1]);
+      // Upstream's InfoMenuPortrait smiles (and may blink); EOtF's fork
+      // (lt-maker 5078af9f) shows the plain portrait (icons.get_portrait).
+      if (!isForkEngine()) {
+        if (constant('info_menu_blink') && this.blinkCount > 0) {
+          const blinkY = this.blinkCount === 1 ? 48 : 64;
+          const off = meta?.blinking_offset ?? [24, 32];
+          face.blitImage(sheet, PORTRAIT_WIDTH - 32, blinkY, 32, 16, off[0], off[1]);
+        }
+        const smile = meta?.smiling_offset ?? [16, 48];
+        face.blitImage(sheet, PORTRAIT_WIDTH - 32, 80, 32, 16, smile[0], smile[1]);
       }
-      const smile = meta?.smiling_offset ?? [16, 48];
-      face.blitImage(sheet, PORTRAIT_WIDTH - 32, 80, 32, 16, smile[0], smile[1]);
       p.blitFrom(face, 8, Number(meta?.info_offset ?? 0), 80, 72, 8, 8);
     } else if (!unit.portraitNid || !meta) {
       const card = klass?.icon_nid ? getKeyedImage(game.resources, `resources/icons80/${klass.icon_nid}.png`) : null;
