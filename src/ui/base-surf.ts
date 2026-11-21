@@ -252,6 +252,16 @@ export function getMenuBackgroundSync(
   const cached = surfCache.get(key);
   if (cached) return cached;
 
+  // The window sprite is already loaded: cut this size now. (Going through
+  // the async path drew the dark fallback for one frame every time a window
+  // of a new size first appeared.)
+  const img = bgCache.get(nid);
+  if (img) {
+    const surf = isSlicedBase(nid) ? createBaseSurf(img, width, height) : plainBaseSurf(img, width, height);
+    surfCache.set(key, surf);
+    return surf;
+  }
+
   // Start async load
   void getMenuBackground(width, height, nid);
 
@@ -271,6 +281,18 @@ export function getMenuBgSpriteSync(name: string): HTMLImageElement | null {
   if (cached) return cached;
   void loadMenuBgSprite(nid);
   return null;
+}
+
+/**
+ * Load the menu-window sprites (Python has every sprite loaded at startup),
+ * so the first window of a kind does not open as the dark fallback.
+ */
+export async function preloadMenuWindows(names: readonly string[], concurrency = 4): Promise<void> {
+  const queue = names.filter((name) => isSlicedBase(name) || name.startsWith('menu_'));
+  const worker = async (): Promise<void> => {
+    while (queue.length > 0) await loadMenuBgSprite(queue.shift()!);
+  };
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
 }
 
 let highlightImg: HTMLImageElement | null = null;

@@ -185,6 +185,27 @@ export function getSprite(name: string, fallback?: string): Surface | null {
   return null;
 }
 
+/** Every sprite name the build indexed for the current project (project, fork, engine). */
+export function allSpriteNames(): string[] {
+  const names = new Set<string>(Object.keys(projectSprites));
+  if (isForkEngine()) for (const name of Object.keys(FORK)) names.add(name);
+  for (const name of Object.keys(INDEX.engine)) names.add(name);
+  return [...names];
+}
+
+/**
+ * Python loads every sprite at startup (SPRITES), so a menu's art is there
+ * the first frame it opens. Load the rest in the background, a few at a
+ * time, so first-open screens do not draw without their windows and panels.
+ */
+export async function preloadAllSprites(concurrency = 4): Promise<void> {
+  const queue = allSpriteNames().filter((name) => !loaded.has(name));
+  const worker = async (): Promise<void> => {
+    while (queue.length > 0) await loadSprite(queue.shift()!);
+  };
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
+}
+
 /** Start loading a set of sprites; resolves when all have settled. */
 export async function preloadSprites(names: readonly string[]): Promise<void> {
   await Promise.all(names.map((name) => loadSprite(name)));

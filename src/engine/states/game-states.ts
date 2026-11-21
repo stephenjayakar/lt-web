@@ -2496,20 +2496,16 @@ export class OptionMenuState extends State {
   private confirm: ChoiceMenu | null = null;
   private confirmOwner: string | null = null;
 
-  override begin(): StateResult {
+  /**
+   * Python OptionMenuState.start builds the menu once per push, so back from
+   * Objective, Options or the Unit chart the cursor is still on that entry.
+   */
+  override start(): StateResult {
     const game = getGame();
     // Python OptionMenuState._populate_options: Unit, Objective, Options,
     // then Suspend (permadeath) or Save, then End (not in roam); Guide at
     // index 2 when guide lore is unlocked; Turnwheel at index 1 when enabled;
     // custom options inserted before Options.
-    // Python OptionMenuState.begin: back from a screen it opened through
-    // transition_to, it fades in.
-    let fadeIn = false;
-    if (['objective_menu', 'settings_menu', 'base_guide', 'unit_menu'].includes(game.memory.get('next_state'))) {
-      game.memory.set('next_state', null);
-      game.state.change('transition_in');
-      fadeIn = true;
-    }
     // Python OptionMenuState.start: game.cursor.hide().
     game.cursor.visible = false;
     // The Unit chart's windows, sprites and icons (Python has them preloaded).
@@ -2553,8 +2549,19 @@ export class OptionMenuState extends State {
     placeAutoMenu(this.menu, game);
     this.confirm = null;
     this.confirmOwner = null;
-    // Python returns 'repeat': the fade starts black in this frame.
-    if (fadeIn) return 'repeat';
+  }
+
+  override begin(): StateResult {
+    const game = getGame();
+    // Python OptionMenuState.begin: back from a screen it opened through
+    // transition_to, it fades in.
+    if (['objective_menu', 'settings_menu', 'base_guide', 'unit_menu'].includes(game.memory.get('next_state'))) {
+      game.memory.set('next_state', null);
+      game.state.change('transition_in');
+      // Python returns 'repeat': the fade starts black in this frame.
+      return 'repeat';
+    }
+    game.memory.set('next_state', null);
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -2677,8 +2684,8 @@ export class OptionMenuState extends State {
         }
         case 'objective': {
           // Python: memory['next_state'] = 'objective_menu'; transition_to,
-          // which pops only itself: the option menu stays beneath.
-          this.menu = null;
+          // which pops only itself: the option menu stays beneath (and is
+          // drawn under the fade).
           game.memory.set('next_state', 'objective_menu');
           game.state.change('transition_to');
           break;
@@ -2712,7 +2719,6 @@ export class OptionMenuState extends State {
         }
         case 'options': {
           // Python: memory['next_state'] = 'settings_menu'; transition_to.
-          this.menu = null;
           game.memory.set('next_state', 'settings_menu');
           game.state.change('transition_to');
           break;
