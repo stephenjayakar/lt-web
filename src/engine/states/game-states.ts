@@ -211,7 +211,7 @@ import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, ski
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
 import { Pennant, MenuBackground, MenuScene, PanoramaFrames, loadPanoramaFrames, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
-import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackgroundNid } from '../../ui/title-menu';
+import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackground, titleBackgroundNid } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
 import { HelpDialog, getLinkedHelpBoxes, itemHelpBox, type HelpBox } from '../../ui/help-menu';
@@ -1650,7 +1650,7 @@ export class TitleMainState extends State {
 
   override start(): StateResult {
     const game = getGame();
-    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
+    this.bg = titleBackground(game.resources);
     preloadTitleMenuSprites();
     this.phase = 'transition_in';
     this.positionX = -WINWIDTH / 2;
@@ -2009,7 +2009,7 @@ export class TitleModeState extends State {
   /** Python TitleModeState.draw: label box, option description, ModeSelect. */
   override draw(surf: Surface): Surface {
     const game = getGame();
-    if (!this.modeBg) this.modeBg = new MenuBackground(titleBackgroundNid(), game.resources, false);
+    if (!this.modeBg) this.modeBg = titleBackground(game.resources);
     this.modeBg.draw(surf);
     const translate = (t: string): string => game.db?.translate?.(t) ?? t;
     if (!this.modeMenu || this.modeMenu.options.join('|') !== this.menuOptions.join('|')) {
@@ -2081,7 +2081,7 @@ export class TitleExtrasState extends State {
       options.push('Sound Room');
     }
     this.menu = new TitleMainMenu(options, 'title_menu_dark', (t) => game.db?.translate?.(t) ?? t);
-    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
+    this.bg = titleBackground(game.resources);
     preloadTitleMenuSprites();
     this.phase = 'transition_in';
     this.positionX = Math.floor(WINWIDTH * 1.5);
@@ -2186,7 +2186,7 @@ export class TitleNewState extends State {
     this.menu = null;
     this.phase = 'transition_in';
     this.positionX = Math.floor(WINWIDTH * 1.5);
-    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
+    this.bg = titleBackground(game.resources);
     preloadTitleMenuSprites();
     const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
     const numSlots = Number(game.db?.getConstant?.('num_save_slots', 3) ?? 3) || 1;
@@ -2513,20 +2513,16 @@ export class OptionMenuState extends State {
   private confirm: ChoiceMenu | null = null;
   private confirmOwner: string | null = null;
 
-  override begin(): StateResult {
+  /**
+   * Python OptionMenuState.start builds the menu once per push, so back from
+   * Objective, Options or the Unit chart the cursor is still on that entry.
+   */
+  override start(): StateResult {
     const game = getGame();
     // Python OptionMenuState._populate_options: Unit, Objective, Options,
     // then Suspend (permadeath) or Save, then End (not in roam); Guide at
     // index 2 when guide lore is unlocked; Turnwheel at index 1 when enabled;
     // custom options inserted before Options.
-    // Python OptionMenuState.begin: back from a screen it opened through
-    // transition_to, it fades in.
-    let fadeIn = false;
-    if (['objective_menu', 'settings_menu', 'base_guide', 'unit_menu'].includes(game.memory.get('next_state'))) {
-      game.memory.set('next_state', null);
-      game.state.change('transition_in');
-      fadeIn = true;
-    }
     // Python OptionMenuState.start: game.cursor.hide().
     game.cursor.visible = false;
     // The Unit chart's windows, sprites and icons (Python has them preloaded).
@@ -2570,8 +2566,19 @@ export class OptionMenuState extends State {
     placeAutoMenu(this.menu, game);
     this.confirm = null;
     this.confirmOwner = null;
-    // Python returns 'repeat': the fade starts black in this frame.
-    if (fadeIn) return 'repeat';
+  }
+
+  override begin(): StateResult {
+    const game = getGame();
+    // Python OptionMenuState.begin: back from a screen it opened through
+    // transition_to, it fades in.
+    if (['objective_menu', 'settings_menu', 'base_guide', 'unit_menu'].includes(game.memory.get('next_state'))) {
+      game.memory.set('next_state', null);
+      game.state.change('transition_in');
+      // Python returns 'repeat': the fade starts black in this frame.
+      return 'repeat';
+    }
+    game.memory.set('next_state', null);
   }
 
   override takeInput(event: InputEvent): StateResult {
@@ -2694,8 +2701,8 @@ export class OptionMenuState extends State {
         }
         case 'objective': {
           // Python: memory['next_state'] = 'objective_menu'; transition_to,
-          // which pops only itself: the option menu stays beneath.
-          this.menu = null;
+          // which pops only itself: the option menu stays beneath (and is
+          // drawn under the fade).
           game.memory.set('next_state', 'objective_menu');
           game.state.change('transition_to');
           break;
@@ -2729,7 +2736,6 @@ export class OptionMenuState extends State {
         }
         case 'options': {
           // Python: memory['next_state'] = 'settings_menu'; transition_to.
-          this.menu = null;
           game.memory.set('next_state', 'settings_menu');
           game.state.change('transition_to');
           break;
@@ -10880,6 +10886,17 @@ type EventCreditCard = {
 
 type EventLevelUpSource = 'stat_change' | 'class_change' | 'promote';
 
+/** One event's transition overlay (Python Event.transition_state/progress/speed/color). */
+type EventTransitionSnapshot = {
+  alpha: number;
+  fadingIn: boolean;
+  fadingOut: boolean;
+  holdBlack: boolean;
+  durationMs: number;
+  blocksCommands: boolean;
+  color: string;
+};
+
 type EventLevelUpPresentation = {
   owner: GameEvent;
   unit: UnitObject;
@@ -11078,6 +11095,36 @@ export class EventState extends State {
   private transitionColor: string = '0,0,0';    // fade color as "r,g,b"
 
   private stateAfterTransition: string | null = null;
+  /**
+   * The running event's own fade, saved while openStateWithTransition borrows
+   * the overlay for Python's separate transition_to state, and put back once
+   * the target state opens (so the event resumes as it was).
+   */
+  private transitionBeforeStateChange: EventTransitionSnapshot | null = null;
+
+  /** The running event's fade (Python keeps transition_* on each Event). */
+  private snapshotTransition(): EventTransitionSnapshot {
+    return {
+      alpha: this.transitionAlpha,
+      fadingIn: this.transitionFadingIn,
+      fadingOut: this.transitionFadingOut,
+      holdBlack: this.transitionHoldBlack,
+      durationMs: this.transitionDurationMs,
+      blocksCommands: this.transitionBlocksCommands,
+      color: this.transitionColor,
+    };
+  }
+
+  /** Install an event's fade; null gives a fresh event's (Python transition_state None). */
+  private applyTransition(snapshot: EventTransitionSnapshot | null): void {
+    this.transitionAlpha = snapshot?.alpha ?? 0;
+    this.transitionFadingIn = snapshot?.fadingIn ?? false;
+    this.transitionFadingOut = snapshot?.fadingOut ?? false;
+    this.transitionHoldBlack = snapshot?.holdBlack ?? false;
+    this.transitionDurationMs = snapshot?.durationMs ?? 250;
+    this.transitionBlocksCommands = snapshot?.blocksCommands ?? true;
+    this.transitionColor = snapshot?.color ?? '0,0,0';
+  }
   // Choice menu state
   private choiceMenu: EventChoiceMenu | null = null;
   /** Python PlayerChoiceState.should_persist: menu stays open after a pick. */
@@ -11122,6 +11169,8 @@ export class EventState extends State {
     blockingPortraitLoads: number;
     background: HTMLImageElement | null;
     backgroundPanorama: PanoramaFrames | null;
+    /** Python Event.transition_*: each event draws its own fade. */
+    transition: EventTransitionSnapshot;
   }> = new WeakMap();
   /** The panorama restoreParkedPresentation handed back with its background. */
   private restoredPanorama: PanoramaFrames | null = null;
@@ -11268,6 +11317,13 @@ export class EventState extends State {
     // When EventState is re-activated after another state pops (e.g.,
     // movement, shop, combat), we keep skipMode and other state intact.
     const isNewEvent = nextEvent !== this.currentEvent;
+    // Back from a state openStateWithTransition opened: the borrowed fade was
+    // Python's transition_to state, not the event's own, so the event's own
+    // transition comes back as it was.
+    if (this.transitionBeforeStateChange && !this.stateAfterTransition) {
+      if (!isNewEvent) this.applyTransition(this.transitionBeforeStateChange);
+      this.transitionBeforeStateChange = null;
+    }
     if (isNewEvent) this.parkPresentation(nextEvent);
     this.currentEvent = nextEvent;
     this.begunEvents.add(nextEvent);
@@ -12070,6 +12126,19 @@ export class EventState extends State {
         for (const suspended of this.suspendedChoiceEvents) {
           if (suspended.owner === event) suspended.menu?.draw(surf);
         }
+        // Python Event.draw blits each event's own fade over its own layers;
+        // a paused parent keeps advancing a fade it started (no_block).
+        const fade = parked.transition;
+        if (fade.fadingIn) {
+          fade.alpha = Math.min(1, fade.alpha + FRAMETIME / fade.durationMs);
+          if (fade.alpha >= 1) { fade.fadingIn = false; fade.holdBlack = true; }
+        } else if (fade.fadingOut) {
+          fade.alpha = Math.max(0, fade.alpha - FRAMETIME / fade.durationMs);
+          if (fade.alpha <= 0) { fade.fadingOut = false; fade.holdBlack = false; }
+        }
+        if (fade.alpha > 0) {
+          surf.fillRect(0, 0, surf.width, surf.height, `rgba(${fade.color},${fade.alpha})`);
+        }
       }
     } finally {
       this.eventTables = ownTables;
@@ -12393,6 +12462,7 @@ export class EventState extends State {
       blockingPortraitLoads: this.blockingPortraitLoads,
       background: this.background,
       backgroundPanorama: this.backgroundPanorama,
+      transition: this.snapshotTransition(),
     });
     this.parkedOrder = this.parkedOrder.filter((event) => event !== previous);
     this.parkedOrder.push(previous);
@@ -12419,6 +12489,7 @@ export class EventState extends State {
     this.pendingPortraitLoads = parked.pendingPortraitLoads;
     this.blockingPortraitLoads = parked.blockingPortraitLoads;
     this.restoredPanorama = parked.backgroundPanorama;
+    this.applyTransition(parked.transition);
     return parked.background;
   }
 
@@ -12501,7 +12572,16 @@ export class EventState extends State {
         }
       }
       this.restoredPanorama = null;
-      const restoredBackground = this.restoreParkedPresentation(next) ?? null;
+      const parkedBackground = this.restoreParkedPresentation(next);
+      // A fresh event (a trigger_script child, or the next queued event)
+      // starts unfaded like Python's new Event: a parent's closed transition
+      // stays with the parent (drawn underneath by drawParkedLayers), and a
+      // finished event's fade ends with it.
+      if (parkedBackground === undefined) {
+        this.applyTransition(null);
+        this.stateAfterTransition = null;
+      }
+      const restoredBackground = parkedBackground ?? null;
       if (suspendedIndex >= 0) {
         const [suspended] = this.suspendedChoiceEvents.splice(suspendedIndex, 1);
         this.eventTables = suspended.eventTables;
@@ -13440,6 +13520,7 @@ export class EventState extends State {
       return true;
     }
     this.stateAfterTransition = targetState;
+    this.transitionBeforeStateChange = this.snapshotTransition();
     this.transitionBlocksCommands = true;
     this.transitionFadingIn = true;
     this.transitionFadingOut = false;

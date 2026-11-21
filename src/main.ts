@@ -30,10 +30,11 @@ import {
 import { setActionGameRef } from './engine/action';
 import { setUnitGameRef } from './objects/unit';
 import { initIcons } from './ui/icons';
-import { freezeStartupWindowSkin, initSprites } from './ui/sprites';
+import { allSpriteNames, freezeStartupWindowSkin, initSprites, preloadAllSprites } from './ui/sprites';
 import { isForkEngine, metadataUsesForkEngine, setForkEngine } from './engine/engine-flavor';
 import { setBannerAudio } from './ui/banner';
-import { initBaseSurf } from './ui/base-surf';
+import { initBaseSurf, preloadMenuWindows } from './ui/base-surf';
+import { MenuBackground } from './ui/menu-chrome';
 import { setHelpMenuGameRef } from './ui/help-menu';
 import { setMenuAudioManager } from './ui/menu';
 import { setEventChoiceAudio } from './ui/event-choice';
@@ -873,6 +874,17 @@ async function main(): Promise<void> {
   // Stacked above the title so the startup event runs first and pops back to
   // it, matching Python running on_startup before the player reaches a menu.
   if (startupQueued) gameState.state.change('event');
+  // Python has every sprite loaded before the title: warm the rest in the
+  // background so a screen's windows and panels are there when it first
+  // opens. (Harness and QA runs keep their own loading order.)
+  if (!harnessMode) {
+    setTimeout(() => {
+      for (const nid of ['settings_background', 'info_menu_background', 'default_background']) {
+        void MenuBackground.preload(nid, gameState.resources);
+      }
+      void preloadMenuWindows(allSpriteNames()).then(() => preloadAllSprites());
+    }, 1500);
+  }
 
   // --- Input ---
   canvas.tabIndex = 0;

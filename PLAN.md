@@ -320,6 +320,21 @@ The release gate is green: build, all four audits, the full serial suite,
   slide), warp (anim, flicker, petals, sounds) and swoosh for add_unit,
   create_unit, add_group, remove_unit/group, move_unit/group and spawn_group,
   non-blocking as in Python; kill_unit plays DyingState before going on.
+- [x] Text over black screens (`tests/event-transition-scope.spec.ts`):
+  each event owns its transition fade like Python's `Event.transition_*`.
+  A trigger_script child starts unfaded and types above a parent's closed
+  fade (drawn by `drawParkedLayers`), a child's fade ends with it, the next
+  queued event starts unfaded, and a screen opened through
+  `openStateWithTransition` hands the event back unfaded. EOtF's first-run
+  Controls tutorial (under the hub Setup's closed transition) was typed
+  under black.
+- [x] First-frame polish (`tests/ui-first-frame.spec.ts`): windows of a new
+  size are cut from the loaded sprite at once (no dark fallback frame);
+  `MenuBackground`/prep `ScrollingBackground` reuse loaded panoramas (no
+  black frame per screen open); title screens share one background
+  (`game.memory['title_bg']`); the map menu is built in `start()` (cursor
+  kept after Objective/Options/Unit, drawn under the fade); the player
+  build warms every sprite and menu panorama after boot.
 
 ### P8.6 — Differential oracle findings
 

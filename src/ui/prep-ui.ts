@@ -148,6 +148,14 @@ export function drawTextCenter(surf: Surface, text: string, x: number, y: number
  * panorama (scroll_speed 50), or `default_background` when the project has
  * no panorama of that name (EOtF has no `rune_background`).
  */
+const scrollingImages = new WeakMap<object, Map<string, HTMLImageElement>>();
+function scrollingImageCache(resources: unknown): Map<string, HTMLImageElement> | null {
+  if (!resources || typeof resources !== 'object') return null;
+  let cache = scrollingImages.get(resources);
+  if (!cache) scrollingImages.set(resources, cache = new Map());
+  return cache;
+}
+
 export class ScrollingBackground {
   private image: HTMLImageElement | null = null;
   readonly scrollSpeed: number;
@@ -155,6 +163,14 @@ export class ScrollingBackground {
   constructor(game: any, name: string, scrollSpeed = 50) {
     this.scrollSpeed = scrollSpeed;
     const resources = game.resources;
+    // Already loaded once: draw it from the first frame (Python's load is
+    // synchronous; an async reload drew a black frame on every open).
+    const cache = scrollingImageCache(resources);
+    const cached = cache?.get(name);
+    if (cached) {
+      this.image = cached;
+      return;
+    }
     void (async () => {
       // Python create_background asks RESOURCES.panoramas first: an unlisted
       // name (EOtF has no rune_background) goes straight to the default.
@@ -165,6 +181,7 @@ export class ScrollingBackground {
         img = await resources?.tryLoadImage?.('resources/panoramas/default_background.png') ?? null;
       }
       this.image = img;
+      if (img) cache?.set(name, img);
     })();
   }
 

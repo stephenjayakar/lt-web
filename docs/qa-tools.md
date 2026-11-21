@@ -74,7 +74,7 @@ Run `npm run qa:run -- --help` for every option. The main ones:
 | `--choices random\|first`, `--services all\|none\|a,b`, `--shop buy\|leave`, `--policy-seed N` | Policy for event choices, sub-room NPCs and shop screens (default: buy one random item per shop). |
 | `--fast N` (0) | Frames per real frame. 0 = as fast as possible, 1 = normal speed. |
 | `--draw-every N` (16) | Render only every Nth frame. |
-| `--map-combat`, `--no-skip`, `--verbose` | Map combat instead of battle animations; keep event dialogue; keep `console.log`. |
+| `--map-combat`, `--no-skip`, `--verbose` | Map combat instead of battle animations; keep event dialogue (each box is read to the end, then SELECT); keep `console.log`. |
 | `--out DIR`, `--label`, `--shots`, `--headed`, `--timeout SEC` | Reports and debugging. |
 | `--answers k=v,...` | Fixed answers by choice nid (option value or index). |
 | `--texts var=A\|B,...` | Text entries by variable nid, typed in turn (default `answer=TACITA`, the Hallway riddle). |
