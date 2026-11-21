@@ -22,6 +22,8 @@ export interface MapViewUnit {
   team: string;
   finished: boolean;
   currentHp: number;
+  /** HP the map bar shows (Python MapHealthBar.displayed_hp); defaults to currentHp. */
+  displayedHp?: number;
   maxHp: number;
   specialTag?: 'Boss' | 'Elite' | 'Protect' | null;
   travelerCombatColor?: string | null;
@@ -442,7 +444,7 @@ export class MapView {
         const outline = getSprite('map_health_outline');
         const bar = getSprite('map_health_bar');
         if (outline && bar) {
-          const fraction = Math.max(0, Math.min(1, unit.currentHp / Math.max(1, maxHp)));
+          const fraction = Math.max(0, Math.min(1, (unit.displayedHp ?? unit.currentHp) / Math.max(1, maxHp)));
           surf.blit(outline, px, py + 13);
           if (fraction > 0) surf.blitFrom(bar, 0, 0, Math.trunc(12 * fraction) + 1, 1, px + 1, py + 14);
         }
