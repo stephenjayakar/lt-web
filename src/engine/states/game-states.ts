@@ -221,6 +221,7 @@ import { ExpBar as ExpBarClass, LevelUpScreen as LevelUpScreenClass } from '../.
 import { EventPortrait } from '../../events/event-portrait';
 import { parseScreenPosition } from '../../events/screen-positions';
 import { MapCombat, type CombatResults } from '../../combat/map-combat';
+import { updateMapHealthBar } from '../../rendering/map-health-bar';
 import type { CombatStrike } from '../../combat/combat-solver';
 import {
   queueAfterInitiatedCombatEvents,
@@ -576,6 +577,14 @@ export function setActiveCombatOffsets(
   _activeCombatOffsets = offsets;
 }
 
+/**
+ * The map combat CombatState is playing. Python applies each phase's HP
+ * actions at its 'anim' step, so the map HP bars under the fighters drain
+ * strike by strike; the port applies the results when the combat ends, so
+ * the bars follow the presented HP until then.
+ */
+let _presentingMapCombat: MapCombat | null = null;
+
 /** Collect units for map-view rendering from the game board. */
 function collectVisibleUnits(): {
   x: number;
@@ -587,6 +596,7 @@ function collectVisibleUnits(): {
   team: string;
   finished: boolean;
   currentHp: number;
+  displayedHp: number;
   maxHp: number;
   specialTag: 'Boss' | 'Elite' | 'Protect' | null;
   travelerCombatColor: string | null;
@@ -604,7 +614,9 @@ function collectVisibleUnits(): {
   // still on its fake tile while a departure transition plays.
   const allUnits: UnitObject[] = [...game.board.getAllUnits(), ...offBoardTransitionUnits()];
   const currentTeam = game.phase.getCurrent();
-  const eventOnStack = !!game.state.getStackNames?.().includes('event');
+  const stackNames: string[] = game.state.getStackNames?.() ?? [];
+  const eventOnStack = stackNames.includes('event');
+  const presentingCombat = _presentingMapCombat && stackNames.includes('combat') ? _presentingMapCombat : null;
   const result: {
     x: number;
     y: number;
@@ -614,6 +626,7 @@ function collectVisibleUnits(): {
     team: string;
     finished: boolean;
     currentHp: number;
+    displayedHp: number;
     maxHp: number;
     specialTag: 'Boss' | 'Elite' | 'Protect' | null;
     travelerCombatColor: string | null;
@@ -633,6 +646,9 @@ function collectVisibleUnits(): {
     // ends; its HP already reached 0 when the combat results applied.
     if (u.isDead() && !isUnitDying(u)) continue;
     const unitFx = getUnitFx(u);
+    // UnitSprite.update -> MapHealthBar.update, for every unit on the map.
+    const barTargetHp = presentingCombat?.presentedHp(u) ?? u.currentHp;
+    const displayedHp = updateMapHealthBar(u, barTargetHp);
 
     // Update sprite state: gray for finished units on the active team only.
     // Units from other teams should never appear greyed out.
@@ -715,6 +731,7 @@ function collectVisibleUnits(): {
       team: u.team,
       finished: u.finished && u.team === currentTeam,
       currentHp: u.currentHp,
+      displayedHp,
       // Evaluated lazily: max HP runs every stat-skill condition, and the
       // map view only needs it for units that survive its viewport cull
       // (Python's map_view likewise draws HP only for culled units).
@@ -725,7 +742,7 @@ function collectVisibleUnits(): {
         // stack (prep and other event-opened screens included).
         if (unitFx?.transitioning) return false;
         if (eventOnStack) return false;
-        return shouldDrawMapHp(game, { team: u.team, currentHp: u.currentHp, maxHp: u.maxHp, isDying: unitFx?.dying, dead: u.dead });
+        return shouldDrawMapHp(game, { team: u.team, currentHp: barTargetHp, maxHp: u.maxHp, isDying: unitFx?.dying, dead: u.dead });
       },
       specialTag,
       travelerCombatColor,
@@ -7650,6 +7667,7 @@ export class CombatState extends State {
         { deferSolve: true },
       );
       this.combat.strikeEventHook = (phase) => this.triggerStrikeEvents(phase);
+      _presentingMapCombat = this.combat;
       // Wire audio manager for combat sound effects
       if (game.audioManager) {
         this.combat.audioManager = game.audioManager;
@@ -8566,13 +8584,17 @@ export class CombatState extends State {
         // Python AnimationCombat.finish: fade back if and only if it was faded in
         this.fadeBackBattleMusic();
 
-        // Restore cursor and HUD visibility (hidden at combat start)
-        game.cursor.visible = true;
+        // Python CombatState.start hides the cursor and nothing in the
+        // combat shows it again: the next state that wants it calls
+        // cursor.show() (FreeState, MoveState) or combat_show (targeting).
+        // Showing it here put the cursor back during an enemy phase, where
+        // AIState parks it on every acting unit (it hides it only at start).
         game.cursor.combatDraw = false;
         game.hud.visible = true;
 
         // Clear combat animation offsets
         setActiveCombatOffsets(null);
+        _presentingMapCombat = null;
 
         this.combat = null;
         this.animCombat = null;
@@ -8917,6 +8939,7 @@ export class CombatState extends State {
   override end(): StateResult {
     // Always clear combat animation offsets when this state exits
     setActiveCombatOffsets(null);
+    _presentingMapCombat = null;
     animationViewbox = null;
     // Stop looping EXP SFX if still playing
     const game = getGame();

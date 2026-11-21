@@ -1062,6 +1062,15 @@ export class MapCombat implements StrikeEventCombat {
     return this.currentStrikeIndex < this.strikes.length ? this.strikes[this.currentStrikeIndex] : null;
   }
 
+  /**
+   * The HP the strikes shown so far leave `unit` at (Python's unit HP after
+   * each phase's _apply_actions), or undefined once the combat is over and
+   * its results are on the units.
+   */
+  presentedHp(unit: UnitObject): number | undefined {
+    return this.state === 'done' ? undefined : this.presentedHps.get(unit);
+  }
+
   /** Units whose presented HP reaches 0 and no miracle restores (is_dying). */
   private isPresentedDying(unit: UnitObject): boolean {
     return (this.presentedHps.get(unit) ?? 1) <= 0 && !this.miracleRestoreHps.has(unit);
