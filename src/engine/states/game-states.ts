@@ -10857,6 +10857,17 @@ type EventCreditCard = {
 
 type EventLevelUpSource = 'stat_change' | 'class_change' | 'promote';
 
+/** One event's transition overlay (Python Event.transition_state/progress/speed/color). */
+type EventTransitionSnapshot = {
+  alpha: number;
+  fadingIn: boolean;
+  fadingOut: boolean;
+  holdBlack: boolean;
+  durationMs: number;
+  blocksCommands: boolean;
+  color: string;
+};
+
 type EventLevelUpPresentation = {
   owner: GameEvent;
   unit: UnitObject;
@@ -11055,6 +11066,36 @@ export class EventState extends State {
   private transitionColor: string = '0,0,0';    // fade color as "r,g,b"
 
   private stateAfterTransition: string | null = null;
+  /**
+   * The running event's own fade, saved while openStateWithTransition borrows
+   * the overlay for Python's separate transition_to state, and put back once
+   * the target state opens (so the event resumes as it was).
+   */
+  private transitionBeforeStateChange: EventTransitionSnapshot | null = null;
+
+  /** The running event's fade (Python keeps transition_* on each Event). */
+  private snapshotTransition(): EventTransitionSnapshot {
+    return {
+      alpha: this.transitionAlpha,
+      fadingIn: this.transitionFadingIn,
+      fadingOut: this.transitionFadingOut,
+      holdBlack: this.transitionHoldBlack,
+      durationMs: this.transitionDurationMs,
+      blocksCommands: this.transitionBlocksCommands,
+      color: this.transitionColor,
+    };
+  }
+
+  /** Install an event's fade; null gives a fresh event's (Python transition_state None). */
+  private applyTransition(snapshot: EventTransitionSnapshot | null): void {
+    this.transitionAlpha = snapshot?.alpha ?? 0;
+    this.transitionFadingIn = snapshot?.fadingIn ?? false;
+    this.transitionFadingOut = snapshot?.fadingOut ?? false;
+    this.transitionHoldBlack = snapshot?.holdBlack ?? false;
+    this.transitionDurationMs = snapshot?.durationMs ?? 250;
+    this.transitionBlocksCommands = snapshot?.blocksCommands ?? true;
+    this.transitionColor = snapshot?.color ?? '0,0,0';
+  }
   // Choice menu state
   private choiceMenu: EventChoiceMenu | null = null;
   /** Python PlayerChoiceState.should_persist: menu stays open after a pick. */
@@ -11099,6 +11140,8 @@ export class EventState extends State {
     blockingPortraitLoads: number;
     background: HTMLImageElement | null;
     backgroundPanorama: PanoramaFrames | null;
+    /** Python Event.transition_*: each event draws its own fade. */
+    transition: EventTransitionSnapshot;
   }> = new WeakMap();
   /** The panorama restoreParkedPresentation handed back with its background. */
   private restoredPanorama: PanoramaFrames | null = null;
@@ -11245,6 +11288,13 @@ export class EventState extends State {
     // When EventState is re-activated after another state pops (e.g.,
     // movement, shop, combat), we keep skipMode and other state intact.
     const isNewEvent = nextEvent !== this.currentEvent;
+    // Back from a state openStateWithTransition opened: the borrowed fade was
+    // Python's transition_to state, not the event's own, so the event's own
+    // transition comes back as it was.
+    if (this.transitionBeforeStateChange && !this.stateAfterTransition) {
+      if (!isNewEvent) this.applyTransition(this.transitionBeforeStateChange);
+      this.transitionBeforeStateChange = null;
+    }
     if (isNewEvent) this.parkPresentation(nextEvent);
     this.currentEvent = nextEvent;
     this.begunEvents.add(nextEvent);
@@ -12047,6 +12097,19 @@ export class EventState extends State {
         for (const suspended of this.suspendedChoiceEvents) {
           if (suspended.owner === event) suspended.menu?.draw(surf);
         }
+        // Python Event.draw blits each event's own fade over its own layers;
+        // a paused parent keeps advancing a fade it started (no_block).
+        const fade = parked.transition;
+        if (fade.fadingIn) {
+          fade.alpha = Math.min(1, fade.alpha + FRAMETIME / fade.durationMs);
+          if (fade.alpha >= 1) { fade.fadingIn = false; fade.holdBlack = true; }
+        } else if (fade.fadingOut) {
+          fade.alpha = Math.max(0, fade.alpha - FRAMETIME / fade.durationMs);
+          if (fade.alpha <= 0) { fade.fadingOut = false; fade.holdBlack = false; }
+        }
+        if (fade.alpha > 0) {
+          surf.fillRect(0, 0, surf.width, surf.height, `rgba(${fade.color},${fade.alpha})`);
+        }
       }
     } finally {
       this.eventTables = ownTables;
@@ -12370,6 +12433,7 @@ export class EventState extends State {
       blockingPortraitLoads: this.blockingPortraitLoads,
       background: this.background,
       backgroundPanorama: this.backgroundPanorama,
+      transition: this.snapshotTransition(),
     });
     this.parkedOrder = this.parkedOrder.filter((event) => event !== previous);
     this.parkedOrder.push(previous);
@@ -12396,6 +12460,7 @@ export class EventState extends State {
     this.pendingPortraitLoads = parked.pendingPortraitLoads;
     this.blockingPortraitLoads = parked.blockingPortraitLoads;
     this.restoredPanorama = parked.backgroundPanorama;
+    this.applyTransition(parked.transition);
     return parked.background;
   }
 
@@ -12478,7 +12543,16 @@ export class EventState extends State {
         }
       }
       this.restoredPanorama = null;
-      const restoredBackground = this.restoreParkedPresentation(next) ?? null;
+      const parkedBackground = this.restoreParkedPresentation(next);
+      // A fresh event (a trigger_script child, or the next queued event)
+      // starts unfaded like Python's new Event: a parent's closed transition
+      // stays with the parent (drawn underneath by drawParkedLayers), and a
+      // finished event's fade ends with it.
+      if (parkedBackground === undefined) {
+        this.applyTransition(null);
+        this.stateAfterTransition = null;
+      }
+      const restoredBackground = parkedBackground ?? null;
       if (suspendedIndex >= 0) {
         const [suspended] = this.suspendedChoiceEvents.splice(suspendedIndex, 1);
         this.eventTables = suspended.eventTables;
@@ -13417,6 +13491,7 @@ export class EventState extends State {
       return true;
     }
     this.stateAfterTransition = targetState;
+    this.transitionBeforeStateChange = this.snapshotTransition();
     this.transitionBlocksCommands = true;
     this.transitionFadingIn = true;
     this.transitionFadingOut = false;
