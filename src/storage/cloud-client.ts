@@ -1,11 +1,14 @@
 // Convex transport + Convex Auth session for the browser (no React).
 //
 // All calls use Convex's HTTP API (`/api/query|mutation|action`), which fails
-// fast when offline and lets the write queue in cloud-store.ts own ordering
-// and retries. Sign-in is Google OAuth through Convex Auth: `auth:signIn`
-// returns a Google redirect plus a PKCE verifier; Google returns to this page
-// with `?code=`, which is exchanged for a JWT + refresh token. Tokens live in
-// localStorage, so the session survives reloads. Mirrors the approach of
+// fast when offline and lets the sync queue in cloud-store.ts own ordering
+// and retries. Every request has a timeout: a hanging network must never
+// stall the caller, and a timeout is a retryable network error. Sign-in is
+// Google OAuth through Convex Auth: `auth:signIn` returns a Google redirect
+// plus a PKCE verifier; Google returns to this page with `?code=`, which is
+// exchanged for a JWT + refresh token. Tokens live in localStorage, so the
+// session survives reloads, and the signed-in identity is known offline (the
+// cached `me()` result, else the JWT subject). Mirrors the approach of
 // kanto-spire-rust web/src/net/cloud.js.
 
 export interface CloudUser {
@@ -21,6 +24,11 @@ interface Tokens {
 
 type Kind = 'query' | 'mutation' | 'action';
 
+/** Default timeout for Convex function calls. */
+export const CALL_TIMEOUT_MS = 10_000;
+/** Timeout for blob uploads/downloads through the HTTP actions. */
+export const SITE_TIMEOUT_MS = 45_000;
+
 /** An error from Convex or the network. `network` errors are retryable. */
 export class CloudError extends Error {
   network: boolean;
@@ -32,12 +40,35 @@ export class CloudError extends Error {
   }
 }
 
-function tokenExpiry(jwt: string): number {
+function jwtClaims(jwt: string): Record<string, unknown> | null {
   try {
     const payload = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return (JSON.parse(atob(payload)).exp as number) * 1000;
+    return JSON.parse(atob(payload)) as Record<string, unknown>;
   } catch {
-    return 0;
+    return null;
+  }
+}
+
+function tokenExpiry(jwt: string): number {
+  const exp = jwtClaims(jwt)?.exp;
+  return typeof exp === 'number' ? exp * 1000 : 0;
+}
+
+/** `fetch` that rejects with a retryable CloudError on failure or after `timeoutMs`. */
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (timedOut) throw new CloudError(`Network error: no response after ${Math.round(timeoutMs / 1000)}s`, true);
+    throw new CloudError(`Network error: ${err instanceof Error ? err.message : String(err)}`, true);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -76,6 +107,7 @@ export class CloudClient {
   private refreshing: Promise<string | null> | null = null;
   private readonly authKey: string;
   private readonly verifierKey: string;
+  private readonly userKey: string;
 
   constructor(url: string, siteUrl: string) {
     this.url = url;
@@ -83,6 +115,7 @@ export class CloudClient {
     const ns = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '');
     this.authKey = `lt-web.auth.v1:${ns}`;
     this.verifierKey = `lt-web.authVerifier.v1:${ns}`;
+    this.userKey = `lt-web.authUser.v1:${ns}`;
     this.tokens = readJson<Tokens>(this.authKey);
   }
 
@@ -90,26 +123,48 @@ export class CloudClient {
     return this.tokens !== null;
   }
 
+  /** True when this page load returns from (or abandoned) a Google redirect. */
+  hasPendingRedirect(): boolean {
+    return new URL(window.location.href).searchParams.has('code') || readJson<string>(this.verifierKey) !== null;
+  }
+
+  /**
+   * The signed-in user without touching the network: the identity cached by
+   * the last successful `me()`, else the Convex Auth JWT subject
+   * (`<userId>|<sessionId>`). Null when signed out.
+   */
+  sessionUser(): CloudUser | null {
+    if (!this.tokens) return null;
+    const sub = jwtClaims(this.tokens.token)?.sub;
+    const fromToken = typeof sub === 'string' && sub ? sub.split('|')[0] : null;
+    const cached = readJson<CloudUser>(this.userKey);
+    if (cached?.userId && (!fromToken || cached.userId === fromToken)) return cached;
+    return fromToken ? { userId: fromToken, email: null, name: null } : null;
+  }
+
   private setTokens(tokens: Tokens | null): void {
     this.tokens = tokens ? { token: tokens.token, refreshToken: tokens.refreshToken } : null;
     writeJson(this.authKey, this.tokens);
+    if (!this.tokens) writeJson(this.userKey, null);
   }
 
   /** Raw Convex HTTP call. */
-  async post(kind: Kind, path: string, args: unknown, token: string | null, keepalive = false): Promise<any> {
+  async post(
+    kind: Kind,
+    path: string,
+    args: unknown,
+    token: string | null,
+    keepalive = false,
+    timeoutMs = CALL_TIMEOUT_MS,
+  ): Promise<any> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
-    let res: Response;
-    try {
-      res = await fetch(`${this.url}/api/${kind}`, {
-        method: 'POST',
-        headers,
-        keepalive,
-        body: JSON.stringify({ path, args: args ?? {}, format: 'json' }),
-      });
-    } catch (err) {
-      throw new CloudError(`Network error: ${err instanceof Error ? err.message : String(err)}`, true);
-    }
+    const res = await fetchWithTimeout(`${this.url}/api/${kind}`, {
+      method: 'POST',
+      headers,
+      keepalive,
+      body: JSON.stringify({ path, args: args ?? {}, format: 'json' }),
+    }, timeoutMs);
     const body = await res.json().catch(() => null);
     if (!body || body.status !== 'success') {
       const retryable = res.status >= 500 || res.status === 429 || res.status === 408 || !body;
@@ -144,12 +199,12 @@ export class CloudClient {
   }
 
   /** Authenticated call; retries once with a forced refresh on an auth failure. */
-  async call(kind: Kind, path: string, args: unknown = {}, keepalive = false): Promise<any> {
+  async call(kind: Kind, path: string, args: unknown = {}, keepalive = false, timeoutMs = CALL_TIMEOUT_MS): Promise<any> {
     for (let attempt = 0; ; attempt++) {
       const token = await this.freshToken(attempt > 0);
       if (!token) throw new CloudError('Signed out. Sign in with Google again.');
       try {
-        return await this.post(kind, path, args, token, keepalive);
+        return await this.post(kind, path, args, token, keepalive, timeoutMs);
       } catch (err) {
         const authFailure = err instanceof CloudError && !err.network && /sign in|unauthenticated|token/i.test(err.message);
         if (attempt === 0 && authFailure) continue;
@@ -159,29 +214,28 @@ export class CloudClient {
   }
 
   /** Authenticated fetch against the deployment's HTTP actions (…convex.site). */
-  async fetchSite(path: string, init: RequestInit = {}): Promise<Response> {
+  async fetchSite(path: string, init: RequestInit = {}, timeoutMs = SITE_TIMEOUT_MS): Promise<Response> {
     for (let attempt = 0; ; attempt++) {
       const token = await this.freshToken(attempt > 0);
       if (!token) throw new CloudError('Signed out. Sign in with Google again.');
-      let res: Response;
-      try {
-        res = await fetch(`${this.siteUrl}${path}`, {
-          ...init,
-          headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` },
-        });
-      } catch (err) {
-        throw new CloudError(`Network error: ${err instanceof Error ? err.message : String(err)}`, true);
-      }
+      const res = await fetchWithTimeout(`${this.siteUrl}${path}`, {
+        ...init,
+        headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` },
+      }, timeoutMs);
       if (res.status === 401 && attempt === 0) continue;
       return res;
     }
   }
 
-  /** Which sign-in options the deployment offers. */
-  async environment(): Promise<{ google: boolean; fakeLogin: boolean }> {
+  /**
+   * Which sign-in options the deployment offers, or null when Convex can't be
+   * reached within `timeoutMs` (the caller then skips the sign-in gate).
+   */
+  async environment(timeoutMs = CALL_TIMEOUT_MS): Promise<{ google: boolean; fakeLogin: boolean } | null> {
     try {
-      return await this.post('query', 'access:environment', {}, null);
-    } catch {
+      return await this.post('query', 'access:environment', {}, null, false, timeoutMs);
+    } catch (err) {
+      if (err instanceof CloudError && err.network) return null;
       return { google: true, fakeLogin: false };
     }
   }
@@ -190,7 +244,7 @@ export class CloudClient {
    * Finish a Google redirect if this page load is one (`?code=`), or note a
    * cancelled sign-in. Strips the code from the URL.
    */
-  async completeRedirect(): Promise<void> {
+  async completeRedirect(timeoutMs = CALL_TIMEOUT_MS): Promise<void> {
     const url = new URL(window.location.href);
     const code = url.searchParams.get('code');
     const verifier = readJson<string>(this.verifierKey);
@@ -198,7 +252,14 @@ export class CloudClient {
       url.searchParams.delete('code');
       history.replaceState(null, '', url.pathname + url.search + url.hash);
       try {
-        const r = await this.post('action', 'auth:signIn', { params: { code }, verifier: verifier ?? undefined }, null);
+        const r = await this.post(
+          'action',
+          'auth:signIn',
+          { params: { code }, verifier: verifier ?? undefined },
+          null,
+          false,
+          timeoutMs,
+        );
         if (!r?.tokens) throw new Error('no tokens for that code');
         this.setTokens(r.tokens);
         this.error = null;
@@ -238,16 +299,18 @@ export class CloudClient {
     this.error = null;
   }
 
-  /** The signed-in allowlisted user, or null (session invalid / not allowed). */
-  async me(): Promise<CloudUser | null> {
-    return await this.call('query', 'access:me', {});
+  /** The signed-in allowlisted user, or null (session invalid / not allowed). Caches the identity. */
+  async me(timeoutMs = CALL_TIMEOUT_MS): Promise<CloudUser | null> {
+    const user: CloudUser | null = await this.call('query', 'access:me', {}, false, timeoutMs);
+    if (user) writeJson(this.userKey, user);
+    return user;
   }
 
   async signOut(): Promise<void> {
     try {
-      await this.call('action', 'auth:signOut', {});
+      await this.call('action', 'auth:signOut', {}, false, 5_000);
     } catch {
-      // already signed out
+      // already signed out, or offline: forget the session locally anyway
     }
     this.setTokens(null);
   }

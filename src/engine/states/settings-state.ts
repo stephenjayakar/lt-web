@@ -183,6 +183,16 @@ function loadSettingsCache(): Record<string, unknown> {
 }
 
 /**
+ * Cloud sync replaced the stored settings with a newer copy from another
+ * device: drop the cache and re-apply engine-wide values (volumes).
+ */
+export function reloadStoredSettings(): void {
+  settingsCache = null;
+  keyMapCache = null;
+  if (_game) applyStoredSettings(_game);
+}
+
+/**
  * Current value of a config setting. Python keeps these in a global config
  * (not in the save), so they persist across reloads and new games; the web
  * used to keep them in gameVars, where most were never read and all reset.

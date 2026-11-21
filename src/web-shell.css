@@ -563,6 +563,24 @@
   cursor: progress;
 }
 
+.cloud-signin__local {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  min-height: 40px;
+  border: 1px solid var(--web-line);
+  background: transparent;
+  color: var(--web-muted);
+  font: 600 13px/1 ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.cloud-signin__local:hover,
+.cloud-signin__local:focus-visible {
+  color: var(--web-text);
+  outline: none;
+}
+
 .cloud-signin__error {
   margin-top: 16px;
   color: #ff9d8a;
@@ -649,6 +667,11 @@
 
 .cloud-account[data-state="error"] .cloud-account__dot {
   background: #ff6b55;
+}
+
+.cloud-account[data-state="offline"] .cloud-account__dot,
+.cloud-account[data-state="signed-out"] .cloud-account__dot {
+  background: var(--web-muted);
 }
 
 .cloud-account__menu {

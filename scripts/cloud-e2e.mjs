@@ -40,6 +40,8 @@ async function fakeSignIn(page, email, secretValue) {
 
 async function waitForCloudBoot(page) {
   await page.waitForFunction(() => !!window.__cloud && !document.getElementById('cloud-signin'), null, { timeout: 60_000 });
+  // Boot only waits a short budget for the first sync; wait for it here.
+  await page.waitForFunction(() => window.__cloud.store.isReconciled(), null, { timeout: 60_000 });
   // (waitForFunction does not await async predicates, so poll from Node.)
   for (let i = 0; i < 240; i++) {
     const ready = await page.evaluate(async () => {
@@ -83,7 +85,7 @@ try {
   check(true, 'owner signed in and the game booted');
   await waitSynced(a.page);
   check(
-    await a.page.evaluate((MIG) => window.__cloud.store.has(`save:${MIG}-0`) && window.__cloud.store.has(`ls:lt-achievements-${MIG}`), MIG),
+    await a.page.evaluate((MIG) => window.__cloud.store.isSynced(`save:${MIG}-0`) && window.__cloud.store.isSynced(`ls:lt-achievements-${MIG}`), MIG),
     'local save + achievements were migrated to the cloud',
   );
 
@@ -116,16 +118,16 @@ try {
     await storage.getSaveStore().set('E2EBLOB-0', big);
     const store = window.__cloud.store;
     return {
-      slotInCloud: store.has('save:EotF-2'),
+      slotQueued: store.entry('save:EotF-2')?.dirty === true || store.isSynced('save:EotF-2'),
       bigBytes: JSON.stringify(big).length,
       level: game.currentLevel?.nid ?? null,
       state: game.state.getCurrentState?.()?.name ?? null,
     };
   }, stamp);
   log('saved:', JSON.stringify(result));
-  check(result.slotInCloud, 'saveGame resolved with slot 2 in the cloud');
+  check(result.slotQueued, 'saveGame resolved locally with slot 2 queued for upload');
   await waitSynced(a.page);
-  check(true, 'records/achievements queue flushed');
+  check(await a.page.evaluate(() => window.__cloud.store.isSynced('save:EotF-2')), 'slot 2 and records reached the cloud');
   await a.ctx.close();
 
   // ---- Context B: fresh browser, sign in, everything comes back ----
@@ -152,7 +154,6 @@ try {
       loadError: save.getLastLoadError(),
       bigOk: big?.stamp === stamp && big?.filler?.length === 40000 && big.filler[39999].s === `row-39999-${stamp}`,
       migOk: mig?.stamp === stamp,
-      blobFlag: window.__cloud.store.cache?.get?.('save:E2EBLOB-0')?.blob ?? null,
     };
   }, { stamp, MIG });
   log('restored:', JSON.stringify(restored));
@@ -161,7 +162,6 @@ try {
   check(restored.slot2 && restored.slot2 !== '--NO DATA--', `save slot 2 listed (${restored.slot2})`);
   check(restored.hasSuspend, 'suspend present');
   check(restored.loaded, `loadGame(slot 2) from Convex succeeded ${restored.loadError ?? ''}`);
-  check(restored.blobFlag === true, 'large value stored as a blob');
   check(restored.bigOk, '1.6 MB value round-tripped through gzip blob file storage');
   check(restored.migOk, 'migrated save readable from the cloud');
 
@@ -176,12 +176,12 @@ try {
     for (const k of await storage.getSaveStore().keys()) {
       if (k.startsWith('E2E')) await storage.getSaveStore().delete(k);
     }
-    for (const k of window.__cloud.store.keys('ls:')) {
+    for (const k of Object.keys(localStorage)) {
       if (k.startsWith('lt-achievements-E2E')) storage.getSyncStore().removeItem(k);
     }
   });
   await waitSynced(b.page);
-  await b.page.getByRole('button', { name: /Cloud|Saving/ }).click();
+  await b.page.getByRole('button', { name: /Cloud|Syncing/ }).click();
   await b.page.getByRole('button', { name: 'Sign out' }).click();
   await b.page.getByRole('button', { name: 'Sign in with Google' }).waitFor({ timeout: 30_000 });
   check(true, 'sign out returns to the sign-in gate');

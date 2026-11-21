@@ -555,8 +555,10 @@ async function main(): Promise<void> {
   let projectPath = params.get('project');
 
   // Cloud saves: with a Convex deployment configured (and outside test/
-  // automation contexts), the owner must sign in and saves/records hydrate
-  // from Convex before anything else boots. See src/storage/storage.ts.
+  // automation contexts), saves stay local-first and sync to Convex in the
+  // background. Boot never waits on the network for long: a stored session
+  // is trusted offline and the first sync gets a short budget
+  // (src/storage/cloud-boot.ts).
   if (resolveStorageMode(params) === 'convex') {
     const { bootCloud } = await import('./storage/cloud-boot');
     if (!(await bootCloud(convexUrl()!))) return;
@@ -866,6 +868,8 @@ async function main(): Promise<void> {
 
   // --- Push initial state (level is loaded via LevelSelectState) ---
   gameState.state.change('title');
+  // Observable boot marker (offline/slow-network specs wait on it).
+  document.documentElement.dataset.ltBoot = 'title';
   // Stacked above the title so the startup event runs first and pops back to
   // it, matching Python running on_startup before the player reaches a menu.
   if (startupQueued) gameState.state.change('event');

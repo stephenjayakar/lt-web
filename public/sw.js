@@ -109,8 +109,10 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   // Hosted asset packs (/packs/<sha256>.bin + manifest.json) are cached by
-  // the page itself (src/packs/chunk-cache.ts); caching them here too would
-  // store hundreds of MB twice.
+  // the page itself in the lt-packs Cache Storage (chunks in
+  // src/packs/chunk-cache.ts, the manifest in src/packs/hosted.ts, which
+  // falls back to its saved copy offline); caching them here too would store
+  // hundreds of MB twice.
   if (url.pathname.startsWith('/packs/')) return;
 
   // Navigation requests (HTML pages) — serve index.html from cache for SPA
