@@ -33,7 +33,8 @@ test.describe('EOtF fork map menus and Canto', () => {
       const { setForkEngine } = await import('/src/engine/engine-flavor.ts');
       const read = () => {
         const state: any = new OptionMenuState();
-        state.begin();
+        // Python OptionMenuState.start builds the menu.
+        state.start();
         return state.menu.options.map((o: any) => o.label);
       };
       const hub = read();
