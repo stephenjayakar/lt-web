@@ -11,7 +11,9 @@
  * The cache is versioned — bump CACHE_VERSION to force a full refresh.
  */
 
-const CACHE_VERSION = 'lt-web-v2';
+// v3: v2 caches may hold a redirected /index.html (hosts that 30x it to /),
+// which browsers refuse for navigations; bumping drops them on activate.
+const CACHE_VERSION = 'lt-web-v3';
 const APP_CACHE = `${CACHE_VERSION}-app`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 
@@ -59,13 +61,20 @@ self.addEventListener('install', (event) => {
 
       // Cache all URLs (non-fatal on individual failures)
       const results = await Promise.allSettled(
-        urls.map((url) =>
-          fetch(url).then((response) => {
-            if (response.ok) {
-              return cache.put(url, response);
-            }
-          })
-        )
+        urls.map(async (url) => {
+          // Some static hosts redirect /index.html to /; fetch the shell from
+          // / and store it under both keys as a non-redirected response.
+          const isShell = url === '/' || url === '/index.html';
+          const response = await fetch(isShell ? '/' : url);
+          if (!response.ok) return;
+          const clean = await storable(response);
+          if (isShell) {
+            await cache.put('/', clean.clone());
+            await cache.put('/index.html', clean);
+          } else {
+            await cache.put(url, clean);
+          }
+        })
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed > 0) {
@@ -115,18 +124,12 @@ self.addEventListener('fetch', (event) => {
   // hundreds of MB twice.
   if (url.pathname.startsWith('/packs/')) return;
 
-  // Navigation requests (HTML pages) — serve index.html from cache for SPA
+  // Navigation requests (HTML pages): network first with a short timeout so a
+  // deploy shows up on the next visit, falling back to the cached shell when
+  // offline or on a stalled network. Never hand a redirected response to a
+  // navigation: browsers reject it (net::ERR_FAILED).
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      caches.match('/index.html', { cacheName: APP_CACHE }).then((cached) => {
-        return cached || fetch(event.request);
-      }).catch(() => {
-        return new Response('Offline — app not cached', {
-          status: 503,
-          headers: { 'Content-Type': 'text/plain' },
-        });
-      })
-    );
+    event.respondWith(navigationResponse(event.request));
     return;
   }
 
@@ -146,6 +149,54 @@ self.addEventListener('fetch', (event) => {
 // Caching strategies
 // ---------------------------------------------------------------------------
 
+const NAVIGATION_TIMEOUT_MS = 3000;
+
+/**
+ * A copy of `response` that is safe to cache and to serve for navigations.
+ * Responses that followed a redirect carry `redirected: true`, and browsers
+ * refuse those as navigation responses, so rebuild them from the body.
+ */
+async function storable(response) {
+  if (!response.redirected) return response;
+  const body = await response.blob();
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
+async function cachedShell() {
+  const cache = await caches.open(APP_CACHE);
+  const cached = (await cache.match('/')) || (await cache.match('/index.html'));
+  return cached ? storable(cached) : null;
+}
+
+async function navigationResponse(request) {
+  const url = new URL(request.url);
+  const isShell = url.pathname === '/' || url.pathname === '/index.html';
+  try {
+    const network = fetch(isShell ? new Request('/', { credentials: 'same-origin' }) : request);
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('navigation timeout')), NAVIGATION_TIMEOUT_MS));
+    const response = await Promise.race([network, timeout]);
+    const clean = await storable(response);
+    if (clean.ok && isShell) {
+      const cache = await caches.open(APP_CACHE);
+      await cache.put('/', clean.clone());
+      await cache.put('/index.html', clean.clone());
+    }
+    return clean;
+  } catch {
+    const cached = await cachedShell();
+    if (cached) return cached;
+    return new Response('Offline — app not cached', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
+}
+
 /**
  * Cache-first: return cached response if available, otherwise fetch and cache.
  */
@@ -155,7 +206,7 @@ async function cacheFirst(request, cacheName) {
   if (cached) return cached;
 
   try {
-    const response = await fetch(request);
+    const response = await storable(await fetch(request));
     if (response.ok) {
       cache.put(request, response.clone());
     }
@@ -176,7 +227,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
 
-  const fetchPromise = fetch(request).then((response) => {
+  const fetchPromise = fetch(request).then(storable).then((response) => {
     if (response.ok) {
       cache.put(request, response.clone());
     }
