@@ -61,7 +61,11 @@ Game data ships as content-hashed packs, `dist/packs/<sha256>.bin` plus
 (`src/packs/`) downloads the ~30 MB the title needs, then music in the
 background; music intro/battle variants, which the web engine never plays,
 load only on request. Chunks are verified and kept in Cache Storage by hash,
-so returning visits and redeploys download only changed packs. Files Lex
+so returning visits and redeploys download only changed packs. The manifest is
+saved there too: a return visit waits at most 4 s for a fresh one and
+otherwise boots from the saved copy, so the game starts offline or on a
+hanging connection (`src/packs/hosted.ts`). The service worker serves the app
+shell cache-first (`public/sw.js`); it leaves `/packs/` to the page. Files Lex
 Talionis can never load (music not in `music.json`, Python sources) are
 dropped and PNGs are re-encoded losslessly.
 
@@ -75,15 +79,16 @@ quality. EOtF's `dist/` is about 163 MiB. The build fails if any file reaches
 
 ### Saves and upgrades
 
-When the build has a Convex deployment URL (`VITE_CONVEX_URL`), **Convex is the
-source of truth** for save slots, suspend data, persistent records, and
-achievements, and only the allowlisted owner can use the game (see
-[Cloud saves](#cloud-saves-convex)). Without it, or in test/automation mode, saves
-stay on the device: save slots and suspend data in the `lt-web-saves`
-IndexedDB database (with a `localStorage` fallback using the `lt-save:` prefix),
-and persistent records/achievements in `lt-persistent-records-<game-nid>` and
-`lt-achievements-<game-nid>`. Save payloads carry a version and are migrated
-during load.
+Saves are **local-first** in every build. Save slots and suspend data live in
+the `lt-web-saves` IndexedDB database (with a `localStorage` fallback using the
+`lt-save:` prefix), and persistent records/achievements/settings in
+`localStorage` (`lt-persistent-records-<game-nid>`,
+`lt-achievements-<game-nid>`, `lt-web-settings`). A save resolves as soon as
+the local write finishes. When the build has a Convex deployment URL
+(`VITE_CONVEX_URL`) and the owner is signed in, the same data is mirrored to
+Convex in the background and synced between devices (see
+[Cloud saves](#cloud-saves-convex)). Save payloads carry a version and are
+migrated during load.
 
 ### Cloud saves (Convex)
 
@@ -107,22 +112,41 @@ run build`). Leave `VITE_CONVEX_URL` unset for a local-only build.
   `JWT_PRIVATE_KEY`, and `JWKS` (see the Convex Auth manual setup docs). Dev
   also has `AUTH_FAKE_LOGIN=true` and `AUTH_FAKE_LOGIN_SECRET`, a test sign-in
   for automated E2E. Never set those on prod.
-- **Flow**: the sign-in gate appears before the game boots. After sign-in the
-  client hydrates every key from Convex into memory, uploads any on-device
-  saves/records once (only keys the cloud lacks), then boots. A save
-  (`saveGame`/`suspendGame`) resolves only once Convex has committed it.
-  Record and achievement writes are debounced, sent latest-wins per key, and
-  flushed when the page is hidden. Pending small writes are mirrored to a
-  `localStorage` outbox and replayed on the next boot. Failures show in the
-  top-left cloud pill and retry with backoff. The pill also has the sign-out
-  button. Values over 256 KiB, such as large save dicts, are gzipped into
-  Convex file storage through the authenticated `/kv/blob` HTTP route.
+- **Flow**: boot never waits on the network for long. A stored session is
+  trusted offline (identity from the cached `access:me` result or the JWT
+  subject) and checked in the background. Without a session, the sign-in gate
+  appears only if Convex answers within 4 s; it has a "Play without signing
+  in" button, and that choice is remembered. With a session, boot waits at
+  most 2.5 s for the first sync, then starts from the device copy while sync
+  continues (`src/storage/cloud-boot.ts`).
+- **Sync** (`src/storage/cloud-store.ts`): every local write is recorded in a
+  sync journal in `localStorage` (`lt-web.cloudSync.v1`: per key `localAt`,
+  `cloudAt` and `dirty`), so changes made offline or signed out upload later.
+  A background loop reconciles once (`kv:hydrate`), then uploads dirty keys
+  one at a time, latest local value wins. Requests time out (10 s calls, 45 s
+  blobs), failures back off up to 30 s, the loop pauses while offline and
+  resumes on `online`, and nothing throws into the game. Record and settings
+  writes are debounced. The top-left pill shows synced / syncing / retrying /
+  offline / on-device only, plus sign in and sign out. Values over 256 KiB,
+  such as large save dicts, are gzipped into Convex file storage through the
+  authenticated `/kv/blob` HTTP route.
+- **Conflict rule** (per key): a key with no local change pulls the cloud copy
+  if the cloud moved past `cloudAt`, and is removed if the cloud row is gone
+  (deleted on another device). A key with a local change is pushed unless the
+  cloud also changed and its `updatedAt` is newer than the local write
+  (newest wins, ties keep the local copy). Keys with no journal entry (data
+  from before local-first sync) take the cloud copy when one exists; a
+  local-only save is uploaded on a device that never uploaded its local saves
+  and dropped on one that did, and local-only records/settings are uploaded.
+  A cloud copy of records, achievements or settings that lands after boot
+  reloads the in-memory copy.
 - **Deploy functions**: `npx convex dev --once` (dev) and `npx convex deploy`
   (prod).
 - **Test/automation mode**: `?harness=true`, `?control=true`, a
   WebDriver-controlled browser (Playwright), or `?storage=local` use the
   on-device backend with no sign-in. `?storage=convex` forces cloud mode, e.g.
-  for `node scripts/cloud-e2e.mjs`, the dev E2E. That script needs a dev
+  for `node scripts/cloud-e2e.mjs`, the dev E2E. `tests/offline-saves.spec.ts`
+  covers cloud mode against a mocked Convex (unreachable, offline, hanging). That script needs a dev
   server on port 5180 and reads the fake-login secret from the gitignored
   `.e2e-fake-login.local`.
 

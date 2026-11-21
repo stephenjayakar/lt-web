@@ -349,6 +349,54 @@ test.describe('hosted asset pack loader', () => {
     expect(totalHits(served, bootHashes)).toBe(0);
   });
 
+  test('a return visit boots from the saved manifest when the network fails, hangs, or is offline', async ({ page }) => {
+    await servePacks(page, built);
+    await page.evaluate(async (base) => {
+      await caches.delete('lt-packs-v1');
+      const { bootHostedPacks, loadPackManifest } = await import('/src/packs/hosted.ts');
+      const loader = await bootHostedPacks(await loadPackManifest(base), { base, intercept: false });
+      await loader.startBackground(); // background packs are cached too before the network goes away
+    }, BASE);
+
+    const manifestUrl = `**${BASE}/manifest.json`;
+    const bootFromCache = (freshTimeoutMs: number) => page.evaluate(async ({ base, freshTimeoutMs }) => {
+      const { bootHostedPacks, loadPackManifest } = await import('/src/packs/hosted.ts');
+      const t0 = performance.now();
+      const manifest = await loadPackManifest(base, { freshTimeoutMs });
+      const ms = performance.now() - t0;
+      const loader = await bootHostedPacks(manifest, { base, intercept: false });
+      return { ms, project: manifest.project, downloaded: loader.downloadedBytes, cached: loader.cachedBytes };
+    }, { base: BASE, freshTimeoutMs });
+
+    await page.route(manifestUrl, (route) => route.abort('internetdisconnected'));
+    const failed = await bootFromCache(4_000);
+    expect(failed).toMatchObject({ project: built.project, downloaded: 0 });
+    expect(failed.cached).toBeGreaterThan(0);
+    expect(failed.ms).toBeLessThan(2_000);
+
+    await page.unroute(manifestUrl);
+    await page.route(manifestUrl, () => new Promise(() => {})); // hangs
+    const hung = await bootFromCache(300);
+    expect(hung).toMatchObject({ project: built.project, downloaded: 0 });
+    expect(hung.ms).toBeLessThan(2_000);
+
+    await page.context().setOffline(true);
+    const offline = await bootFromCache(4_000);
+    expect(offline).toMatchObject({ project: built.project, downloaded: 0 });
+    expect(offline.ms).toBeLessThan(1_000);
+    await page.context().setOffline(false);
+
+    // No saved copy and no network: the error still surfaces.
+    await page.unroute(manifestUrl);
+    await page.route(manifestUrl, (route) => route.abort('internetdisconnected'));
+    const firstVisit = await page.evaluate(async (base) => {
+      await caches.delete('lt-packs-v1');
+      const { loadPackManifest } = await import('/src/packs/hosted.ts');
+      return await loadPackManifest(base).then(() => 'loaded', (err: Error) => err.message);
+    }, BASE);
+    expect(firstVisit).not.toBe('loaded');
+  });
+
   test('lazy packs: requests wait for background packs; demand packs load on first request', async ({ page }) => {
     const served = await servePacks(page, built);
     const theme = built.packs.find((p) => p.name === 'music/Theme.ogg')!;

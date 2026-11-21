@@ -15,7 +15,7 @@
  */
 
 import { installBundleFetchInterceptor, installBundleImageInterceptor } from '../data/asset-bundle';
-import { openChunkCache, requestPersistentPackStorage } from './chunk-cache';
+import { openChunkCache, PACK_CACHE_NAME, requestPersistentPackStorage } from './chunk-cache';
 import type { ChunkCache } from './chunk-cache';
 import { parseManifest } from './manifest';
 import type { PackManifest } from './manifest';
@@ -33,19 +33,91 @@ export function isHostedBuild(): boolean {
   return typeof __LT_HOSTED__ !== 'undefined' && __LT_HOSTED__;
 }
 
-/** The pack manifest (never served from a stale HTTP cache). */
-export async function loadPackManifest(base: string = PACKS_BASE): Promise<PackManifest> {
-  const res = await fetch(`${base}/manifest.json`, { cache: 'no-cache' });
-  if (!res.ok) throw new PackHttpError(res.status, `Game data list unavailable (HTTP ${res.status}).`);
-  let json: unknown;
-  try {
-    json = await res.json();
-  } catch {
-    throw new Error('Game data list is unreadable.');
-  }
+/** How long boot waits for a fresh manifest when a cached copy can stand in. */
+export const MANIFEST_FRESH_TIMEOUT_MS = 4_000;
+const MANIFEST_CACHE_PREFIX = 'https://lt-packs.invalid/manifest/';
+
+function validManifest(json: unknown): PackManifest {
   const manifest = parseManifest(json);
   if (manifest.packs.length === 0) throw new Error('This build contains no game data.');
   return manifest;
+}
+
+async function fetchManifestJson(base: string): Promise<unknown> {
+  const res = await fetch(`${base}/manifest.json`, { cache: 'no-cache' });
+  if (!res.ok) throw new PackHttpError(res.status, `Game data list unavailable (HTTP ${res.status}).`);
+  try {
+    return await res.json();
+  } catch {
+    throw new Error('Game data list is unreadable.');
+  }
+}
+
+async function manifestCache(): Promise<Cache | null> {
+  try {
+    return typeof caches === 'undefined' ? null : await caches.open(PACK_CACHE_NAME);
+  } catch {
+    return null;
+  }
+}
+
+async function readCachedManifest(base: string): Promise<PackManifest | null> {
+  try {
+    const hit = await (await manifestCache())?.match(MANIFEST_CACHE_PREFIX + encodeURIComponent(base));
+    return hit ? validManifest(await hit.json()) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function storeCachedManifest(base: string, json: unknown): Promise<void> {
+  try {
+    await (await manifestCache())?.put(MANIFEST_CACHE_PREFIX + encodeURIComponent(base), new Response(JSON.stringify(json), {
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch {
+    // storage unavailable: the next offline boot just can't start
+  }
+}
+
+/**
+ * The pack manifest. The network copy is preferred (never from a stale HTTP
+ * cache) and saved next to the chunks in Cache Storage. When a saved copy
+ * exists, boot waits at most `freshTimeoutMs` for the network and otherwise
+ * starts from the saved copy, so a return visit works offline or on a
+ * hanging connection; a late network copy still refreshes the saved one.
+ */
+export async function loadPackManifest(
+  base: string = PACKS_BASE,
+  opts: { freshTimeoutMs?: number } = {},
+): Promise<PackManifest> {
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const network = offline
+    ? Promise.reject(new Error('Offline, and this browser has not saved the game data yet.'))
+    : fetchManifestJson(base).then((json) => {
+      const manifest = validManifest(json);
+      void storeCachedManifest(base, json);
+      return manifest;
+    });
+  network.catch(() => {}); // observed below; avoid an unhandled rejection when the cache wins
+  const cached = await readCachedManifest(base);
+  if (!cached) return await network;
+  const timeoutMs = opts.freshTimeoutMs ?? MANIFEST_FRESH_TIMEOUT_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const fresh = await Promise.race([
+    network.catch((err) => {
+      console.info('[Packs] game data list unavailable, using the saved copy:', err instanceof Error ? err.message : err);
+      return null;
+    }),
+    new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        console.info('[Packs] game data list is slow, using the saved copy');
+        resolve(null);
+      }, timeoutMs);
+    }),
+  ]);
+  clearTimeout(timer);
+  return fresh ?? cached;
 }
 
 /** Fetch one chunk file by hash. */

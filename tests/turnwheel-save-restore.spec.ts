@@ -282,6 +282,7 @@ test.describe('turnwheel history across save/load', () => {
       const save = await import('/src/engine/save.ts');
       const writes: string[] = [];
       const client: any = {
+        hasSession: () => true,
         call: async (_kind: string, path: string, args: any) => {
           if (path === 'kv:hydrate') return [];
           if (path === 'kv:setInline') writes.push(args.key);
@@ -293,7 +294,7 @@ test.describe('turnwheel history across save/load', () => {
         },
       };
       const store = new CloudStore(client, 'tw-user');
-      await store.hydrate();
+      await store.reconcile();
       const previousSave = storage.getSaveStore();
       const previousSync = storage.getSyncStore();
       storage.installStores(store.saveStore(), store.syncStore());
@@ -302,6 +303,8 @@ test.describe('turnwheel history across save/load', () => {
         const savedLength = g.actionLog.getLength();
         g.actionLog.clear();
         const ok = await save.loadGame(g, 3);
+        // Saves resolve locally; the upload follows in the background.
+        for (let i = 0; i < 100 && store.hasPendingWrites(); i++) await new Promise((r) => setTimeout(r, 50));
         return { ok, savedLength, restored: g.actionLog.getLength(), wrote: writes.some((w) => w.includes('-3')) };
       } finally {
         storage.installStores(previousSave, previousSync);

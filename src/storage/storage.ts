@@ -6,9 +6,10 @@
 // - the sync store (persistent records, achievements, small settings) used by
 //   src/engine/records.ts, whose API is synchronous.
 //
-// In 'local' mode both are on-device (IndexedDB/localStorage). In 'convex'
-// mode Convex is the source of truth: boot signs the owner in, hydrates an
-// in-memory cache, and installs cloud-backed stores (src/storage/cloud-store.ts).
+// In 'local' mode both are on-device (IndexedDB/localStorage). 'convex' mode
+// is local-first too: the same on-device stores, wrapped so every write is
+// journaled and mirrored to Convex in the background when signed in and
+// online (src/storage/cloud-store.ts). Neither mode waits on the network.
 
 import { localSaveStore, localSyncStore } from './local-backend';
 
@@ -44,6 +45,12 @@ export function installStores(save: AsyncKV, sync: SyncKV): void {
 }
 
 export function convexUrl(): string | null {
+  // Dev server only: Playwright specs point cloud mode at a mocked origin
+  // (tests/offline-saves.spec.ts). Production builds drop this branch.
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const testUrl = (window as { __ltTestConvexUrl?: unknown }).__ltTestConvexUrl;
+    if (typeof testUrl === 'string' && testUrl) return testUrl.replace(/\/$/, '');
+  }
   const url = (import.meta.env.VITE_CONVEX_URL as string | undefined)?.trim();
   return url ? url.replace(/\/$/, '') : null;
 }

@@ -915,8 +915,25 @@ export function setFavorited(unitNid: string, value: boolean): void {
  * from the sync store. Call once at engine startup after the game NID is known.
  */
 export function initPersistentSystems(gameNid: string): void {
+  persistentGameNid = gameNid;
   RECORDS = PersistentRecordManager.load(gameNid);
   ACHIEVEMENTS = AchievementManager.load(gameNid);
+}
+
+let persistentGameNid: string | null = null;
+
+/**
+ * Cloud sync replaced this game's stored records or achievements with a
+ * newer copy from another device (src/storage/cloud-store.ts only pulls when
+ * nothing was written locally since, so the in-memory managers equal the old
+ * stored value): reload both. Returns false for any other key.
+ */
+export function reloadPersistentSystemsFor(storageKey: string): boolean {
+  const nid = persistentGameNid;
+  if (nid === null) return false;
+  if (storageKey !== `lt-persistent-records-${nid}` && storageKey !== `lt-achievements-${nid}`) return false;
+  resetPersistentSystems(nid);
+  return true;
 }
 
 /**
@@ -925,6 +942,7 @@ export function initPersistentSystems(gameNid: string): void {
  * game projects.
  */
 export function resetPersistentSystems(gameNid: string): void {
+  persistentGameNid = gameNid;
   RECORDS = PersistentRecordManager.load(gameNid);
   ACHIEVEMENTS = AchievementManager.load(gameNid);
 }

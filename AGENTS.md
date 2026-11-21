@@ -99,8 +99,9 @@ change crosses several Python subsystems.
   support should fail loudly in development strict mode.
 - Persistence goes through `src/storage/storage.ts` (`getSaveStore()` for saves,
   `getSyncStore()` for records/settings). Do not touch `localStorage` or
-  IndexedDB directly for game data: signed-in play uses Convex (`convex/`, see
-  README "Cloud saves"). Harness, control, and Playwright runs automatically
+  IndexedDB directly for game data: saves are local-first and signed-in play
+  mirrors them to Convex in the background (`convex/`, see README "Cloud
+  saves"). Never make gameplay or boot await the network. Harness, control, and Playwright runs automatically
   use the local backend, so tests never need auth. After editing `convex/`,
   run `npx tsc -p convex` and `npx convex dev --once`. Prod deploys
   (`npx convex deploy`) need explicit user intent.
