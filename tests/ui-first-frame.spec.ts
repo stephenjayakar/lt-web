@@ -73,3 +73,34 @@ test('the map menu stays drawn under the fade to the Objective screen', async ({
   expect(during.top).toBe('transition_to');
   expect(during.hasMenu).toBe(true);
 });
+
+test('a screen background loaded before is drawn from its first frame', async ({ page }) => {
+  await boot(page);
+  const result = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const chrome = await import('/src/ui/menu-chrome.ts');
+    const prep = await import('/src/ui/prep-ui.ts');
+    await chrome.MenuBackground.preload('settings_background', g.resources);
+    const menuBg = new chrome.MenuBackground('settings_background', g.resources);
+    // Load a prep scrolling background once, then build it again.
+    const first = new prep.ScrollingBackground(g, 'default_background');
+    for (let i = 0; i < 100 && !(first as any).image; i++) await new Promise((r) => setTimeout(r, 20));
+    const again = new prep.ScrollingBackground(g, 'default_background');
+    return { menuBg: menuBg.loaded, prepFirst: !!(first as any).image, prepAgain: !!(again as any).image };
+  });
+  // Python loads a background synchronously; a rebuilt one used to draw a
+  // black frame while it reloaded (every Options / Extras / prep open).
+  expect(result.menuBg).toBe(true);
+  expect(result.prepFirst).toBe(true);
+  expect(result.prepAgain).toBe(true);
+});
+
+test('the title screens share one background (Python game.memory title_bg)', async ({ page }) => {
+  await boot(page);
+  const same = await page.evaluate(async () => {
+    const g = (window as any).__gameRef;
+    const title = await import('/src/ui/title-menu.ts');
+    return title.titleBackground(g.resources) === title.titleBackground(g.resources);
+  });
+  expect(same).toBe(true);
+});

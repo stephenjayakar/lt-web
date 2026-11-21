@@ -34,6 +34,7 @@ import { allSpriteNames, freezeStartupWindowSkin, initSprites, preloadAllSprites
 import { isForkEngine, metadataUsesForkEngine, setForkEngine } from './engine/engine-flavor';
 import { setBannerAudio } from './ui/banner';
 import { initBaseSurf, preloadMenuWindows } from './ui/base-surf';
+import { MenuBackground } from './ui/menu-chrome';
 import { setHelpMenuGameRef } from './ui/help-menu';
 import { setMenuAudioManager } from './ui/menu';
 import { setEventChoiceAudio } from './ui/event-choice';
@@ -874,6 +875,9 @@ async function main(): Promise<void> {
   // opens. (Harness and QA runs keep their own loading order.)
   if (!harnessMode) {
     setTimeout(() => {
+      for (const nid of ['settings_background', 'info_menu_background', 'default_background']) {
+        void MenuBackground.preload(nid, gameState.resources);
+      }
       void preloadMenuWindows(allSpriteNames()).then(() => preloadAllSprites());
     }, 1500);
   }

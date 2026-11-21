@@ -211,7 +211,7 @@ import { Banner, PhaseIn, acquiredItemText, colored, gainWexpText, itemIcon, ski
 import { EVENT_COMMAND_FLAGS } from '../../events/event-command-flags';
 import { getMenuBackgroundSync } from '../../ui/base-surf';
 import { Pennant, MenuBackground, MenuScene, PanoramaFrames, loadPanoramaFrames, blitText as blitMenuText, blitTextCenter as blitMenuTextCenter, getSprite as getMenuSprite, lineWrap, textWidth as menuTextWidth, type SpriteImage } from '../../ui/menu-chrome';
-import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackgroundNid } from '../../ui/title-menu';
+import { ChapterSelectMenu, HorizontalChoice, ModeSelectMenu, TitleMainMenu, chapterSelectFromSlots, preloadTitleMenuSprites, titleBackground, titleBackgroundNid } from '../../ui/title-menu';
 import { getSetting } from './settings-state';
 import { EventChoiceMenu, type EventChoiceEntry } from '../../ui/event-choice';
 import { HelpDialog, getLinkedHelpBoxes, itemHelpBox, type HelpBox } from '../../ui/help-menu';
@@ -1633,7 +1633,7 @@ export class TitleMainState extends State {
 
   override start(): StateResult {
     const game = getGame();
-    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
+    this.bg = titleBackground(game.resources);
     preloadTitleMenuSprites();
     this.phase = 'transition_in';
     this.positionX = -WINWIDTH / 2;
@@ -1992,7 +1992,7 @@ export class TitleModeState extends State {
   /** Python TitleModeState.draw: label box, option description, ModeSelect. */
   override draw(surf: Surface): Surface {
     const game = getGame();
-    if (!this.modeBg) this.modeBg = new MenuBackground(titleBackgroundNid(), game.resources, false);
+    if (!this.modeBg) this.modeBg = titleBackground(game.resources);
     this.modeBg.draw(surf);
     const translate = (t: string): string => game.db?.translate?.(t) ?? t;
     if (!this.modeMenu || this.modeMenu.options.join('|') !== this.menuOptions.join('|')) {
@@ -2064,7 +2064,7 @@ export class TitleExtrasState extends State {
       options.push('Sound Room');
     }
     this.menu = new TitleMainMenu(options, 'title_menu_dark', (t) => game.db?.translate?.(t) ?? t);
-    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
+    this.bg = titleBackground(game.resources);
     preloadTitleMenuSprites();
     this.phase = 'transition_in';
     this.positionX = Math.floor(WINWIDTH * 1.5);
@@ -2169,7 +2169,7 @@ export class TitleNewState extends State {
     this.menu = null;
     this.phase = 'transition_in';
     this.positionX = Math.floor(WINWIDTH * 1.5);
-    this.bg = new MenuBackground(titleBackgroundNid(), game.resources, false);
+    this.bg = titleBackground(game.resources);
     preloadTitleMenuSprites();
     const gameNid = game.db?.getConstant?.('game_nid', 'default') ?? 'default';
     const numSlots = Number(game.db?.getConstant?.('num_save_slots', 3) ?? 3) || 1;

@@ -12,7 +12,7 @@
 import { Surface } from '../engine/surface';
 import { FRAMETIME } from '../engine/constants';
 import { FONT } from '../rendering/bmp-font';
-import { MenuCursor, baseSurf, blitSprite, blitText, getSprite, textWidth } from './menu-chrome';
+import { MenuBackground, MenuCursor, baseSurf, blitSprite, blitText, getSprite, textWidth } from './menu-chrome';
 import { isForkEngine } from '../engine/engine-flavor';
 import { RECORDS } from '../engine/records';
 
@@ -256,6 +256,21 @@ export function titleBackgroundNid(): string {
     return 'title_background_2';
   }
   return 'title_background';
+}
+
+let sharedTitleBg: { key: string; resources: unknown; bg: MenuBackground } | null = null;
+
+/**
+ * Python game.memory['title_bg']: every title screen (main, extras, mode,
+ * new game, load) draws the same PanoramaBackground, so its animation runs
+ * on across them and it is never reloaded.
+ */
+export function titleBackground(resources: ConstructorParameters<typeof MenuBackground>[1]): MenuBackground {
+  const key = titleBackgroundNid();
+  if (!sharedTitleBg || sharedTitleBg.key !== key || sharedTitleBg.resources !== resources) {
+    sharedTitleBg = { key, resources, bg: new MenuBackground(key, resources, false) };
+  }
+  return sharedTitleBg.bg;
 }
 
 export function preloadTitleMenuSprites(): void {

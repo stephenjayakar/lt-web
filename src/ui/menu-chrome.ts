@@ -405,6 +405,9 @@ export class PanoramaFrames {
  * panoramas scroll horizontally (ScrollingBackground, 50 ms per pixel);
  * multi-frame ones animate at 125 ms per frame (PanoramaBackground).
  */
+/** Loaded MenuBackground frames per resource manager and panorama nid. */
+const panoramaFrameCache = new WeakMap<object, Map<string, HTMLImageElement[]>>();
+
 export class MenuBackground {
   private frames: HTMLImageElement[] = [];
   private elapsed = 0;
@@ -416,14 +419,36 @@ export class MenuBackground {
 
   constructor(nid: string, resources: PanoramaResources | null | undefined, scroll = true) {
     this.scroll = scroll;
-    void this.load(nid, resources);
+    // A panorama loaded before draws from the first frame (Python loads it
+    // synchronously; reloading drew one black frame each time a screen opened).
+    const cached = resources ? panoramaFrameCache.get(resources)?.get(nid) : undefined;
+    if (cached) this.frames = cached;
+    else void this.load(nid, resources);
   }
+
+  /** Load a panorama's frames ahead of the screens that use it. */
+  static preload(nid: string, resources: PanoramaResources | null | undefined): Promise<void> {
+    return new MenuBackground(nid, resources).ready ?? Promise.resolve();
+  }
+
+  private ready: Promise<void> | null = null;
 
   get loaded(): boolean {
     return this.frames.length > 0;
   }
 
-  private async load(nid: string, resources: PanoramaResources | null | undefined): Promise<void> {
+  private load(nid: string, resources: PanoramaResources | null | undefined): Promise<void> {
+    this.ready = this.loadFrames(nid, resources).then(() => {
+      if (resources && this.frames.length) {
+        let cache = panoramaFrameCache.get(resources);
+        if (!cache) panoramaFrameCache.set(resources, cache = new Map());
+        cache.set(nid, this.frames);
+      }
+    });
+    return this.ready;
+  }
+
+  private async loadFrames(nid: string, resources: PanoramaResources | null | undefined): Promise<void> {
     if (!resources?.loadImage) return;
     const entries = await resources.tryLoadJsonSilent?.<unknown[]>('resources/panoramas/panoramas.json')
       .catch(() => null) ?? null;
