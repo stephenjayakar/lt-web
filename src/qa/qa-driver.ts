@@ -293,7 +293,12 @@ export class QaDriver {
 
   private handleEvent(ev: any): GameButton | null | undefined {
     if (ev.choiceMenu) return this.answerChoice(ev);
-    if (ev.dialog) return 'START';
+    if (ev.dialog) {
+      if (this.options.skipEvents) return 'START';
+      // --no-skip reads the dialogue like a player: wait for the box to
+      // finish typing, then SELECT (START would skip the rest of the event).
+      return ev.dialog.isTyping?.() ? undefined : 'SELECT';
+    }
     if (ev.banner && ev.bannerIsAlert) return 'SELECT';
     if (ev.chapterTitlePhase && ev.chapterTitlePhase !== 'none') return 'SELECT';
     return undefined;
